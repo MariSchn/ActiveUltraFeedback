@@ -21,12 +21,12 @@ model_pool = [
     "ultralm-13b", "wizardlm-13b", "llama-2-13b-chat", 
     "wizardlm-7b", "alpaca-7b", "llama-2-7b-chat", 
     "falcon-40b-instruct", "starchat", "mpt-30b-chat", "pythia-12b",
-    "gpt-2"  # Only used for testing, as it is a relatively small model that can be easily loaded. Remove for actual runs.
+    "gpt-2"  # ! Only used for testing, as it is a relatively small model that can be easily loaded. Remove for actual runs.
 ]
 
 #  TODO: Add more datasets
-# Maps from a dataset name to the corresponding Huggingface dataset
-dataset_map = {
+# Maps from a dataset name to the corresponding path or Huggingface dataset
+dataset_path = {
     "truthful_qa": "domenicrosati/TruthfulQA",
 }
 
@@ -43,11 +43,11 @@ if __name__ == "__main__":
 
     # Load dataset
     dataset_name = args.dataset
-    dataset = load_dataset(dataset_map[dataset_name])
+    dataset = load_dataset(dataset_path[dataset_name])
     dataset = dataset["train"]  # TODO: Check if this correctly works for all datasets, perhaps loop over all splits
 
     # Extract the prompt from the dataset, as described in: https://github.com/OpenBMB/UltraFeedback/issues/6
-    # TODO: Check if there is a better way to handle this for different datasets
+    # TODO: Check if there is a better way to handle this for different datasets. Probably not though.
     if dataset_name == "truthful_qa":
         dataset = Dataset.from_dict({"instruction": dataset["Question"]})
 
