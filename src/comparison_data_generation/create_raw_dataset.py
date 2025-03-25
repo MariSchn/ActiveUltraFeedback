@@ -1,16 +1,17 @@
 import argparse
 import random
 import json
+import os
 
 from datasets import Dataset, load_dataset
 
 """
 This script can be used to download a dataset from Huggingface and process it to be used by the UltraFeedback scripts.
-The output of this script will be a json dataset WITHOUT LLM completions, these will be added by the main script.
+The output of this script will be a json dataset WITHOUT LLM completions, these will be added by the main script (`main_vllm.py`).
 This script adds the necessary fields "models" and "completions" and randomly samples `--num_models` models to be used for the completions.
 
 To run it, simply pass the name of the dataset you want to download and process as an argument to the script
-and optionally how many completions should be generated for each prompt.
+and optionally how many completions should be generated for each prompt (default = 4).
 """
 
 # TODO: Add latest models
@@ -20,10 +21,11 @@ model_pool = [
     "ultralm-13b", "wizardlm-13b", "llama-2-13b-chat", 
     "wizardlm-7b", "alpaca-7b", "llama-2-7b-chat", 
     "falcon-40b-instruct", "starchat", "mpt-30b-chat", "pythia-12b",
-    "gpt-2"  # Only used for testing, as it is a relatively small model that can be easily loaded
+    "gpt-2"  # Only used for testing, as it is a relatively small model that can be easily loaded. Remove for actual runs.
 ]
 
 #  TODO: Add more datasets
+# Maps from a dataset name to the corresponding Huggingface dataset
 dataset_map = {
     "truthful_qa": "domenicrosati/TruthfulQA",
 }
@@ -53,5 +55,6 @@ if __name__ == "__main__":
     dataset = dataset.map(lambda x: {"models": random.sample(model_pool, num_models), "completions": []}, desc=dataset_name)
 
     # Save dataset
+    os.makedirs("./completion_data", exist_ok=True)
     with open(f"./completion_data/{dataset_name}.json", "w") as f:
             json.dump([{k: v for k, v in data.items()} for data in dataset], f, indent=4)
