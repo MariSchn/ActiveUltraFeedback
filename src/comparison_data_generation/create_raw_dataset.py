@@ -42,15 +42,15 @@ if __name__ == "__main__":
     # Load dataset
     dataset_name = args.dataset
     dataset = load_dataset(dataset_map[dataset_name])
+    dataset = dataset["train"]  # TODO: Check if this correctly works for all datasets, perhaps loop over all splits
+
+    # Extract the prompt from the dataset, as described in: https://github.com/OpenBMB/UltraFeedback/issues/6
+    # TODO: Check if there is a better way to handle this for different datasets
+    if dataset_name == "truthful_qa":
+        dataset = Dataset.from_dict({"instruction": dataset["Question"]})
 
     # Add models to be used for completions for each sample and the "completions" filled which is to be filled by the main script
     dataset = dataset.map(lambda x: {"models": random.sample(model_pool, num_models), "completions": []}, desc=dataset_name)
-    dataset = dataset["train"]  # TODO: Check if this correctly works for all datasets
-
-    # TODO: Check if there is a better way to handle this for different datasets
-    if dataset_name == "truthful_qa":
-        # Rename fields to match the UltraFeedback script
-        dataset = dataset.map(lambda x: {"instruction": x["Question"]}, desc="Renaming Question to instruction")
 
     # Save dataset
     with open(f"./completion_data/{dataset_name}.json", "w") as f:
