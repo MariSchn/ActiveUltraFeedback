@@ -49,7 +49,11 @@ if __name__ == "__main__":
     # Extract the prompt from the dataset, as described in: https://github.com/OpenBMB/UltraFeedback/issues/6
     # TODO: Check if there is a better way to handle this for different datasets. Probably not though.
     if dataset_name == "truthful_qa":
-        dataset = Dataset.from_dict({"instruction": dataset["Question"]})
+        dataset = Dataset.from_dict({
+             "instruction": dataset["Question"],
+             "correct_answers": dataset["Correct Answers"],
+             "incorrect_answers": dataset["Incorrect Answers"]
+            })
 
     # Add models to be used for completions for each sample and the "completions" filled which is to be filled by the main script
     dataset = dataset.map(lambda x: {"models": random.sample(model_pool, num_models), "completions": []}, desc=dataset_name)
