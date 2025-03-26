@@ -58,7 +58,7 @@ if __name__ == "__main__":
     dataset = dataset.map(
         lambda x: {
             "models": random.sample(model_pool, args.num_models), 
-            "completions": [], # TODO: use actual completions
+            "completions": [], 
         }, 
         desc = args.dataset_name,
     )
