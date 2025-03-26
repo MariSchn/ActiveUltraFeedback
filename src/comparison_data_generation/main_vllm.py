@@ -30,7 +30,7 @@ os.environ["NCCL_IGNORE_DISABLED_P2P"] = "1"
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 # TODO: Add (Huggingface) paths for the remaining models in the model_pool
-model_path = {
+model_map = {
     "ultralm-13b": "openbmb/UltraLM-13b-v2.0",
     "gpt-2": "openai-community/gpt2"  # ! Only used for testing, as it is a relatively small model that can be easily loaded
 }
@@ -164,7 +164,7 @@ if __name__ == "__main__":
     max_tokens = args.max_tokens
 
     # Load generator
-    generator = load_generator(model_path[model_name])
+    generator = load_generator(model_map[model_name])
 
     # Load dataset
     print(f"Loading dataset {dataset_name}")
