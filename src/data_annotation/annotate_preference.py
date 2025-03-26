@@ -88,7 +88,7 @@ def get_eval(sys_prompt: str, user_prompt: str, max_tokens: int = 500) -> str:
         str: The response from the evaluation/annotation model
     """
 
-    if eval_model == "gpt-4":
+    if eval_model_name == "gpt-4":
         for _ in range(max_api_retry):
             try:
                 response = openai.ChatCompletion.create(**{
@@ -109,10 +109,10 @@ def get_eval(sys_prompt: str, user_prompt: str, max_tokens: int = 500) -> str:
                 time.sleep(1)
             else:
                 break
-    elif eval_model == "llama-3.3-70b-instruct":
+    elif eval_model_name == "llama-3.3-70b-instruct":
         # TODO
         pass
-    elif eval_model == "debug":
+    elif eval_model_name == "debug":
         # ! Only used for debugging purposes and does not actually use any model
         if "instruction_following" in user_prompt or "honesty" in user_prompt:
             content = "Rating: 5\nRationale: THIS IS A DEBUG ANNOTATION\n\n"
@@ -154,19 +154,13 @@ def annotate(example: Dict) -> Dict:
             world_knowledge = "No additional world knowledge for reference."
 
         # Generate random ordering of completions to avoid order bias
-        count = 0
         random_orders = []
-
-        while True:
+        while len(random_orders) < shuffle_num:
             order = list(range(len(example["completions"])))
             random.shuffle(order)
 
             if order not in random_orders:
                 random_orders.append(order)
-                count += 1
-
-            if count == shuffle_num:
-                break
 
         for order in random_orders:        
             # Prepare prompt
@@ -176,7 +170,7 @@ def annotate(example: Dict) -> Dict:
                 format_input.update({"world_knowledge": world_knowledge})
 
             # Get evaluation for the sample, retrying if the API call fails
-            responses = get_eval(system_prompt, user_prompt=prompt_templates[aspect].format(**format_input))
+            responses = get_eval(system_prompt, user_prompt=prompt_templates[aspect].format(**format_input)) # TODO: some samples in truthful_qa cannot get annotated when aspect = truthfulness/helpfulness, check if this is a bug
             for i in range(max_api_retry):
                 try:
                     responses = process(responses, aspect) # gpt-4 format error
@@ -193,7 +187,7 @@ def annotate(example: Dict) -> Dict:
                     for j in range(len(example["completions"])):
                         completions[j]["annotations"][aspect].append(responses[order.index(j)])
                     break
-
+    
     example["completions"] = completions
 
     return example
@@ -212,7 +206,7 @@ if __name__ == "__main__":
 
     dataset_name = args.dataset_name
     max_api_retry = args.max_api_retry
-    eval_model = args.eval_model_name
+    eval_model_name = args.eval_model_name
     shuffle_num = args.shuffle_num
 
     # Load dataset (should contain completions)
