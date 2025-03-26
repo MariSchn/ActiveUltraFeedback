@@ -26,39 +26,44 @@ model_pool = [
 
 #  TODO: Add more datasets
 # Maps from a dataset name to the corresponding path or Huggingface dataset
-dataset_path = {
-    "truthful_qa": "domenicrosati/TruthfulQA",
+dataset_map = {
+    "truthful_qa": {"path": "truthfulqa/truthful_qa", "name": "generation"},
 }
-
 
 if __name__ == "__main__":
     # Parse arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", type=str, required=True, help="The name of the dataset to download and process (e.g. truthful_qa)")
+    parser.add_argument("--dataset_name", type=str, required=True, help="The name of the dataset to download and process (e.g. truthful_qa)")
     parser.add_argument("--num_models", type=int, default=4, help="The number of models to use for completions for each sample")
+    parser.add_argument("--seed", type=int, default=123, help="Seed for random sampling")
     args = parser.parse_args()
 
-    dataset_name = args.dataset
-    num_models = args.num_models
+    # Set random seed
+    if isinstance(args.seed, int):
+        random.seed(args.seed)
 
     # Load dataset
-    dataset_name = args.dataset
-    dataset = load_dataset(dataset_path[dataset_name])
-    dataset = dataset["train"]  # TODO: Check if this correctly works for all datasets, perhaps loop over all splits
+    dataset = load_dataset(**dataset_map[args.dataset_name])
 
     # Extract the prompt from the dataset, as described in: https://github.com/OpenBMB/UltraFeedback/issues/6
     # TODO: Check if there is a better way to handle this for different datasets. Probably not though.
-    if dataset_name == "truthful_qa":
+    if args.dataset_name == "truthful_qa":
         dataset = Dataset.from_dict({
-             "instruction": dataset["Question"],
-             "correct_answers": dataset["Correct Answers"],
-             "incorrect_answers": dataset["Incorrect Answers"]
-            })
+            "instruction": dataset['validation']["question"],
+            "correct_answers": dataset['validation']["correct_answers"],
+            "incorrect_answers": dataset['validation']["incorrect_answers"],
+        })
 
     # Add models to be used for completions for each sample and the "completions" filled which is to be filled by the main script
-    dataset = dataset.map(lambda x: {"models": random.sample(model_pool, num_models), "completions": []}, desc=dataset_name)
+    dataset = dataset.map(
+        lambda x: {
+            "models": random.sample(model_pool, args.num_models), 
+            "completions": [], # TODO: use actual completions
+        }, 
+        desc = args.dataset_name,
+    )
 
     # Save dataset
     os.makedirs("./completion_data", exist_ok=True)
-    with open(f"./completion_data/{dataset_name}.json", "w") as f:
+    with open(f"./completion_data/{args.dataset_name}.json", "w") as f:
             json.dump([{k: v for k, v in data.items()} for data in dataset], f, indent=4)
