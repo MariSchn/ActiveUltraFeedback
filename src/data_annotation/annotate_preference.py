@@ -167,7 +167,6 @@ def annotate(example: Dict) -> Dict:
 
             if count == shuffle_num:
                 break
-        print(random_orders)
 
         for order in random_orders:        
             # Prepare prompt
@@ -177,7 +176,6 @@ def annotate(example: Dict) -> Dict:
                 format_input.update({"world_knowledge": world_knowledge})
 
             # Get evaluation for the sample, retrying if the API call fails
-            print(aspect, format_input.keys())
             responses = get_eval(system_prompt, user_prompt=prompt_templates[aspect].format(**format_input))
             for i in range(max_api_retry):
                 try:
@@ -206,15 +204,15 @@ def incorporate_annotation_to_completions(example):
 if __name__ == "__main__":
     # Parse arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", type=str, required=True, help="The name of the dataset to download and process (e.g. truthful_qa)")
-    parser.add_argument("--max-api-retry", type=int, default=10, help="The number of times to retry the API call if it fails")
-    parser.add_argument("--eval_model", type=str, default="gpt-4", help="The name of the model to use for evaluation")
-    parser.add_argument("--shuffle-num", type=int, default=1, help="The number of times to shuffle the completions")
+    parser.add_argument("--dataset_name", type=str, required=True, help="The name of the dataset to download and process (e.g. truthful_qa)")
+    parser.add_argument("--max_api_retry", type=int, default=10, help="The number of times to retry the API call if it fails")
+    parser.add_argument("--eval_model_name", type=str, default="gpt-4", help="The name of the model to use for evaluation")
+    parser.add_argument("--shuffle_num", type=int, default=1, help="The number of times to shuffle the completions")
     args = parser.parse_args()
 
-    dataset_name = args.dataset
+    dataset_name = args.dataset_name
     max_api_retry = args.max_api_retry
-    eval_model = args.eval_model
+    eval_model = args.eval_model_name
     shuffle_num = args.shuffle_num
 
     # Load dataset (should contain completions)
