@@ -1,4 +1,4 @@
-name: ultrafeedback
+name: activeuf 
 channels:
   - pytorch
   - nvidia
