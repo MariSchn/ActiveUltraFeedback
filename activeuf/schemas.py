@@ -1,3 +1,4 @@
+import json
 from pydantic import BaseModel
 from typing import Optional
 
@@ -23,7 +24,7 @@ class Sample(BaseModel):
     correct_answers: list[str]
     incorrect_answers: list[str]
 
-    model_names: list[str]
+    model_names: Optional[list[str]] = []
     completions: Optional[list[Completion]] = []
 
 
@@ -38,8 +39,8 @@ if __name__ == "__main__":
     completion = Completion(
         model_name="gpt-2",
         principle="honesty",
-        prompt="How can I help you?",
-        text="I can help you with that.",
+        principle_prompt="How can I help you?",
+        response_text="I can help you with that.",
         annotations=[annotation],
     )
     print(completion)

@@ -1,4 +1,5 @@
 import argparse
+from dotenv import load_dotenv
 import json
 import os
 import os.path as path
@@ -18,6 +19,8 @@ from activeuf.utils import (
 
 from activeuf.comparison_data_generation.fastchat import conv_template
 
+load_dotenv()
+
 # TODO: update these instructions
 """
 This script is used to generate completions for one dataset using one model with vLLM.
@@ -28,10 +31,6 @@ To run it, you need to pass the model (`model_name`) and the dataset (`dataset`)
 The `model_name` is the name of the model to use for completions (e.g. llama-2-13b-chat) and the `dataset` is the name of the dataset to download and process (e.g. truthful_qa).
 To map the inputs to the actual model path or Huggingface model the `model_path` dictionary is used and needs to be updated if you want to use a new model.
 """
-
-# TODO: move these env vars elsewhere, not really sure where tbh
-os.environ["NCCL_IGNORE_DISABLED_P2P"] = "1"
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 def parse_args() -> argparse.Namespace:
     # Parse arguments
@@ -46,13 +45,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--temperature", type=int, default=1, help="Temperature for generation")
     parser.add_argument("--top_p", type=int, default=1, help="top_p value for generation")
 
-    parser.add_argument("--output_dir", type=str, default="./datasets_with_completions/", help="The directory for exporting the generated completions")
+    parser.add_argument("--output_dir", type=str, default="datasets/datasets_with_completions/", help="The directory for exporting the generated completions")
     return parser.parse_args()
 
 def load_input_data(input_dataset_path: str) -> Generator[Sample, None, None]:
     with open(input_dataset_path, "r") as f_in:
         for line in tqdm(f_in):
-            print(json.loads(line))
             yield Sample(**json.loads(line))
 
 def prepare_prompt(
@@ -103,13 +101,13 @@ if __name__ == "__main__":
         set_seed(args.seed)
 
     # Load generation model
-    # model = load_model(args.model_name, max_num_gpus=args.max_num_gpus)
-    # sampling_params = SamplingParams(
-    #     max_tokens = args.max_tokens,
-    #     temperature = args.temperature,
-    #     top_p = args.top_p,
-    #     stop = get_stop_tokens(args.model_name, model),        
-    # )
+    model = load_model(args.model_name, max_num_gpus=args.max_num_gpus)
+    sampling_params = SamplingParams(
+        max_tokens = args.max_tokens,
+        temperature = args.temperature,
+        top_p = args.top_p,
+        stop = get_stop_tokens(args.model_name, model),        
+    )
 
     # prepare output file
     os.makedirs(args.output_dir, exist_ok=True)
@@ -118,29 +116,31 @@ if __name__ == "__main__":
 
     # For each sample
     for sample in load_input_data(args.input_dataset_path):
-        # if args.model_name in sample["model_names"]:
-        #     # sample guiding principle for generation
-        #     principle = sample_principle_for_dataset(dataset_name)
-        #     principle_prompt = random.choice(PRINCIPLE2PROMPTS[principle])
+        # perform generation only if model is specified for this sample and completion is not already present
+        if args.model_name in sample.model_names and \
+            args.model_name not in [_.model_name for _ in sample.completions]:
 
-        #     # get generation prompt, then generate, then clean the response
-        #     # TODO: simplify this response cleaning
-        #     prompt = prepare_prompt(sample, args.model_name, principle_prompt)
-        #     with torch.inference_mode:
-        #         response = model.generate(prompt, sampling_params)[0]
-        #     response_text = response.outputs[0].text.strip().rstrip("</s>").strip()
+            # sample guiding principle for generation
+            principle = sample_principle_for_dataset(dataset_name)
+            principle_prompt = random.choice(PRINCIPLE2PROMPTS[principle])
 
-        #     # append completion to sample
-        #     sample["completions"].append(Completion(
-        #         model_name = args.model_name,
-        #         principle = principle, 
-        #         principle_prompt = principle_prompt,
-        #         response_text = response_text,
-        #     ))
+            # get generation prompt, then generate, then clean the response
+            # TODO: simplify this response cleaning
+            prompt = prepare_prompt(sample, args.model_name, principle_prompt)
+            with torch.inference_mode:
+                response = model.generate(prompt, sampling_params)[0]
+            response_text = response.outputs[0].text.strip().rstrip("</s>").strip()
+
+            # append completion to sample
+            sample.completions.append(Completion(
+                model_name = args.model_name,
+                principle = principle, 
+                principle_prompt = principle_prompt,
+                response_text = response_text,
+            ))
         
         # export sample
-        print(sample)
-        print(sample.model_dump(mode="json"), file=f_out)
+        print(sample.model_dump_json(), file=f_out, flush=True)
         break
 
     f_out.close()

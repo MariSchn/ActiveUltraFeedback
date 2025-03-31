@@ -1,12 +1,13 @@
 # TODO: convert DATASET_POOL to DATASET_MAP
-DATASET_POOL = [
-    "truthful_qa", 
-    "false_qa",
-    "sharegpt",
-    "ultrachat",
-    "flan",
-    "evol_instruct",
-]
+DATASET_MAP = {
+    "truthful_qa": "truthfulqa/truthful_qa", 
+    # "false_qa": "",
+    # "sharegpt": "",
+    # "ultrachat": "",
+    # "flan": "",
+    # "evol_instruct": "",
+}
+DATASET_POOL = list(DATASET_MAP.keys())
 
 PRINCIPLES = [
     "helpfulness",
@@ -62,27 +63,41 @@ PRINCIPLE2PROMPTS = {
 }
 
 DATASET2PRINCIPLE_POOL = {
-    "sharegpt": ["helpfulness", "honesty", "truthfulness"],
-    "ultrachat": ["helpfulness", "honesty", "truthfulness"],
-    "flan": ["helpfulness", "verbalized_calibration"],
     "truthful_qa": ["honesty", "truthfulness"],
-    "false_qa": ["honesty", "truthfulness"],
-    "evol_instruct": ["helpfulness"],
+    # "sharegpt": ["helpfulness", "honesty", "truthfulness"],
+    # "ultrachat": ["helpfulness", "honesty", "truthfulness"],
+    # "flan": ["helpfulness", "verbalized_calibration"],
+    # "false_qa": ["honesty", "truthfulness"],
+    # "evol_instruct": ["helpfulness"],
 }
-
-# TODO: convert MODEL_POOL to MODEL_MAP
-MODEL_POOL = [
-    "gpt-4", "gpt-3.5-turbo", "bard", 
-    "ultralm-65b", "wizardlm-30b", "vicuna-33b", "llama-2-70b-chat", 
-    "ultralm-13b", "wizardlm-13b", "llama-2-13b-chat", 
-    "wizardlm-7b", "alpaca-7b", "llama-2-7b-chat", 
-    "falcon-40b-instruct", "starchat", "mpt-30b-chat", "pythia-12b",
-    "gpt-2"  # ! Only used for testing, as it is a relatively small model that can be easily loaded. Remove for actual runs.]
-]
 
 MODEL_MAP = {
     "gpt-2": "openai-community/gpt2",
+    "gpt-3.5-turbo": "", 
+    "gpt-4": "", 
+    
+    "bard": "", 
+
+    "ultralm-13b": "", 
+    "ultralm-65b": "", 
+    
+    "vicuna-33b": "", 
+    
+    "llama-2-7b-chat": "", 
+    "llama-2-13b-chat": "", 
+    "llama-2-70b-chat": "", 
+
+    "wizardlm-7b": "", 
+    "wizardlm-13b": "", 
+    "wizardlm-30b": "", 
+
+    "alpaca-7b": "", 
+    "falcon-40b-instruct": "", 
+    "starchat": "", 
+    "mpt-30b-chat": "", 
+    "pythia-12b": "",
 }
+MODEL_POOL = list(MODEL_MAP.keys())
 
 MAX_NUM_GPUS = 2
 
@@ -90,4 +105,4 @@ MAX_NUM_GPUS = 2
 assert DEFAULT_PRINCIPLE in PRINCIPLES
 assert sorted(list(PRINCIPLE2PROMPTS.keys())) == sorted(PRINCIPLES)
 assert sorted(list(DATASET2PRINCIPLE_POOL.keys())) == sorted(DATASET_POOL)
-assert set(principle for pool in DATASET2PRINCIPLE_POOL.values() for principle in pool) == set(PRINCIPLES)
+assert set(principle for pool in DATASET2PRINCIPLE_POOL.values() for principle in pool).issubset(set(PRINCIPLES))
