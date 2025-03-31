@@ -250,7 +250,6 @@ class Conversation:
 
 
 
-
 conv_vicuna_v1_1 = Conversation(
                         name="vicuna",
                         system="A chat between a curious user and an artificial intelligence assistant. "

@@ -5,26 +5,27 @@ from tqdm import tqdm
 
 from datasets import load_dataset
 
-from .schemas import Sample
-from .configs import DATASET_POOL, MODEL_POOL
-from .utils import set_seed
+from activeuf.schemas import Sample
+from activeuf.configs import DATASET_POOL, MODEL_POOL
+from activeuf.utils import set_seed
 
 """
 This script downloads a dataset from HuggingFace and processes it to follow the input data schema (defined in `schemas.py`) for the ActiveUltraFeedback pipeline.
 The output of this script is a jsonl dataset WITHOUT LLM completions (which are to be added by the main script `main_vllm.py` later).
 
 Example run command from project root:
-    python -m src.prepare_input_dataset --dataset_name truthful_qa
+    python -m create_input_dataset --dataset_name truthful_qa
 """
 
 def parse_args() -> argparse.Namespace:
     # Parse arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset_name", type=str, required=True, help="The name of the dataset to download and process (e.g. truthful_qa)")
+    
     parser.add_argument("--num_models", type=int, default=4, help="The number of models to use for completions for each sample")
     parser.add_argument("--seed", type=int, default=123, help="Seed for random sampling")
 
-    parser.add_argument("--output_dir", type=str, default="./input_datasets/", help="The directory for exporting the input dataset")
+    parser.add_argument("--output_dir", type=str, default="../datasets/input_datasets/", help="The directory for exporting the input dataset")
     return parser.parse_args()
 
 def load_input_data(dataset_name: str) -> list[dict]:
@@ -65,4 +66,5 @@ if __name__ == "__main__":
             sample = Sample(**x)
 
             # Export sample
+            # TODO: make sure this exports with double inverted commas instead
             print(sample.model_dump(mode="json"), file=f_out)

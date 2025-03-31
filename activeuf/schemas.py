@@ -13,8 +13,8 @@ class Annotation(BaseModel):
 class Completion(BaseModel):
     model_name: str
     principle: str
-    prompt: str
-    text: str
+    principle_prompt: str
+    response_text: str
 
     annotations: Optional[list[Annotation]] = []
 
