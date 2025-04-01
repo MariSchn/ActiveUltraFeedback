@@ -1,13 +1,25 @@
-import numpy as np
+from dotenv import load_dotenv
+import huggingface_hub
 import os
+from typing import Generator
+
+import numpy as np
 import random
 import torch
 
 from vllm import LLM
 
-from activeuf.configs import PRINCIPLES, DEFAULT_PRINCIPLE, DATASET2PRINCIPLE_POOL, MODEL_MAP
-
+from activeuf.configs import *
+from activeuf.schemas import *
 from activeuf.comparison_data_generation.fastchat import conv_template
+
+def setup(login_to_hf: bool = False) -> None:
+    # load env variables
+    load_dotenv(PUBLIC_ENV_PATH)
+
+    if login_to_hf:
+        load_dotenv(LOCAL_ENV_PATH)
+        huggingface_hub.login(os.getenv("HF_TOKEN"))
 
 def set_seed(seed: int) -> None:
     random.seed(seed)
@@ -16,7 +28,12 @@ def set_seed(seed: int) -> None:
     torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-    os.environ['PYTHONHASHSEED'] = str(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
+
+def load_samples(filepath: str) -> Generator[Sample, None, None]:
+    with open(filepath, "r") as f_in:
+        for line in f_in:
+            yield Sample(**json.loads(line))
 
 def sample_principle_for_dataset(dataset_name: str) -> str:
     principle_pool = DATASET2PRINCIPLE_POOL.get(dataset_name, [DEFAULT_PRINCIPLE])
@@ -50,12 +67,10 @@ def load_model(model_name: str, max_num_gpus: int = None) -> LLM:
     if isinstance(max_num_gpus, int):
         tensor_parallel_size = min(max_num_gpus, tensor_parallel_size)
 
-    if model_name in ["starchat", "mpt-30b-chat", "falcon-40b-instruct"]:
-        dtype = "bfloat16"
-    else:
-        dtype = "auto"
-
-    return LLM(
+    dtype = MODEL2DTYPE.get(model_name, "auto")
+        
+    # instantiate model
+    model = LLM(
         model_path, 
         gpu_memory_utilization=0.95, 
         swap_space=1, 
@@ -63,3 +78,14 @@ def load_model(model_name: str, max_num_gpus: int = None) -> LLM:
         trust_remote_code=True, 
         dtype=dtype,
     )
+
+    # if no default chat template exists, load the custom one
+    tokenizer = model.get_tokenizer()
+    if not tokenizer.chat_template:
+        tokenizer.chat_template = MODEL2CHAT_TEMPLATE[model_name]
+
+    return model
+
+if __name__ == "__main__":
+    setup(login_to_hf=True)
+    set_seed(42)

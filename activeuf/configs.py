@@ -1,4 +1,6 @@
-# TODO: convert DATASET_POOL to DATASET_MAP
+PUBLIC_ENV_PATH = ".env"
+LOCAL_ENV_PATH = ".env.local"
+
 DATASET_MAP = {
     "truthful_qa": "truthfulqa/truthful_qa", 
     # "false_qa": "",
@@ -71,33 +73,75 @@ DATASET2PRINCIPLE_POOL = {
     # "evol_instruct": ["helpfulness"],
 }
 
+# TODO: complete model map
 MODEL_MAP = {
     "gpt-2": "openai-community/gpt2",
-    "gpt-3.5-turbo": "", 
-    "gpt-4": "", 
+    # "gpt-3.5-turbo": "", 
+    # "gpt-4": "", 
     
-    "bard": "", 
+    # "bard": "", 
 
-    "ultralm-13b": "", 
-    "ultralm-65b": "", 
+    "ultralm-13b": "openbmb/UltraLM-13b-v2.0", 
+    "ultralm-65b": "openbmb/UltraLM-65b", 
     
-    "vicuna-33b": "", 
+    "vicuna-7b": "lmsys/vicuna-7b-v1.5",
+    "vicuna-13b": "lmsys/vicuna-13b-v1.5",
+
+    # "alpaca-7b": "wxjiao/alpaca-7b", 
     
-    "llama-2-7b-chat": "", 
-    "llama-2-13b-chat": "", 
-    "llama-2-70b-chat": "", 
+    "llama-2-7b-chat": "meta-llama/Llama-2-7b-chat-hf", 
+    "llama-2-13b-chat": "meta-llama/Llama-2-13b-chat-hf", 
+    "llama-2-70b-chat": "meta-llama/Llama-2-70b-chat-hf", 
+    
+    # "llama-3.2-1b": "meta-llama/Llama-3.2-1B", 
+    # "llama-3.2-3b": "meta-llama/Llama-3.2-3B", 
 
-    "wizardlm-7b": "", 
-    "wizardlm-13b": "", 
-    "wizardlm-30b": "", 
+    # "llama-3.3-70b-instruct": "meta-llama/Llama-3.3-70B-Instruct", 
+    
+    # NOTE: 7b model is from a different source than the 13b and 70b models 
+    "wizardlm-7b": "cognitivecomputations/WizardLM-7B-Uncensored", 
+    "wizardlm-13b": "WizardLMTeam/WizardLM-13B-V1.2", 
+    "wizardlm-70b": "WizardLMTeam/WizardLM-70B-V1.0", 
 
-    "alpaca-7b": "", 
-    "falcon-40b-instruct": "", 
-    "starchat": "", 
-    "mpt-30b-chat": "", 
-    "pythia-12b": "",
+    # "pythia-12b": "", 
+
+    "starchat": "HuggingFaceH4/starchat2-15b-v0.1", 
+
+    # "mpt-30b-chat": "", 
+    
+    "falcon-7b": "tiiuae/falcon-7b",
+    # "falcon-40b-instruct": "",
 }
 MODEL_POOL = list(MODEL_MAP.keys())
+
+# TODO: consolidate model map and chat template somehow, maybe in a new class
+GPT2_CHAT_TEMPLATE = "{% for message in messages %}{{ message['content'] }} {% endfor %}"
+
+# NOTE: ultraLM series does not support the "system" role, see https://huggingface.co/openbmb/UltraLM-13b
+ULTRALM_CHAT_TEMPLATE = "{% for message in messages %}\n{% if message['role'] in ['user', 'system'] %}{{ 'User: ' + message['content'] + eos_token }}\n{% elif message['role'] == 'assistant' %}{{ 'Assistant: ' + message['content'] }}\n{% endif %}{% if loop.last and add_generation_prompt %}{{ 'Assistant: ' }}{% endif %}{% endfor %}"
+
+LLAMA_CHAT_TEMPLATE = "A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user's questions.\n" + "{% for message in messages %}{% if message['role'] == 'system' %}{{ message['content'] }}\n{% elif message['role'] == 'user' %}{{ 'USER: ' + message['content'] }}\n{% elif message['role'] == 'assistant' %}{{ 'ASSISTANT: ' + message['content'] + eos_token}}\n{% endif %}{% if loop.last and add_generation_prompt %}{{ 'ASSISTANT: ' }}{% endif %}{% endfor %}"
+
+# we define custom chat templates only for models that don't already have a default chat template
+MODEL2CHAT_TEMPLATE = {
+    "gpt-2": GPT2_CHAT_TEMPLATE,
+
+    "ultralm-13b": ULTRALM_CHAT_TEMPLATE,
+    "ultralm-65b": ULTRALM_CHAT_TEMPLATE,
+
+    "vicuna-7b": LLAMA_CHAT_TEMPLATE,
+    "vicuna-13b": LLAMA_CHAT_TEMPLATE,
+
+    "wizardlm-7b": LLAMA_CHAT_TEMPLATE,
+    "wizardlm-13b": LLAMA_CHAT_TEMPLATE,
+    "wizardlm-70b": LLAMA_CHAT_TEMPLATE,
+}
+
+MODEL2DTYPE = {
+    "starchat": "bfloat16",
+    "mpt-30b-chat": "bfloat16",
+    "falcon-40b-instruct": "bfloat16",
+}
 
 MAX_NUM_GPUS = 2
 
@@ -106,3 +150,4 @@ assert DEFAULT_PRINCIPLE in PRINCIPLES
 assert sorted(list(PRINCIPLE2PROMPTS.keys())) == sorted(PRINCIPLES)
 assert sorted(list(DATASET2PRINCIPLE_POOL.keys())) == sorted(DATASET_POOL)
 assert set(principle for pool in DATASET2PRINCIPLE_POOL.values() for principle in pool).issubset(set(PRINCIPLES))
+assert set(MODEL2CHAT_TEMPLATE.keys()).issubset(set(MODEL_POOL))
