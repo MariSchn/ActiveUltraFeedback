@@ -11,7 +11,6 @@ from vllm import LLM
 
 from activeuf.configs import *
 from activeuf.schemas import *
-from activeuf.comparison_data_generation.fastchat import conv_template
 
 def setup(login_to_hf: bool = False) -> None:
     # load env variables
