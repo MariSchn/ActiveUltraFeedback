@@ -27,11 +27,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model_name", type=str, required=True, help="The name of the model to use for completions (e.g. llama-2-13b-chat)")
 
     parser.add_argument("--max_num_gpus", type=int, default=MAX_NUM_GPUS, help="The maximum number of GPUs to use")
-    parser.add_argument("--max_tokens", type=int, default=1024, help="The maximum number of tokens to generate for each completion")
-    parser.add_argument("--seed", type=int, default=123, help="Seed for random sampling")
+    parser.add_argument("--max_tokens", type=int, default=COMPLETION_MAX_TOKENS, help="The maximum number of tokens to generate for each completion")
+    parser.add_argument("--seed", type=int, default=SEED, help="Seed for random sampling")
 
-    parser.add_argument("--temperature", type=int, default=1, help="Temperature for generation")
-    parser.add_argument("--top_p", type=int, default=1, help="top_p value for generation")
+    parser.add_argument("--temperature", type=int, default=COMPLETION_TEMPERATURE, help="Temperature for generation")
+    parser.add_argument("--top_p", type=int, default=COMPLETION_TOP_P, help="top_p value for generation")
 
     parser.add_argument("--output_dir", type=str, default="datasets/datasets_with_completions/", help="The directory for exporting the generated completions")
     return parser.parse_args()

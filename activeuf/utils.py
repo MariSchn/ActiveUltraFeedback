@@ -1,13 +1,15 @@
 from dotenv import load_dotenv
 import huggingface_hub
 import os
+import time
 from typing import Generator
 
 import numpy as np
 import random
 import torch
+import openai
 
-from vllm import LLM
+from vllm import LLM, SamplingParams
 
 from activeuf.configs import *
 from activeuf.schemas import *
@@ -91,6 +93,38 @@ def load_model(model_name: str, max_num_gpus: int = None) -> LLM:
         tokenizer.chat_template = MODEL2CHAT_TEMPLATE[model_name]
 
     return model
+
+def get_response(system_prompt: str, user_prompt: str, model_name: str, sampling_params: SamplingParams, model: LLM = None, max_api_retry: int = MAX_API_RETRY) -> str:    
+    if model_name == "gpt-4":
+        for _ in range(max_api_retry):
+            try:
+                response = openai.ChatCompletion.create(
+                    model="gpt-4",
+                    messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt}
+                        ],
+                    temperature=sampling_params.temperature,
+                    max_tokens=sampling_params.max_tokens,
+                    top_p=sampling_params.top_p,
+                    presence_penalty=0,
+                    frequency_penalty=0
+                )
+                content = response.choices[0].message.content
+            except Exception as e:
+                print(e)
+                time.sleep(1)
+            else:
+                break
+    elif model is not None:
+        content = model.chat(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            sampling_params=sampling_params,
+        )
+
+    return content
+
 
 if __name__ == "__main__":
     setup(login_to_hf=True)
