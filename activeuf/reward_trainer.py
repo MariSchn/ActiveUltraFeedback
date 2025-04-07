@@ -1,43 +1,52 @@
 from activeuf.configs import *
+from peft import LoraConfig, get_peft_model
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
+from trl import RewardTrainer, RewardConfig
+from datasets import load_dataset
 
+#TODO: Refactoring opportunities
+chat_templates = {
+   "microsoft/deberta-v3-base": """
+                                    {% for message in messages %}
+                                    {{ message['role'] }}: {{ message['content'] }}
+                                    {% endfor %}
+                                """
+}
 
-def train_and_save_model(output_dir="final_reward_model"):
+#TODO:
+# class for training reward models, which will take base models, datasets, and configurations
 
-    from peft import LoraConfig
-    from transformers import AutoModelForSequenceClassification, AutoTokenizer, TrainingArguments
-    from trl import RewardTrainer, RewardConfig
-    from datasets import load_dataset
-    from utils import load_model
+def train_and_save_model(output_dir="TrainedRewardModel", base_model="microsoft/deberta-v3-base"):
 
     # 1. Load dataset
     dataset = load_dataset("trl-lib/ultrafeedback_binarized")
 
-    # 2. Initialize model and tokenizer
-    # model_name = "gpt-2"
-    # model = load_model(model_name=model_name)
-    # tokenizer = model.get_tokenizer()
-    model_name = "gpt2"
-    model = AutoModelForSequenceClassification.from_pretrained(model_name)
+    model_name = base_model
+
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    tokenizer.pad_token = tokenizer.eos_token
-    model.config.pad_token_id = tokenizer.pad_token_id
-    tokenizer.chat_template="{% for message in messages %}{{ message['content'] }} {% endfor %}"
-    # if not tokenizer.chat_template:
-    #     tokenizer.chat_template = MODEL2CHAT_TEMPLATE[MODEL_MAP[model_name]]
+    if tokenizer.chat_template is None:
+        print("Chat template not present.\nManually assigning a chat template\n")
+        tokenizer.chat_template = chat_templates[model_name]
+    # for adding a head on top of the LLM logits
+    model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=1)
+
 
     # 3. Configure LoRA - Simplified configuration
     peft_config = LoraConfig(
         r=16,
         lora_alpha=32,
-        target_modules=["c_proj"],  # Only target attention projection layers
+        target_modules=["query_proj", "key_proj", "value_proj"], #can be experimented
         lora_dropout=0.05,
         bias="none",
         task_type="SEQ_CLS"
     )
 
+    model = get_peft_model(model, peft_config)
+    model.print_trainable_parameters()
+
     # 4. Training
     training_args = RewardConfig(
-        per_device_train_batch_size=8,
+        per_device_train_batch_size=2, #Due to GPU constraints.
         num_train_epochs=1,
         gradient_accumulation_steps=4,
         learning_rate=2e-5,
@@ -47,8 +56,8 @@ def train_and_save_model(output_dir="final_reward_model"):
         optim="adamw_torch",
         max_length=512,
         report_to="none",
-        max_steps=1,
-        output_dir="reward_training"
+        max_steps=3,
+        output_dir=output_dir
     )
 
     trainer = RewardTrainer(
@@ -60,12 +69,15 @@ def train_and_save_model(output_dir="final_reward_model"):
         peft_config=peft_config,
     )
 
-    # 5. Train
     trainer.train()
-    
+
+    model = model.merge_and_unload()
+
     model.save_pretrained(output_dir)
     tokenizer.save_pretrained(output_dir)
+
+    print(model)
     
-    return model, tokenizer
+    print(f"Model and tokenizer saved to {output_dir}")
 
 train_and_save_model()
