@@ -1,4 +1,4 @@
-name: activeuf 
+name: activeuf
 channels:
   - nvidia
   - conda-forge
@@ -15,7 +15,7 @@ dependencies:
   - tqdm
   - pip
   - pip:
-    - deepspeed
-    - accelerate
-    - vllm
-    - rewardbench
+      - deepspeed
+      - accelerate
+      - vllm
+      - rewardbench
