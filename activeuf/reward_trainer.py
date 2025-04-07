@@ -1,3 +1,6 @@
+from activeuf.configs import *
+
+
 def train_and_save_model(output_dir="final_reward_model"):
 
     from peft import LoraConfig
@@ -10,9 +13,17 @@ def train_and_save_model(output_dir="final_reward_model"):
     dataset = load_dataset("trl-lib/ultrafeedback_binarized")
 
     # 2. Initialize model and tokenizer
+    # model_name = "gpt-2"
+    # model = load_model(model_name=model_name)
+    # tokenizer = model.get_tokenizer()
     model_name = "gpt2"
-    model = load_model(model_name=model_name)
-    tokenizer = model.get_tokenizer()
+    model = AutoModelForSequenceClassification.from_pretrained(model_name)
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    tokenizer.pad_token = tokenizer.eos_token
+    model.config.pad_token_id = tokenizer.pad_token_id
+    tokenizer.chat_template="{% for message in messages %}{{ message['content'] }} {% endfor %}"
+    # if not tokenizer.chat_template:
+    #     tokenizer.chat_template = MODEL2CHAT_TEMPLATE[MODEL_MAP[model_name]]
 
     # 3. Configure LoRA - Simplified configuration
     peft_config = LoraConfig(
@@ -37,6 +48,7 @@ def train_and_save_model(output_dir="final_reward_model"):
         max_length=512,
         report_to="none",
         max_steps=1,
+        output_dir="reward_training"
     )
 
     trainer = RewardTrainer(
@@ -50,5 +62,10 @@ def train_and_save_model(output_dir="final_reward_model"):
 
     # 5. Train
     trainer.train()
-    trainer.save_model(output_dir)
+    
+    model.save_pretrained(output_dir)
+    tokenizer.save_pretrained(output_dir)
+    
     return model, tokenizer
+
+train_and_save_model()
