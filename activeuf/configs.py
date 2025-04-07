@@ -1,6 +1,13 @@
 PUBLIC_ENV_PATH = ".env"
 LOCAL_ENV_PATH = ".env.local"
 
+SEED = 123
+MAX_NUM_GPUS = 2
+MAX_TOKENS = 1024
+
+# ====================================
+#        COMPLETION GENERATION       
+# ====================================
 DATASET_MAP = {
     "truthful_qa": "truthfulqa/truthful_qa", 
     # "false_qa": "",
@@ -15,7 +22,7 @@ PRINCIPLES = [
     "helpfulness",
     "honesty",
     "truthfulness",
-    "verbalized_calibration",
+    "verbalized_calibration",  # TODO: Equivalent to instruction following ?
 ]
 DEFAULT_PRINCIPLE = "helpfulness"
 
@@ -113,6 +120,8 @@ MODEL_MAP = {
     # "falcon-40b-instruct": "",
 }
 MODEL_POOL = list(MODEL_MAP.keys())
+
+NUM_MODELS = 4
 
 # TODO: consolidate model map and chat template somehow, maybe in a new class
 GPT2_CHAT_TEMPLATE = "{% for message in messages %}{{ message['content'] }} {% endfor %}"

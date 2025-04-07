@@ -57,13 +57,16 @@ if __name__ == "__main__":
         stop = get_stop_tokens(args.model_name, model),        
     )
 
-    # prepare output file
+    # Prepare output file
+    # Use a temporary file to avoid overwriting in the case of the output file also being the input file
+    # TODO: Make completion generation parallelizable
     os.makedirs(args.output_dir, exist_ok=True)
-    output_path = path.join(args.output_dir, f"{dataset_name}.jsonl")
-    f_out = open(output_path, "w")
+    temp_output_path = path.join(args.output_dir, f"{dataset_name}_{args.model_name}_temp.jsonl")
+    final_output_path = path.join(args.output_dir, f"{dataset_name}.jsonl")
+    f_out = open(temp_output_path, "w")
 
     # For each sample
-    for sample in tqdm(load_samples(args.input_dataset_path)):
+    for sample in tqdm(yield_samples(args.input_dataset_path)):
         # perform generation only if model is specified for this sample and completion is not already present
         if args.model_name in sample.model_names and \
             args.model_name not in [_.model_name for _ in sample.completions]:
@@ -99,3 +102,6 @@ if __name__ == "__main__":
         print(sample.model_dump_json(), file=f_out, flush=True)
 
     f_out.close()
+
+    # Overwrite the final output file with the temp output file
+    os.replace(temp_output_path, final_output_path)

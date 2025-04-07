@@ -29,10 +29,17 @@ def set_seed(seed: int) -> None:
     torch.backends.cudnn.benchmark = False
     os.environ["PYTHONHASHSEED"] = str(seed)
 
-def load_samples(filepath: str) -> Generator[Sample, None, None]:
+def yield_samples(filepath: str) -> Generator[Sample, None, None]:
     with open(filepath, "r") as f_in:
         for line in f_in:
             yield Sample(**json.loads(line))
+
+def load_samples(filepath: str) -> list[Sample]:
+    samples = []
+    with open(filepath, "r") as f_in:
+        for line in f_in:
+            samples.append(Sample(**json.loads(line)))
+    return samples
 
 def sample_principle_for_dataset(dataset_name: str) -> str:
     principle_pool = DATASET2PRINCIPLE_POOL.get(dataset_name, [DEFAULT_PRINCIPLE])
