@@ -50,11 +50,18 @@ if __name__ == "__main__":
 
     # Load generation model
     model = load_model(args.model_name, max_num_gpus=args.max_num_gpus)
+    
+    # determine stop indicator for generation
+    stop = []
+    tokenizer = model.get_tokenizer()
+    if tokenizer.eos_token:
+        stop.append(tokenizer.eos_token)
+
     sampling_params = SamplingParams(
         max_tokens = args.max_tokens,
         temperature = args.temperature,
         top_p = args.top_p,
-        stop = get_stop_tokens(args.model_name, model),        
+        stop = stop,        
     )
 
     # Prepare output file
@@ -80,15 +87,14 @@ if __name__ == "__main__":
                 {"role": "system", "content": principle_prompt},
                 {"role": "user", "content": sample.instruction},
             ]
-            prompt = model.get_tokenizer().apply_chat_template(
+            prompt = tokenizer.apply_chat_template(
                 messages, tokenize=False, add_generation_prompt=True,
             )
 
-            # generate, then clean the response
-            # TODO: simplify this response cleaning
+            # generate the response
             with torch.inference_mode():
                 response = model.generate(prompt, sampling_params)[0]
-            response_text = response.outputs[0].text.strip().rstrip("</s>").strip()
+            response_text = response.outputs[0].text.strip()
 
             # append completion to sample
             sample.completions.append(Completion(

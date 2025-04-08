@@ -27,7 +27,7 @@ DATASET_POOL = list(DATASET_MAP.keys())
 # TODO: Complete model map
 MODEL_MAP = {
     # ! Small models unly used for debugging without cluster
-    # "gpt-2": "openai-community/gpt2",
+    "gpt-2": "openai-community/gpt2",
     # "opt-strict-125m": "babylm/opt-125m-strict-2023",
     # "babyllama-10m": "babylm/babyllama-10m-2024",    
     # "babyllama-100m": "babylm/babyllama-100m-2024",    
@@ -43,7 +43,7 @@ MODEL_MAP = {
     "vicuna-7b": "lmsys/vicuna-7b-v1.5",
     "vicuna-13b": "lmsys/vicuna-13b-v1.5",
 
-    # "alpaca-7b": "wxjiao/alpaca-7b", 
+    "alpaca-7b": "wxjiao/alpaca-7b", 
     
     "llama-2-7b-chat": "meta-llama/Llama-2-7b-chat-hf", 
     "llama-2-13b-chat": "meta-llama/Llama-2-13b-chat-hf", 
@@ -63,7 +63,7 @@ MODEL_MAP = {
 
     "starchat": "HuggingFaceH4/starchat2-15b-v0.1", 
 
-    # "mpt-30b-chat": "", 
+    "mpt-30b-chat": "mosaicml/mpt-30b-chat",
     
     "falcon-7b": "tiiuae/falcon-7b",
     # "falcon-40b-instruct": "",
@@ -79,7 +79,7 @@ LLAMA_CHAT_TEMPLATE = "A chat between a curious user and an artificial intellige
 # Define custom chat templates only for models that don't already have a default chat template
 MODEL2CHAT_TEMPLATE = {
     # ! Small models are only used for debugging, so they do not necessarily need a custom chat template
-    # "gpt-2": GPT2_CHAT_TEMPLATE,
+    "gpt-2": GPT2_CHAT_TEMPLATE,
     # "opt-strict-125m": GPT2_CHAT_TEMPLATE,
     # "babyllama-10m": GPT2_CHAT_TEMPLATE,
     # "babyllama-100m": GPT2_CHAT_TEMPLATE,
