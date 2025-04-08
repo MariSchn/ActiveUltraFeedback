@@ -52,19 +52,6 @@ def sample_principle_for_dataset(dataset_name: str) -> str:
             principle = "verbalized_calibration"
 
     return principle
-
-def get_stop_tokens(model_name: str, model: LLM = None) -> list[str]:
-    # TODO: make the templating nicer and check the stop tokens
-    if model_name.split("-")[0] in ["llama", "alpaca", "vicuna", "mpt", "falcon", "wizardlm"]:
-        conv = conv_template[model_name.split("-")[0]].copy()
-        if conv.stop_str is not None:
-            return [conv.stop_str]
-        elif conv.stop_token_ids is not None:
-            return [model.llm_engine.tokenizer.decode(stop_token_id) for stop_token_id in conv.stop_token_ids]
-        else:
-            return ["</s>"]
-    else:
-        return ["</s>"]
     
 def load_model(model_name: str, max_num_gpus: int = None) -> LLM:
     # get HF model path
