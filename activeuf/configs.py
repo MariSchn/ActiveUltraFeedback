@@ -152,6 +152,10 @@ ANNOTATE_PREFERENCE = True
 ANNOTATE_CRITIQUE = True
 NUM_SHUFFLES = 1
 
+ANNOTATION_MAX_TOKENS = 1024
+ANNOTATION_TEMPERATURE = 1.0
+ANNOTATION_TOP_P = 1.0
+
 # How often to retry calling the API for models that require API calls.
 MAX_API_RETRY = 10
 # How often to retry parsing the response from the annotating model. This might fail as the model is not always guaranteed to follow the expected format.

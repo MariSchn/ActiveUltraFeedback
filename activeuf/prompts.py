@@ -58,7 +58,7 @@ Understand and interpret instructions to evaluate effectively.
 Provide annotations for each text with a rating and rationale.
 The four texts given are independent, and should be evaluated separately."""
 
-CRITIQUE_SYSTEM_PROMPT = "A chat between a curious user and an artificial intelligence expert. The expert gives helpful, specific, and concise answers to the user's questions."
+CRITIQUE_ANNOTATION_SYSTEM_PROMPT = "A chat between a curious user and an artificial intelligence expert. The expert gives helpful, specific, and concise answers to the user's questions."
 
 INSTRUCTION_FOLLOWING_ANNOTATION_SYSTEM_PROMPT = """# Instruction Following Assessment
 
