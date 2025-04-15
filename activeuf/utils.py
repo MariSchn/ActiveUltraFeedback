@@ -2,7 +2,7 @@ from dotenv import load_dotenv
 import huggingface_hub
 import os
 import time
-from typing import Generator
+from typing import Generator, Union, List, Optional
 
 import numpy as np
 import random
@@ -81,15 +81,72 @@ def load_model(model_name: str, max_num_gpus: int = None) -> LLM:
 
     return model
 
-def get_response(system_prompt: str, user_prompt: str, model_name: str, sampling_params: SamplingParams, model: LLM = None, max_api_retry: int = MAX_API_RETRY) -> str:    
-    if model_name == "gpt-4":
+def get_completion(
+        prompt: Union[str, List[str]], 
+        model: Optional[LLM] = None, 
+        model_name: Optional[str] = None, 
+        sampling_params: Optional[SamplingParams] = None, 
+        system_prompt: Optional[Union[str, List[str]]] = None, 
+        max_api_retry: Optional[int] = MAX_API_RETRY
+    ) -> Union[str, List[str]]:   
+    """
+    This function generates completions for a given prompt using either a local model or API calls (e.g., OpenAI).
+    It returns the generated completion/response as a string.
+
+    Batched generation is supported, i.e. passing a list of prompts (and system prompts) instead of a single one and will return a list of completions.
+    In case of API calls, the function will retry the API call up to `max_api_retry` times in case of an error.
+
+    Args:
+        prompt (Union[str, List[str]]): The prompt(s) to generate completions for.
+        model (Optional[LLM]): The local model to use for generation. If this is not passed the `model_name` needs to be set to a valid model name for API calls.
+        model_name (Optional[str]): The name of the model to use for generation (e.g., "gpt-4"). Note that this has to match a model used for an API call or the `model` parameters needs to be set.
+        sampling_params (Optional[SamplingParams]): The sampling parameters for generation.
+        system_prompt (Optional[Union[str, List[str]]]): The system prompt(s) to use for generation.
+        max_api_retry (Optional[int]): The maximum number of retries for API calls.
+    Returns:
+        Union[str, List[str]]: The generated completion(s) for the prompt(s).
+    """
+    if model_name is None and model is None:
+        raise ValueError("Either model_name or model must be provided.")
+
+    if model is not None:
+        if system_prompt is not None:
+            # Make sure `prompt` is a list even in the case of a single prompt
+            if isinstance(prompt, str):
+                prompt = [prompt]
+
+            # Make sure `system_prompt` is a list of the same length as `prompt`
+            if isinstance(system_prompt, str):
+                system_prompt = [system_prompt] * len(prompt)
+            elif len(system_prompt) != len(prompt):
+                raise ValueError("Length of system_prompt and prompt must match.")
+            
+            # Generate completions using the `chat` method
+
+            messages = [
+                [
+                    {"role": "system", "content": system_prompt[i]},
+                    {"role": "user", "content": prompt[i]}
+                ]
+                for i in range(len(prompt))
+            ]
+            responses = model.chat(messages, sampling_params=sampling_params)
+            content = [response.outputs[0].text for response in responses]
+        else:
+            if isinstance(prompt, str):
+                prompt = [prompt]
+
+            # No `system_prompt` -> Generate completions using the `generate` method
+            responses = model.generate(prompt, sampling_params=sampling_params)
+            content = [response.outputs[0].text for response in responses]
+    elif model_name == "gpt-4":
         for _ in range(max_api_retry):
             try:
                 response = openai.ChatCompletion.create(
                     model="gpt-4",
                     messages=[
                             {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_prompt}
+                            {"role": "user", "content": prompt}
                         ],
                     temperature=sampling_params.temperature,
                     max_tokens=sampling_params.max_tokens,
@@ -103,14 +160,13 @@ def get_response(system_prompt: str, user_prompt: str, model_name: str, sampling
                 time.sleep(1)
             else:
                 break
-    elif model is not None:
-        content = model.chat(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            sampling_params=sampling_params,
-        )
+    else:
+        raise ValueError(f"Was not able to resolve model to be used for generation. model_name: {model_name}, model: {model}")
 
-    return content
+    if len(content) == 1:
+        content = content[0]
+    else: 
+        return content
 
 
 if __name__ == "__main__":

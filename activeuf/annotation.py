@@ -154,7 +154,7 @@ def annotate_preference(sample: Sample, model_name: str, sampling_params: Sampli
 
             # Get annotation for the sample, retrying if the API call fails
             # TODO: some samples in truthful_qa cannot get annotated when aspect == truthfulness/helpfulness, check if this is a bug
-            response = get_response(PREFERENCE_ANNOTATION_SYSTEM_PROMPT, ASPECT2ANNOTATION_PROMPT[aspect].format(**format_input), model_name, sampling_params, model, max_api_retry) 
+            response = get_completion(ASPECT2ANNOTATION_PROMPT[aspect].format(**format_input), model, model_name, sampling_params, PREFERENCE_ANNOTATION_SYSTEM_PROMPT, max_api_retry) 
             for i in range(max_parse_retry):
                 try:
                     annotations = parse_preference_annotation(response, aspect)
@@ -164,7 +164,7 @@ def annotate_preference(sample: Sample, model_name: str, sampling_params: Sampli
                     break
                 except Exception as e:
                     # The response most likely did not follow the expected format, get another response
-                    response = get_response(PREFERENCE_ANNOTATION_SYSTEM_PROMPT, ASPECT2ANNOTATION_PROMPT[aspect].format(**format_input), model_name, sampling_params, model, max_api_retry) 
+                    response = get_completion(PREFERENCE_ANNOTATION_SYSTEM_PROMPT, ASPECT2ANNOTATION_PROMPT[aspect].format(**format_input), model_name, sampling_params, model, max_api_retry) 
                     
 def annotate_critique(sample: Sample, model_name: str, sampling_params: SamplingParams, model: LLM, max_parse_retry=MAX_PARSE_RETRY, max_api_retry=MAX_API_RETRY) -> None:
     """
@@ -188,7 +188,7 @@ def annotate_critique(sample: Sample, model_name: str, sampling_params: Sampling
         # Prepare prompt
         custom_system_prompt = completion.principle_prompt if completion.principle != "verbalized_calibration" else completion.principle_prompt.split("For instance, ")[0].strip()
 
-        response = get_response(CRITIQUE_ANNOTATION_SYSTEM_PROMPT, ASPECT2ANNOTATION_PROMPT["feedback"].format(instruction="\n".join([sample.instruction, "Note: " + custom_system_prompt]), completion=completion.response_text), model_name, sampling_params, model, max_api_retry)
+        response = get_completion(ASPECT2ANNOTATION_PROMPT["feedback"].format(instruction="\n".join([sample.instruction, "Note: " + custom_system_prompt]), completion=completion.response_text), model, model_name, sampling_params, CRITIQUE_ANNOTATION_SYSTEM_PROMPT, max_api_retry)
         for i in range(max_parse_retry):
             try:
                 critique, score = parse_critique_annotation(response)
@@ -199,8 +199,7 @@ def annotate_critique(sample: Sample, model_name: str, sampling_params: Sampling
                 break
             except Exception as e:
                 # The response most likely did not follow the expected format, get another response
-                response = get_response(CRITIQUE_ANNOTATION_SYSTEM_PROMPT, ASPECT2ANNOTATION_PROMPT["feedback"].format(instruction="\n".join([sample.instruction, "Note: " + custom_system_prompt]), completion=completion.response_text), model_name, sampling_params, model, max_api_retry)
-        
+                response = get_completion(ASPECT2ANNOTATION_PROMPT["feedback"].format(instruction="\n".join([sample.instruction, "Note: " + custom_system_prompt]), completion=completion.response_text), model, model_name, sampling_params, CRITIQUE_ANNOTATION_SYSTEM_PROMPT, max_api_retry)
 
 if __name__ == "__main__":
     args = parse_args()
