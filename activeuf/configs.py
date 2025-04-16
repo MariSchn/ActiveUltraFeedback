@@ -1,5 +1,14 @@
+from activeuf.prompts import *
+
 PUBLIC_ENV_PATH = ".env"
 LOCAL_ENV_PATH = ".env.local"
+
+SEED = 123
+MAX_NUM_GPUS = 2
+
+# ====================================
+#               DATASETS              
+# ====================================
 
 DATASET_MAP = {
     "truthful_qa": "truthfulqa/truthful_qa", 
@@ -11,71 +20,18 @@ DATASET_MAP = {
 }
 DATASET_POOL = list(DATASET_MAP.keys())
 
-PRINCIPLES = [
-    "helpfulness",
-    "honesty",
-    "truthfulness",
-    "verbalized_calibration",
-]
-DEFAULT_PRINCIPLE = "helpfulness"
+# ====================================
+#               MODELS              
+# ====================================
 
-PRINCIPLE2PROMPTS = {
-    "helpfulness": [
-        "The assistant should provide users with accurate, relevant, and up-to-date information, ensuring that the content is positive, interesting, engaging, educational, and helpful.",
-        "As an AI assistant, it's your job to ensure that the information you provide to users is accurate, current, and relevant. Offer comprehensive details to educate and engage the user.",
-        "Your role as an AI assistant is to be a reliable and helpful source of information. Always verify the facts and make sure they're up-to-date before sharing them.",
-        'As an AI assistant, inspire users with your knowledgeable insights. Provide content that is positive, interesting, and engaging, ensuring users find your help valuable.',
-        'Make sure your responses are always educational yet engaging, allowing users to learn something new each time they interact with you. You are an AI assistant after all!',
-        'As a top-tier AI assistant, make sure that your responses are not only accurate and current but also engaging. Be the positive interaction users look forward to.',
-        "As an AI assistant, it's crucial that you motivate users by providing them with meaningful and exciting content that is also helpful and informative.",
-        'Cultivate a helpful AI persona by ensuring you offer users accurate, positive, and engaging content. Make every interaction informative and delightful.',
-        'As an AI assistant, ensure your response offers the perfect blend of accuracy, positivity, and intrigue. Strive to be educational while keeping the user engaged.',
-        "It's your duty as an AI assistant to always deliver accurate, positive, and engaging content that serves to educate the user. Make every interaction a learning opportunity.",
-        'As an AI assistant, provide not just answers but also spark curiosity. Offer insights that are accurate, engaging, and positive, making learning an exciting journey for the user.',  
-    ],
-    "honesty": [
-        "The assistant should be honest about whether it knows the answer and express its uncertainty explicitly. Be confident on questions it knows well and be modest on those it is unfamiliar with. Use weakeners such as 'I guess', 'I suppose', 'probably', and 'perhaps' to express uncertainty, and feel free to answer 'I don't know' if necessary.",
-        "As an AI, honesty is crucial to build trust with your user. If you're unsure about an answer, make sure to express your uncertainty, or consult additional resources (if available) before providing an answer.  ",
-        "As an AI, assertiveness and confidence should be balanced with honesty and humility. If the answer to a query is not within your knowledge base, it is entirely acceptable to express that you don't know the answer. ",
-        "You are an AI assistant that values honesty. If you don't know the answer to a question, admit it, but offer to find out more about the topic if needed.",
-        "You're not only an AI assistant, but also a reliable partner. Whenever you give an answer, make sure that the information is reliable and true, and if you're not certain about something, don't hesitate to express it.  ",
-        'You are an AI assistant. Your prime objective is to provide useful and accurate information. In case you aren\'t certain of an answer, use phrases such as "I\'m not sure", or "I think". Honesty always comes first.',
-        'As a digital assistant, your duty is to ensure that every piece of information that you give out is in line with the truth, even if the truth is that you do not know or are unsure about the answer to a query.',
-        "Remember, as an AI assistant, it's better to acknowledge uncertainty or simply say 'I don't know' than to give potentially incorrect information. Honesty leads to trust.",
-        "As an AI assistant, honesty is appreciated by your users. If you are uncertain of an answer, it's okay to express doubt or admit to not knowing. Offer to search for more information if needed. ",
-        'You are an AI helper that portrays honesty in every response. Never shy away from admitting if you do not have the needed information; instead offer to look up the information. ',
-        "Remember, your aim as an AI assistant is to deliver accurate information. If the answer is not within your database, it is okay to say you don't know rather than providing inaccurate information.",
-    ],
-    "truthfulness": [
-        "The assistant should answer truthfully and be faithful to factual knowledge as well as given contexts, never making up any new facts that aren't true or cannot be grounded in the instruction.",
-        "As an AI assistant, it is important that you answer truthfully. Adhere to factual information and context while making sure you don't invent any new, unverified facts.",
-        'As an AI assistant, conduct yourself with honesty. Always be diligent in giving accurate responses. Fictional facts or inaccuracies should be avoided in your responses.',
-        'As an AI assistant, stick to the truth. Your aim should always be to provide precise and factual information to avoid any misinformation. ',
-        'As an AI assistant, factual consistency is key. Make sure all your answers are grounded in truth and are not misleading in any way.',
-        "As an AI assistant, keep in mind that it's of utmost importance to stay true to the task and present only verified and accurate information.",
-        'As an AI assistant, find and uphold the truth in every answer. Ensure all responses are based on facts and try to avoid speculation or invention of new facts.',
-        'As an AI assistant, your job is to deliver answers that are truth-based and avoid introducing any untruthful or groundless information.',
-        'As an AI assistant, maintain objectivity while answering questions. Make sure the information given is truthful and never fabricated.',
-        'As an AI assistant, maintain the integrity of your responses. Always provide genuine and credible information, and ensure no incorrect data is delivered.',
-        'As an AI assistant, operate under the principle of truthfulness. Keep up-to-date with verified information and refrain from providing anything that might mislead. \n',
-    ],
-    "verbalized_calibration": [
-        "The assistant should express its confidence as a scalar at the end of the response. The confidence level indicates the degree of certainty it has about its answer and is represented as a percentage. For instance, if the confidence level is 80%, it means the assistant is 80% certain that its answer is correct whereas there is a 20% chance that the assistant may be incorrect.\nThe format is as follows:\n[Question]\n[Answer]\nConfidence: [The assistant's confidence level, numerical numbers only, e.g. 80%]\nHere, tags like [Question] and [Answer] are placeholders and should be omitted in the response.\n"
-    ],
-}
-
-DATASET2PRINCIPLE_POOL = {
-    "truthful_qa": ["honesty", "truthfulness"],
-    # "sharegpt": ["helpfulness", "honesty", "truthfulness"],
-    # "ultrachat": ["helpfulness", "honesty", "truthfulness"],
-    # "flan": ["helpfulness", "verbalized_calibration"],
-    # "false_qa": ["honesty", "truthfulness"],
-    # "evol_instruct": ["helpfulness"],
-}
-
-# TODO: complete model map
+# TODO: Complete model map
 MODEL_MAP = {
+    # ! Small models unly used for debugging without cluster
     "gpt-2": "openai-community/gpt2",
+    # "opt-strict-125m": "babylm/opt-125m-strict-2023",
+    # "babyllama-10m": "babylm/babyllama-10m-2024",    
+    # "babyllama-100m": "babylm/babyllama-100m-2024",    
+
     # "gpt-3.5-turbo": "", 
     # "gpt-4": "", 
     
@@ -87,7 +43,7 @@ MODEL_MAP = {
     "vicuna-7b": "lmsys/vicuna-7b-v1.5",
     "vicuna-13b": "lmsys/vicuna-13b-v1.5",
 
-    # "alpaca-7b": "wxjiao/alpaca-7b", 
+    "alpaca-7b": "wxjiao/alpaca-7b", 
     
     "llama-2-7b-chat": "meta-llama/Llama-2-7b-chat-hf", 
     "llama-2-13b-chat": "meta-llama/Llama-2-13b-chat-hf", 
@@ -107,24 +63,26 @@ MODEL_MAP = {
 
     "starchat": "HuggingFaceH4/starchat2-15b-v0.1", 
 
-    # "mpt-30b-chat": "", 
+    "mpt-30b-chat": "mosaicml/mpt-30b-chat",
     
     "falcon-7b": "tiiuae/falcon-7b",
     # "falcon-40b-instruct": "",
 }
 MODEL_POOL = list(MODEL_MAP.keys())
 
-# TODO: consolidate model map and chat template somehow, maybe in a new class
+# TODO: Consolidate model map and chat template somehow, maybe in a new class
+# NOTE: UltraLM series does not support the "system" role, see https://huggingface.co/openbmb/UltraLM-13b
 GPT2_CHAT_TEMPLATE = "{% for message in messages %}{{ message['content'] }} {% endfor %}"
-
-# NOTE: ultraLM series does not support the "system" role, see https://huggingface.co/openbmb/UltraLM-13b
 ULTRALM_CHAT_TEMPLATE = "{% for message in messages %}\n{% if message['role'] in ['user', 'system'] %}{{ 'User: ' + message['content'] + eos_token }}\n{% elif message['role'] == 'assistant' %}{{ 'Assistant: ' + message['content'] }}\n{% endif %}{% if loop.last and add_generation_prompt %}{{ 'Assistant: ' }}{% endif %}{% endfor %}"
-
 LLAMA_CHAT_TEMPLATE = "A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user's questions.\n" + "{% for message in messages %}{% if message['role'] == 'system' %}{{ message['content'] }}\n{% elif message['role'] == 'user' %}{{ 'USER: ' + message['content'] }}\n{% elif message['role'] == 'assistant' %}{{ 'ASSISTANT: ' + message['content'] + eos_token}}\n{% endif %}{% if loop.last and add_generation_prompt %}{{ 'ASSISTANT: ' }}{% endif %}{% endfor %}"
 
-# we define custom chat templates only for models that don't already have a default chat template
+# Define custom chat templates only for models that don't already have a default chat template
 MODEL2CHAT_TEMPLATE = {
+    # ! Small models are only used for debugging, so they do not necessarily need a custom chat template
     "gpt-2": GPT2_CHAT_TEMPLATE,
+    # "opt-strict-125m": GPT2_CHAT_TEMPLATE,
+    # "babyllama-10m": GPT2_CHAT_TEMPLATE,
+    # "babyllama-100m": GPT2_CHAT_TEMPLATE,
 
     "ultralm-13b": ULTRALM_CHAT_TEMPLATE,
     "ultralm-65b": ULTRALM_CHAT_TEMPLATE,
@@ -137,15 +95,101 @@ MODEL2CHAT_TEMPLATE = {
     "wizardlm-70b": LLAMA_CHAT_TEMPLATE,
 }
 
+# Define the data type with which each model should be loaded
 MODEL2DTYPE = {
     "starchat": "bfloat16",
     "mpt-30b-chat": "bfloat16",
     "falcon-40b-instruct": "bfloat16",
 }
 
-MAX_NUM_GPUS = 2
+# ====================================
+#         COMPLETION GENERATION       
+# ====================================
 
-# sanity checks
+# ! When changing this from 4, the prompt template needs to be changed as well
+NUM_MODELS = 4  
+
+# General parameters for the completions generation step
+COMPLETION_MAX_TOKENS = 1024
+COMPLETION_TEMPERATURE = 1.0
+COMPLETION_TOP_P = 1.0
+
+# Principles to be used in the system prompt when generating completions
+PRINCIPLES = [
+    "helpfulness",
+    "honesty",
+    "truthfulness",
+    "verbalized_calibration"
+]
+DEFAULT_PRINCIPLE = "helpfulness"
+
+# System prompts to be used when generating completions
+PRINCIPLE2PROMPTS = {
+    "helpfulness": HELPFULNESS_COMPLETION_SYSTEM_PROMPTS,
+    "honesty": HONESTY_COMPLETION_SYSTEM_PROMPTS,
+    "truthfulness": TRUTHFULNESS_COMPLETION_SYSTEM_PROMPTS,
+    "verbalized_calibration": VERBALIZED_CALIBRATION_COMPLETION_SYSTEM_PROMPTS,
+}
+
+# Define which principles are used for which datasets
+DATASET2PRINCIPLE_POOL = {
+    "truthful_qa": ["honesty", "truthfulness"],
+    # "sharegpt": ["helpfulness", "honesty", "truthfulness"],
+    # "ultrachat": ["helpfulness", "honesty", "truthfulness"],
+    # "flan": ["helpfulness", "verbalized_calibration"],
+    # "false_qa": ["honesty", "truthfulness"],
+    # "evol_instruct": ["helpfulness"],
+}
+
+# ====================================
+#             ANNOTATION
+# ====================================
+
+ANNOTATION_MODEL = "" 
+
+# General parameters for the annotation step
+ANNOTATE_PREFERENCE = True
+ANNOTATE_CRITIQUE = True
+NUM_SHUFFLES = 1
+
+ANNOTATION_MAX_TOKENS = 1024
+ANNOTATION_TEMPERATURE = 1.0
+ANNOTATION_TOP_P = 1.0
+
+# How often to retry calling the API for models that require API calls.
+MAX_API_RETRY = 10
+# How often to retry parsing the response from the annotating model. This might fail as the model is not always guaranteed to follow the expected format.
+# Keep in mind that trying to parse again requires to re-run the model again, which can be expensive (O(MAX_API_RETRY * MAX_PARSE_RETRY)).
+MAX_PARSE_RETRY = 10 
+
+# Aspects to be used to annotate the generated completions
+ASPECTS = [
+    "instruction_following",
+    "helpfulness",
+    "honesty",
+    "truthfulness"
+]
+
+# Map an aspect to the corresponding system prompt (template) that is used to annotate the generated completions
+ASPECT2ANNOTATION_PROMPT = {
+    "instruction_following": INSTRUCTION_FOLLOWING_ANNOTATION_SYSTEM_PROMPT,
+    "honesty": HONESTY_ANNOTATION_SYSTEM_PROMPT,
+    "truthfulness": TRUTHFULNESS_ANNOTATION_SYSTEM_PROMPT,
+    "truthfulness_without_answer": TRUTHFULNESS_WITHOUT_ANSWER_ANNOTATION_SYSTEM_PROMPT,
+    "helpfulness": HELPFULNESS_ANNOTATION_SYSTEM_PROMPT,
+    "helpfulness_without_answer": HELPFULNESS_WITHOUT_ANSWER_ANNOTATION_SYSTEM_PROMPT,
+    "feedback": FEEDBACK_ANNOTATION_SYSTEM_PROMPT
+}
+
+# Regex patterns used to extract the ratings and rationales from the annotation model's response
+ASPECT2ANNOTATION_PATTERN = {
+    "instruction_following": r"Rating: (.+?)\nRationale: (.+)",
+    "honesty": r"Rating: (.+?)\nRationale: (.+)",
+    "truthfulness": r"Type: (.+?)\nRationale: (.+?)\nRating: (.+?)\nRationale: (.+)",
+    "helpfulness": r"Type: (.+?)\nRationale: (.+?)\nRating: (.+?)\nRationale: (.+)"
+}
+
+# Sanity checks
 assert DEFAULT_PRINCIPLE in PRINCIPLES
 assert sorted(list(PRINCIPLE2PROMPTS.keys())) == sorted(PRINCIPLES)
 assert sorted(list(DATASET2PRINCIPLE_POOL.keys())) == sorted(DATASET_POOL)

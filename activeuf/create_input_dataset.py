@@ -7,7 +7,7 @@ from typing import Generator
 from datasets import load_dataset
 
 from activeuf.schemas import Sample
-from activeuf.configs import DATASET_MAP, MODEL_POOL
+from activeuf.configs import DATASET_MAP, MODEL_POOL, NUM_MODELS, SEED
 from activeuf.utils import set_seed
 
 # TODO: update this docstring
@@ -24,8 +24,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset_name", type=str, required=True, help="The name of the dataset to download and process (e.g. truthful_qa)")
     
-    parser.add_argument("--num_models", type=int, default=4, help="The number of models to use for completions for each sample")
-    parser.add_argument("--seed", type=int, default=123, help="Seed for random sampling")
+    parser.add_argument("--num_models", type=int, default=NUM_MODELS, help="The number of models to use for completions for each sample")
+    parser.add_argument("--seed", type=int, default=SEED, help="Seed for random sampling")
 
     parser.add_argument("--output_dir", type=str, default="datasets/input_datasets/", help="The directory for exporting the input dataset")
     return parser.parse_args()

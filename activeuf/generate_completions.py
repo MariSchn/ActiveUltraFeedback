@@ -27,11 +27,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model_name", type=str, required=True, help="The name of the model to use for completions (e.g. llama-2-13b-chat)")
 
     parser.add_argument("--max_num_gpus", type=int, default=MAX_NUM_GPUS, help="The maximum number of GPUs to use")
-    parser.add_argument("--max_tokens", type=int, default=1024, help="The maximum number of tokens to generate for each completion")
-    parser.add_argument("--seed", type=int, default=123, help="Seed for random sampling")
+    parser.add_argument("--max_tokens", type=int, default=COMPLETION_MAX_TOKENS, help="The maximum number of tokens to generate for each completion")
+    parser.add_argument("--seed", type=int, default=SEED, help="Seed for random sampling")
 
-    parser.add_argument("--temperature", type=int, default=1, help="Temperature for generation")
-    parser.add_argument("--top_p", type=int, default=1, help="top_p value for generation")
+    parser.add_argument("--temperature", type=int, default=COMPLETION_TEMPERATURE, help="Temperature for generation")
+    parser.add_argument("--top_p", type=int, default=COMPLETION_TOP_P, help="top_p value for generation")
 
     parser.add_argument("--output_dir", type=str, default="datasets/datasets_with_completions/", help="The directory for exporting the generated completions")
     return parser.parse_args()
@@ -49,53 +49,56 @@ if __name__ == "__main__":
         set_seed(args.seed)
 
     # Load generation model
-    model = load_model(args.model_name, max_num_gpus=args.max_num_gpus)
+    if 'gpt-4' not in args.model_name and 'gpt-3' not in args.model_name: 
+        model = load_model(args.model_name, max_num_gpus=args.max_num_gpus)
+        tokenizer = model.get_tokenizer()
+        stop = tokenizer.eos_token if tokenizer and tokenizer.eos_token else None
+    else:
+        model = None  # Can not load the model if it is only called through an API
+        stop = None
     sampling_params = SamplingParams(
         max_tokens = args.max_tokens,
         temperature = args.temperature,
         top_p = args.top_p,
-        stop = get_stop_tokens(args.model_name, model),        
+        stop = stop,        
     )
 
-    # prepare output file
+    # Load and filter samples
+    samples = load_samples(args.input_dataset_path)
+    to_complete = [sample for sample in samples if 
+                   args.model_name in sample.model_names and                           # model is specified for this sample
+                   args.model_name not in [_.model_name for _ in sample.completions]]  # completion is not already present
+    prompts = [sample.instruction for sample in to_complete]
+    completion_objects = []
+
+    # Sample principles (and subsequently system prompts) for generation
+    system_prompts = []
+    for sample in to_complete:
+        # sample guiding principle for generation
+        principle = sample_principle_for_dataset(dataset_name)
+        principle_prompt = random.choice(PRINCIPLE2PROMPTS[principle])
+
+        system_prompts.append(principle_prompt)
+
+        completion_objects.append(Completion(
+            model_name = args.model_name,
+            principle = principle, 
+            principle_prompt = principle_prompt,
+            response_text = "",
+        ))
+
+    # Generate completions
+    completion_texts = get_completion(prompts, model, args.model_name, sampling_params, system_prompts)
+
+    # Add completions to samples
+    for sample, completion_object, completion_text in zip(to_complete, completion_objects, completion_texts):
+        completion_object.response_text = completion_text
+        sample.completions.append(completion_object)
+
+    # Export samples
     os.makedirs(args.output_dir, exist_ok=True)
-    output_path = path.join(args.output_dir, f"{dataset_name}.jsonl")
-    f_out = open(output_path, "w")
-
-    # For each sample
-    for sample in tqdm(load_samples(args.input_dataset_path)):
-        # perform generation only if model is specified for this sample and completion is not already present
-        if args.model_name in sample.model_names and \
-            args.model_name not in [_.model_name for _ in sample.completions]:
-
-            # sample guiding principle for generation
-            principle = sample_principle_for_dataset(dataset_name)
-            principle_prompt = random.choice(PRINCIPLE2PROMPTS[principle])
-
-            # construct prompt for generation
-            messages = [
-                {"role": "system", "content": principle_prompt},
-                {"role": "user", "content": sample.instruction},
-            ]
-            prompt = model.get_tokenizer().apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True,
-            )
-
-            # generate, then clean the response
-            # TODO: simplify this response cleaning
-            with torch.inference_mode():
-                response = model.generate(prompt, sampling_params)[0]
-            response_text = response.outputs[0].text.strip().rstrip("</s>").strip()
-
-            # append completion to sample
-            sample.completions.append(Completion(
-                model_name = args.model_name,
-                principle = principle, 
-                principle_prompt = principle_prompt,
-                response_text = response_text,
-            ))
-        
-        # export sample
+    out_path = os.path.join(args.output_dir, f"{dataset_name}.jsonl")
+    f_out = open(out_path, "w")
+    for sample in samples:
         print(sample.model_dump_json(), file=f_out, flush=True)
-
     f_out.close()

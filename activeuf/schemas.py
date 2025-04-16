@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 class Annotation(BaseModel):
-    principle: str
+    aspect: str
 
     rating: str
     rating_rationale: str
@@ -18,6 +18,9 @@ class Completion(BaseModel):
     response_text: str
 
     annotations: Optional[list[Annotation]] = []
+
+    critique: Optional[str] = None
+    overall_score: Optional[str] = None
 
 class Sample(BaseModel):
     instruction: str

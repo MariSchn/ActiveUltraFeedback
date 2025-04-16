@@ -161,6 +161,5 @@ cython_debug/
 
 # Custom
 datasets/
-
 .vscode
-activeuf/playground.py
+playground.ipynb
