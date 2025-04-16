@@ -12,6 +12,8 @@ class RewardModelInference:
         try:
             self.tokenizer = AutoTokenizer.from_pretrained(model_filename)
             self.model = AutoModelForSequenceClassification.from_pretrained(model_filename)
+            print(self.model.config)
+            #print(self.tokenizer.config)
         except:
             raise RuntimeError(f"model or tokenizer on path {model_filename} was not found...")
 
@@ -36,12 +38,11 @@ class RewardModelInference:
         reward_score = outputs.logits.item()
         return reward_score
     
-    
+
 """
 example:
-
-model = RewardModelInference("NewModelFresh")
+"""
+model = RewardModelInference("reward8")
 message = "user: What is the capital of France?\nassistant: The capital of France is Paris.\n"
 print(model.reward(message))
 
-"""
