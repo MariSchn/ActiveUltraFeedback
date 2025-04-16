@@ -67,6 +67,8 @@ MODEL_MAP = {
     
     "falcon-7b": "tiiuae/falcon-7b",
     # "falcon-40b-instruct": "",
+    
+    "deberta-v3-base": "microsoft/deberta-v3-base",
 }
 MODEL_POOL = list(MODEL_MAP.keys())
 
@@ -75,6 +77,7 @@ MODEL_POOL = list(MODEL_MAP.keys())
 GPT2_CHAT_TEMPLATE = "{% for message in messages %}{{ message['content'] }} {% endfor %}"
 ULTRALM_CHAT_TEMPLATE = "{% for message in messages %}\n{% if message['role'] in ['user', 'system'] %}{{ 'User: ' + message['content'] + eos_token }}\n{% elif message['role'] == 'assistant' %}{{ 'Assistant: ' + message['content'] }}\n{% endif %}{% if loop.last and add_generation_prompt %}{{ 'Assistant: ' }}{% endif %}{% endfor %}"
 LLAMA_CHAT_TEMPLATE = "A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user's questions.\n" + "{% for message in messages %}{% if message['role'] == 'system' %}{{ message['content'] }}\n{% elif message['role'] == 'user' %}{{ 'USER: ' + message['content'] }}\n{% elif message['role'] == 'assistant' %}{{ 'ASSISTANT: ' + message['content'] + eos_token}}\n{% endif %}{% if loop.last and add_generation_prompt %}{{ 'ASSISTANT: ' }}{% endif %}{% endfor %}"
+DEBERTA_CHAT_TEMPLATE = "{% for message in messages %}\n{{ message['role'] }}: {{ message['content'] }}\n{% endfor %}\n"
 
 # Define custom chat templates only for models that don't already have a default chat template
 MODEL2CHAT_TEMPLATE = {
@@ -93,6 +96,8 @@ MODEL2CHAT_TEMPLATE = {
     "wizardlm-7b": LLAMA_CHAT_TEMPLATE,
     "wizardlm-13b": LLAMA_CHAT_TEMPLATE,
     "wizardlm-70b": LLAMA_CHAT_TEMPLATE,
+    
+    "deberta-v3-base": DEBERTA_CHAT_TEMPLATE,
 }
 
 # Define the data type with which each model should be loaded
