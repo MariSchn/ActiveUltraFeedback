@@ -85,4 +85,6 @@ def train_and_save_model(output_dir="TrainedRewardModel", base_model="deberta-v3
     
     print(f"Model and tokenizer saved to {output_dir}")
 
-train_and_save_model(output_dir="reward_model", base_model="deberta-v3-base")
+
+if __name__ == "__main__":
+    train_and_save_model(output_dir="reward_model", base_model="deberta-v3-base")

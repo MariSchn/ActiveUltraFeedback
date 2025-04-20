@@ -39,10 +39,11 @@ class RewardModelInference:
         return reward_score
     
 
-"""
-example:
-"""
-model = RewardModelInference("reward8")
-message = "user: What is the capital of France?\nassistant: The capital of France is Paris.\n"
-print(model.reward(message))
+if __name__ == "__main__":
+    """
+    example:
+    """
+    model = RewardModelInference("reward8")
+    message = "user: What is the capital of France?\nassistant: The capital of France is Paris.\n"
+    print(model.reward(message))
 
