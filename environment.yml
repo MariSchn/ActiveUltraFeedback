@@ -1,5 +1,6 @@
 name: activeuf
 channels:
+  - pytorch
   - nvidia
   - conda-forge
   - defaults
@@ -18,4 +19,4 @@ dependencies:
       - deepspeed
       - accelerate
       - vllm
-      - rewardbench
+      - trl
