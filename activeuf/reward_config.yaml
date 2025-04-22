@@ -1,0 +1,23 @@
+output_dir: rewarded4
+base_model: deberta-v3-base
+dataset_name: trl-lib/ultrafeedback_binarized
+
+lora:
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  bias: none
+  task_type: SEQ_CLS
+
+training:
+  batch_size: 1
+  epochs: 2
+  grad_acc_steps: 2
+  learning_rate: 2e-5
+  logging_steps: 10
+  save_steps: 500
+  remove_unused_columns: false
+  optimizer: adamw_torch
+  max_length: 1024
+  report_to: none
+  max_steps: 3
