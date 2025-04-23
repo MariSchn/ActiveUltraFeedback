@@ -49,7 +49,9 @@ RUN pip install  \
     uvicorn \
     wandb \
     dotenv \
-    trl
+    trl \
+    nvitop \
+    git+https://github.com/allenai/reward-bench.git
 
 # Install binary wheels built for Jetson
 RUN pip install https://pypi.jetson-ai-lab.dev/sbsa/cu128/+f/f8d/08016585ac070/flash_attn-2.7.4.post1-cp312-cp312-linux_aarch64.whl#sha256=f8d08016585ac070056fcb3839b0b5f61a35b46d1f7d4132b9cef483d1c1d0aa
