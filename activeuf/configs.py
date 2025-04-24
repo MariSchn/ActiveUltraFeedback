@@ -4,7 +4,8 @@ PUBLIC_ENV_PATH = ".env"
 LOCAL_ENV_PATH = ".env.local"
 
 SEED = 123
-MAX_NUM_GPUS = 2
+MAX_NUM_GPUS = 4
+MODEL_CLASS = "transformers"  # Which package to use for the model. ["transformers", "pipeline" "vllm"]
 
 # ====================================
 #               DATASETS              
@@ -26,49 +27,26 @@ DATASET_POOL = list(DATASET_MAP.keys())
 
 # TODO: Complete model map
 MODEL_MAP = {
-    # ! Small models unly used for debugging without cluster
-    "gpt-2": "openai-community/gpt2",
-    # "opt-strict-125m": "babylm/opt-125m-strict-2023",
-    # "babyllama-10m": "babylm/babyllama-10m-2024",    
-    # "babyllama-100m": "babylm/babyllama-100m-2024",    
+    "gemma-3-1b": "google/gemma-3-1b-it",
 
-    # "gpt-3.5-turbo": "", 
-    # "gpt-4": "", 
-    
-    # "bard": "", 
+    "smollm-2-135m": "HuggingFaceTB/SmolLM2-135M-Instruct",
+    "smollm-2-360m": "HuggingFaceTB/SmolLM2-360M-Instruct",
+    "smollm-2-1.7b": "HuggingFaceTB/SmolLM2-1.7B-Instruct",
 
-    "ultralm-13b": "openbmb/UltraLM-13b-v2.0", 
-    "ultralm-65b": "openbmb/UltraLM-65b", 
-    
-    "vicuna-7b": "lmsys/vicuna-7b-v1.5",
-    "vicuna-13b": "lmsys/vicuna-13b-v1.5",
+    "qwen-2.5-0.5b": "Qwen/Qwen2.5-0.5B-Instruct",
+    "qwen-2.5-1.5b": "Qwen/Qwen2.5-1.5B-Instruct",
+    "qwen-2.5-3b": "Qwen/Qwen2.5-3B-Instruct",
+    "qwen-2.5-7b": "Qwen/Qwen2.5-7B-Instruct",
+    "qwen-2.5-14b": "Qwen/Qwen2.5-14B-Instruct",
+    "qwen-2.5-32b": "Qwen/Qwen2.5-32B-Instruct",
+    "qwen-2.5-72b": "Qwen/Qwen2.5-72B-Instruct",
 
-    "alpaca-7b": "wxjiao/alpaca-7b", 
-    
-    "llama-2-7b-chat": "meta-llama/Llama-2-7b-chat-hf", 
-    "llama-2-13b-chat": "meta-llama/Llama-2-13b-chat-hf", 
-    "llama-2-70b-chat": "meta-llama/Llama-2-70b-chat-hf", 
-    
-    # "llama-3.2-1b": "meta-llama/Llama-3.2-1B", 
-    # "llama-3.2-3b": "meta-llama/Llama-3.2-3B", 
+    "llama-3.2-1b": "meta-llama/Llama-3.2-1B-Instruct",
+    "llama-3.2-3b": "meta-llama/Llama-3.2-3B-Instruct",
+    "llama-3.3-70b-instruct": "meta-llama/Llama-3.3-70B-Instruct",
 
-    # "llama-3.3-70b-instruct": "meta-llama/Llama-3.3-70B-Instruct", 
-    
-    # NOTE: 7b model is from a different source than the 13b and 70b models 
-    "wizardlm-7b": "cognitivecomputations/WizardLM-7B-Uncensored", 
-    "wizardlm-13b": "WizardLMTeam/WizardLM-13B-V1.2", 
-    "wizardlm-70b": "WizardLMTeam/WizardLM-70B-V1.0", 
-
-    # "pythia-12b": "", 
-
-    "starchat": "HuggingFaceH4/starchat2-15b-v0.1", 
-
-    "mpt-30b-chat": "mosaicml/mpt-30b-chat",
-    
-    "falcon-7b": "tiiuae/falcon-7b",
-    # "falcon-40b-instruct": "",
-    
-    "deberta-v3-base": "microsoft/deberta-v3-base",
+    "phi-4": "microsoft/phi-4",
+    "phi-4-mini": "microsoft/Phi-4-mini-instruct",
 }
 MODEL_POOL = list(MODEL_MAP.keys())
 
@@ -113,7 +91,7 @@ MODEL2DTYPE = {
 # ====================================
 
 # ! When changing this from 4, the prompt template needs to be changed as well
-NUM_MODELS = 4  
+NUM_MODELS = len(MODEL_POOL)  
 
 # General parameters for the completions generation step
 COMPLETION_MAX_TOKENS = 1024
