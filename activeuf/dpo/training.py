@@ -14,7 +14,7 @@ To train the DPO model a (previously SFT trained) model is required and a binari
 The binarized dataset is a dataset that has been preprocessed to contain pairs of examples, where one example is preferred over the other.
 
 Example run command:
-    `python -m activeuf.training --model_path Qwen/Qwen2-0.5B-Instruct --dataset_path trl-lib/ultrafeedback_binarized --debug`
+    `python -m activeuf.dpo.training --model_path Qwen/Qwen2-0.5B-Instruct --dataset_path trl-lib/ultrafeedback_binarized --debug`
 
 TODO: Add (WandB) logging
 TODO: Add config file to avoid too many command line arguments
