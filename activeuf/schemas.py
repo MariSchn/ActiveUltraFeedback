@@ -1,4 +1,3 @@
-import json
 from pydantic import BaseModel
 from typing import Optional
 
@@ -30,6 +29,15 @@ class Sample(BaseModel):
     model_names: Optional[list[str]] = []
     completions: Optional[list[Completion]] = []
 
+class Message(BaseModel):
+    content: str
+    role: str
+
+class BinaryPreferenceConversation(BaseModel):
+    chosen: list[Message]
+    rejected: list[Message]
+    score_chosen: float
+    score_rejected: float
 
 if __name__ == "__main__":
     annotation = Annotation(
