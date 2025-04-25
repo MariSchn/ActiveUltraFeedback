@@ -1,4 +1,5 @@
 import argparse
+import os
 
 from datasets import load_dataset
 
@@ -11,16 +12,18 @@ This script downloads a dataset from HuggingFace and processes it into a dataset
 Example run command from project root:
     python -m activeuf.create_prompts_dataset \
         --dataset_path allenai/ultrafeedback_binarized_cleaned \
-        --dataset_split train_prefs \
-        --output_path datasets/allenai/ultrafeedback_binarized_cleaned/train.jsonl
+        --dataset_split train_prefs
 """
 
 def parse_args() -> argparse.Namespace:
     # Parse arguments
     parser = argparse.ArgumentParser()
+
     parser.add_argument("--dataset_path", type=str, help="The HuggingFace path of the dataset to extract prompts from (e.g. allenai/ultrafeedback_binarized_cleaned)")
     parser.add_argument("--dataset_split", type=str, help="The split of the dataset to use (e.g. train_prefs, test_prefs)")
-    parser.add_argument("--output_path", type=str, help="The path for saving the extracted prompts")
+
+    parser.add_argument("--datasets_dir", type=str, default="datasets/", help="The parent directory for datasets")
+
     return parser.parse_args()
 
 def construct_prompt_from_sample(sample: dict) -> dict:
@@ -33,6 +36,12 @@ def construct_prompt_from_sample(sample: dict) -> dict:
 logger = get_logger(__name__)
 if __name__ == "__main__":
     args = parse_args()
+    
+    # Prepare output path
+    output_path = os.path.join(
+        args.datasets_dir, args.dataset_path, args.dataset_split
+    )
+    assert not os.path.exists(output_path)
 
     # Load HF data
     logger.info(f"Loading dataset from {args.dataset_path} (split={args.dataset_split})")
@@ -43,5 +52,5 @@ if __name__ == "__main__":
     prompts = dataset.map(construct_prompt_from_sample, remove_columns=dataset.column_names)
 
     # Export prompts dataset
-    logger.info(f"Saving prompts to {args.output_path}")
-    prompts.to_json(args.output_path, orient="records", lines=True)
+    logger.info(f"Saving prompts to {output_path}")
+    prompts.save_to_disk(output_path)
