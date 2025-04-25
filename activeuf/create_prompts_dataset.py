@@ -6,13 +6,13 @@ from activeuf.schemas import Prompt
 from activeuf.utils import get_logger
 
 """
-This script downlaods a dataset from HuggingFace and processes it into a dataset of prompts (that follows the Prompt schema in `schemas.py`).
+This script downloads a dataset from HuggingFace and processes it into a dataset of prompts (that follows the Prompt schema in `schemas.py`).
 
 Example run command from project root:
     python -m activeuf.create_prompts_dataset \
         --dataset_path allenai/ultrafeedback_binarized_cleaned \
         --dataset_split train_prefs \
-        --output_path datasets/input_datasets/ultrafeedback_binarized_cleaned/train.jsonl
+        --output_path datasets/allenai/ultrafeedback_binarized_cleaned/train.jsonl
 """
 
 def parse_args() -> argparse.Namespace:
