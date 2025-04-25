@@ -1,0 +1,66 @@
+from pydantic import BaseModel
+from typing import Optional
+
+class Annotation(BaseModel):
+    aspect: str
+
+    rating: str
+    rating_rationale: str
+    
+    type_rating: Optional[str] = None
+    type_rationale: Optional[str] = None
+
+class Completion(BaseModel):
+    model_name: str
+    principle: str
+    principle_prompt: str
+    response_text: str
+
+    annotations: Optional[list[Annotation]] = []
+
+    critique: Optional[str] = None
+    overall_score: Optional[str] = None
+
+class Sample(BaseModel):
+    instruction: str
+    correct_answers: list[str]
+    incorrect_answers: list[str]
+
+    model_names: Optional[list[str]] = []
+    completions: Optional[list[Completion]] = []
+
+class Message(BaseModel):
+    content: str
+    role: str
+
+class BinaryPreferenceConversation(BaseModel):
+    chosen: list[Message]
+    rejected: list[Message]
+    score_chosen: float
+    score_rejected: float
+
+if __name__ == "__main__":
+    annotation = Annotation(
+        principle="helpfulness", 
+        rating="2", 
+        rating_rationale="I liked it"
+    )
+    print(annotation)
+
+    completion = Completion(
+        model_name="gpt-2",
+        principle="honesty",
+        principle_prompt="How can I help you?",
+        response_text="I can help you with that.",
+        annotations=[annotation],
+    )
+    print(completion)
+
+    sample = Sample(
+        instruction="How can I help you?",
+        correct_answers=["I can help you with that."],
+        incorrect_answers=["I can't help you with that."],
+        model_names=["gpt-2"],
+        completions=[completion],
+    )
+    print(sample)

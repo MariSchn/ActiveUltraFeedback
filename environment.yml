@@ -1,0 +1,22 @@
+name: activeuf
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - transformers
+  - tokenizers
+  - tiktoken
+  - datasets
+  - openai
+  - numpy
+  - pandas
+  - tqdm
+  - pip
+  - pip:
+      - deepspeed
+      - accelerate
+      - vllm
+      - trl
