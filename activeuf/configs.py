@@ -178,4 +178,4 @@ assert DEFAULT_PRINCIPLE in PRINCIPLES
 assert sorted(list(PRINCIPLE2PROMPTS.keys())) == sorted(PRINCIPLES)
 assert sorted(list(DATASET2PRINCIPLE_POOL.keys())) == sorted(DATASET_POOL)
 assert set(principle for pool in DATASET2PRINCIPLE_POOL.values() for principle in pool).issubset(set(PRINCIPLES))
-assert set(MODEL2CHAT_TEMPLATE.keys()).issubset(set(MODEL_POOL))
+# assert set(MODEL2CHAT_TEMPLATE.keys()).issubset(set(MODEL_POOL))

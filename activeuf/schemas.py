@@ -1,5 +1,9 @@
 from pydantic import BaseModel
-from typing import Optional
+
+class Prompt(BaseModel):
+    source: str | None
+    prompt: str
+    prompt_id: str
 
 class Annotation(BaseModel):
     aspect: str
@@ -7,48 +11,50 @@ class Annotation(BaseModel):
     rating: str
     rating_rationale: str
     
-    type_rating: Optional[str] = None
-    type_rationale: Optional[str] = None
+    type_rating: str | None
+    type_rationale: str | None
 
 class Completion(BaseModel):
-    model_name: str
+    prompt: Prompt
+
+    model_path: str
     principle: str
     principle_prompt: str
     response_text: str
 
-    annotations: Optional[list[Annotation]] = []
-
-    critique: Optional[str] = None
-    overall_score: Optional[str] = None
-
-class Sample(BaseModel):
-    instruction: str
-    correct_answers: list[str]
-    incorrect_answers: list[str]
-
-    model_names: Optional[list[str]] = []
-    completions: Optional[list[Completion]] = []
+    annotations: list[Annotation] = []
+    overall_score: str | None
+    critique: str | None
 
 class Message(BaseModel):
     content: str
     role: str
 
 class BinaryPreferenceConversation(BaseModel):
+    source: str | None
+    prompt: str
+    prompt_id: str
+
     chosen: list[Message]
     rejected: list[Message]
+    messages: list[Message]
+
     score_chosen: float
     score_rejected: float
 
+    completion_chosen: Completion | None
+    completion_rejected: Completion | None
+
 if __name__ == "__main__":
     annotation = Annotation(
-        principle="helpfulness", 
+        aspect="helpfulness", 
         rating="2", 
         rating_rationale="I liked it"
     )
     print(annotation)
 
     completion = Completion(
-        model_name="gpt-2",
+        model_path="gemma-3-1b",
         principle="honesty",
         principle_prompt="How can I help you?",
         response_text="I can help you with that.",

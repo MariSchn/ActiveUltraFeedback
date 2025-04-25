@@ -1,6 +1,7 @@
 from dotenv import load_dotenv
 import huggingface_hub
 import json
+import logging
 import os
 import time
 from typing import Generator, Union, List, Optional
@@ -14,6 +15,18 @@ from vllm import LLM, SamplingParams
 
 from activeuf.configs import *
 from activeuf.schemas import *
+
+def get_logger(name: str) -> logging.Logger:
+    logger = logging.getLogger(name)
+    if not logger.handlers:
+        logger.setLevel(logging.INFO)
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter(
+            "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
+        )
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+    return logger
 
 def setup(login_to_hf: bool = False) -> None:
     # load env variables
@@ -31,18 +44,6 @@ def set_seed(seed: int) -> None:
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     os.environ["PYTHONHASHSEED"] = str(seed)
-
-def yield_samples(filepath: str) -> Generator[Sample, None, None]:
-    with open(filepath, "r") as f_in:
-        for line in f_in:
-            yield Sample(**json.loads(line))
-
-def load_samples(filepath: str) -> list[Sample]:
-    samples = []
-    with open(filepath, "r") as f_in:
-        for line in f_in:
-            samples.append(Sample(**json.loads(line)))
-    return samples
 
 def sample_principle_for_dataset(dataset_name: str) -> str:
     principle_pool = DATASET2PRINCIPLE_POOL.get(dataset_name, [DEFAULT_PRINCIPLE])
