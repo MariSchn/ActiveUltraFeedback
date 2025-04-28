@@ -11,87 +11,46 @@ MODEL_CLASS = "transformers"  # Which package to use for the model. ["transforme
 #               DATASETS              
 # ====================================
 
-DATASET_MAP = {
-    "truthful_qa": "truthfulqa/truthful_qa", 
-    # "false_qa": "",
-    # "sharegpt": "",
-    # "ultrachat": "",
-    # "flan": "",
-    # "evol_instruct": "",
-}
-DATASET_POOL = list(DATASET_MAP.keys())
-
-# ====================================
-#               MODELS              
-# ====================================
-
-# TODO: Complete model map
-MODEL_MAP = {
-    "gemma-3-1b": "google/gemma-3-1b-it",
-
-    "smollm-2-135m": "HuggingFaceTB/SmolLM2-135M-Instruct",
-    "smollm-2-360m": "HuggingFaceTB/SmolLM2-360M-Instruct",
-    "smollm-2-1.7b": "HuggingFaceTB/SmolLM2-1.7B-Instruct",
-
-    "qwen-2.5-0.5b": "Qwen/Qwen2.5-0.5B-Instruct",
-    "qwen-2.5-1.5b": "Qwen/Qwen2.5-1.5B-Instruct",
-    "qwen-2.5-3b": "Qwen/Qwen2.5-3B-Instruct",
-    "qwen-2.5-7b": "Qwen/Qwen2.5-7B-Instruct",
-    "qwen-2.5-14b": "Qwen/Qwen2.5-14B-Instruct",
-    "qwen-2.5-32b": "Qwen/Qwen2.5-32B-Instruct",
-    "qwen-2.5-72b": "Qwen/Qwen2.5-72B-Instruct",
-
-    "llama-3.2-1b": "meta-llama/Llama-3.2-1B-Instruct",
-    "llama-3.2-3b": "meta-llama/Llama-3.2-3B-Instruct",
-    "llama-3.3-70b-instruct": "meta-llama/Llama-3.3-70B-Instruct",
-
-    "phi-4": "microsoft/phi-4",
-    "phi-4-mini": "microsoft/Phi-4-mini-instruct",
-}
-MODEL_POOL = list(MODEL_MAP.keys())
-
-# TODO: Consolidate model map and chat template somehow, maybe in a new class
-# NOTE: UltraLM series does not support the "system" role, see https://huggingface.co/openbmb/UltraLM-13b
-GPT2_CHAT_TEMPLATE = "{% for message in messages %}{{ message['content'] }} {% endfor %}"
-ULTRALM_CHAT_TEMPLATE = "{% for message in messages %}\n{% if message['role'] in ['user', 'system'] %}{{ 'User: ' + message['content'] + eos_token }}\n{% elif message['role'] == 'assistant' %}{{ 'Assistant: ' + message['content'] }}\n{% endif %}{% if loop.last and add_generation_prompt %}{{ 'Assistant: ' }}{% endif %}{% endfor %}"
-LLAMA_CHAT_TEMPLATE = "A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user's questions.\n" + "{% for message in messages %}{% if message['role'] == 'system' %}{{ message['content'] }}\n{% elif message['role'] == 'user' %}{{ 'USER: ' + message['content'] }}\n{% elif message['role'] == 'assistant' %}{{ 'ASSISTANT: ' + message['content'] + eos_token}}\n{% endif %}{% if loop.last and add_generation_prompt %}{{ 'ASSISTANT: ' }}{% endif %}{% endfor %}"
-DEBERTA_CHAT_TEMPLATE = "{% for message in messages %}\n{{ message['role'] }}: {{ message['content'] }}\n{% endfor %}\n"
-DEFAULT_CHAT_TEMPLATE = "{% for message in messages %}\n{% if message['role'] == 'user' %}\nUser: {{ message['content'] }}\n{% elif message['role'] == 'assistant' %}\nAssistant: {{ message['content'] }}\n{% elif message['role'] == 'system' %}\nSystem: {{ message['content'] }}\n{% endif %}\n{% endfor %}"
-
-# Define custom chat templates only for models that don't already have a default chat template
-MODEL2CHAT_TEMPLATE = {
-    # ! Small models are only used for debugging, so they do not necessarily need a custom chat template
-    "gpt-2": GPT2_CHAT_TEMPLATE,
-    # "opt-strict-125m": GPT2_CHAT_TEMPLATE,
-    # "babyllama-10m": GPT2_CHAT_TEMPLATE,
-    # "babyllama-100m": GPT2_CHAT_TEMPLATE,
-
-    "ultralm-13b": ULTRALM_CHAT_TEMPLATE,
-    "ultralm-65b": ULTRALM_CHAT_TEMPLATE,
-
-    "vicuna-7b": LLAMA_CHAT_TEMPLATE,
-    "vicuna-13b": LLAMA_CHAT_TEMPLATE,
-
-    "wizardlm-7b": LLAMA_CHAT_TEMPLATE,
-    "wizardlm-13b": LLAMA_CHAT_TEMPLATE,
-    "wizardlm-70b": LLAMA_CHAT_TEMPLATE,
-    
-    "deberta-v3-base": DEBERTA_CHAT_TEMPLATE,
-}
-
-# Define the data type with which each model should be loaded
-MODEL2DTYPE = {
-    "starchat": "bfloat16",
-    "mpt-30b-chat": "bfloat16",
-    "falcon-40b-instruct": "bfloat16",
+PROMPT_SOURCES = {
+    "evol_instruct",
+    "false_qa",
+    "flan_v2_cot",
+    "flan_v2_flan2021",
+    "flan_v2_niv2",
+    "flan_v2_p3",
+    "sharegpt",
+    "ultrachat",
 }
 
 # ====================================
 #         COMPLETION GENERATION       
 # ====================================
 
+COMPLETION_MODEL_PATHS = {
+    "google/gemma-3-1b-it",
+
+    "HuggingFaceTB/SmolLM2-135M-Instruct",
+    "HuggingFaceTB/SmolLM2-360M-Instruct",
+    "HuggingFaceTB/SmolLM2-1.7B-Instruct",
+
+    "Qwen/Qwen2.5-0.5B-Instruct",
+    "Qwen/Qwen2.5-1.5B-Instruct",
+    "Qwen/Qwen2.5-3B-Instruct",
+    "Qwen/Qwen2.5-7B-Instruct",
+    "Qwen/Qwen2.5-14B-Instruct",
+    "Qwen/Qwen2.5-32B-Instruct",
+    "Qwen/Qwen2.5-72B-Instruct",
+
+    "meta-llama/Llama-3.2-1B-Instruct",
+    "meta-llama/Llama-3.2-3B-Instruct",
+    "meta-llama/Llama-3.3-70B-Instruct",
+
+    "microsoft/phi-4",
+    "microsoft/Phi-4-mini-instruct",
+}
+
 # ! When changing this from 4, the prompt template needs to be changed as well
-NUM_MODELS = len(MODEL_POOL)  
+NUM_COMPLETION_MODELS = len(COMPLETION_MODEL_PATHS)  
 
 # General parameters for the completions generation step
 COMPLETION_MAX_TOKENS = 1024
@@ -108,7 +67,7 @@ PRINCIPLES = [
 DEFAULT_PRINCIPLE = "helpfulness"
 
 # System prompts to be used when generating completions
-PRINCIPLE2PROMPTS = {
+PRINCIPLE2SYSTEM_PROMPTS = {
     "helpfulness": HELPFULNESS_COMPLETION_SYSTEM_PROMPTS,
     "honesty": HONESTY_COMPLETION_SYSTEM_PROMPTS,
     "truthfulness": TRUTHFULNESS_COMPLETION_SYSTEM_PROMPTS,
@@ -116,13 +75,13 @@ PRINCIPLE2PROMPTS = {
 }
 
 # Define which principles are used for which datasets
-DATASET2PRINCIPLE_POOL = {
+PROMPT_SOURCE2PRINCIPLES = {
     "truthful_qa": ["honesty", "truthfulness"],
-    # "sharegpt": ["helpfulness", "honesty", "truthfulness"],
-    # "ultrachat": ["helpfulness", "honesty", "truthfulness"],
-    # "flan": ["helpfulness", "verbalized_calibration"],
-    # "false_qa": ["honesty", "truthfulness"],
-    # "evol_instruct": ["helpfulness"],
+    "sharegpt": ["helpfulness", "honesty", "truthfulness"],
+    "ultrachat": ["helpfulness", "honesty", "truthfulness"],
+    "flan": ["helpfulness", "verbalized_calibration"],
+    "false_qa": ["honesty", "truthfulness"],
+    "evol_instruct": ["helpfulness"],
 }
 
 # ====================================
@@ -172,10 +131,3 @@ ASPECT2ANNOTATION_PATTERN = {
     "truthfulness": r"Type: (.+?)\nRationale: (.+?)\nRating: (.+?)\nRationale: (.+)",
     "helpfulness": r"Type: (.+?)\nRationale: (.+?)\nRating: (.+?)\nRationale: (.+)"
 }
-
-# Sanity checks
-assert DEFAULT_PRINCIPLE in PRINCIPLES
-assert sorted(list(PRINCIPLE2PROMPTS.keys())) == sorted(PRINCIPLES)
-assert sorted(list(DATASET2PRINCIPLE_POOL.keys())) == sorted(DATASET_POOL)
-assert set(principle for pool in DATASET2PRINCIPLE_POOL.values() for principle in pool).issubset(set(PRINCIPLES))
-# assert set(MODEL2CHAT_TEMPLATE.keys()).issubset(set(MODEL_POOL))

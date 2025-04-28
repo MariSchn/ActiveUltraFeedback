@@ -1,9 +1,18 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, root_validator
+
+from activeuf.configs import PROMPT_SOURCES
 
 class Prompt(BaseModel):
     source: str | None
     prompt: str
     prompt_id: str
+
+    @root_validator(pre=True)
+    def check_source(cls, values):
+        source = values["source"]
+        if source is not None and source not in PROMPT_SOURCES:
+            raise ValueError(f"Invalid source: {source}. Must be one of {PROMPT_SOURCES}.")
+        return values
 
 class Annotation(BaseModel):
     aspect: str
@@ -11,30 +20,37 @@ class Annotation(BaseModel):
     rating: str
     rating_rationale: str
     
-    type_rating: str | None
-    type_rationale: str | None
-
-class Completion(BaseModel):
-    prompt: Prompt
-
-    model_path: str
-    principle: str
-    principle_prompt: str
-    response_text: str
-
-    annotations: list[Annotation] = []
-    overall_score: str | None
-    critique: str | None
+    type_rating: str | None = None
+    type_rationale: str | None = None
 
 class Message(BaseModel):
-    content: str
     role: str
+    content: str
 
-class BinaryPreferenceConversation(BaseModel):
-    source: str | None
-    prompt: str
-    prompt_id: str
+class Completion(BaseModel):
+    model_api: str | None
+    model_path: str | None
+    principle: str
+    system_prompt: str
+    messages: list[Message]
+    response_text: str
 
+    annotations: list[Annotation] = Field(default_factory=list)
+    overall_score: str | None = None
+    critique: str | None = None
+
+    @root_validator(pre=True)
+    def check_model(cls, values):
+        model_api = values["model_api"]
+        model_path = values["model_path"]
+        if bool(model_api) == bool(model_path):
+            raise ValueError(f"Either model_api or model_path (but not both) must be provided.")
+        return values
+
+class PromptWithCompletions(Prompt):
+    completions: list[Completion] = Field(default_factory=list)
+
+class BinaryPreferenceConversation(Prompt):
     chosen: list[Message]
     rejected: list[Message]
     messages: list[Message]
@@ -42,31 +58,5 @@ class BinaryPreferenceConversation(BaseModel):
     score_chosen: float
     score_rejected: float
 
-    completion_chosen: Completion | None
-    completion_rejected: Completion | None
-
-if __name__ == "__main__":
-    annotation = Annotation(
-        aspect="helpfulness", 
-        rating="2", 
-        rating_rationale="I liked it"
-    )
-    print(annotation)
-
-    completion = Completion(
-        model_path="gemma-3-1b",
-        principle="honesty",
-        principle_prompt="How can I help you?",
-        response_text="I can help you with that.",
-        annotations=[annotation],
-    )
-    print(completion)
-
-    sample = Sample(
-        instruction="How can I help you?",
-        correct_answers=["I can help you with that."],
-        incorrect_answers=["I can't help you with that."],
-        model_names=["gpt-2"],
-        completions=[completion],
-    )
-    print(sample)
+    completion_chosen: Completion
+    completion_rejected: Completion
