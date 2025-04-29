@@ -28,8 +28,7 @@ class Message(BaseModel):
     content: str
 
 class Completion(BaseModel):
-    model_api: str | None
-    model_path: str | None
+    model: str
     principle: str
     system_prompt: str
     messages: list[Message]
@@ -38,14 +37,6 @@ class Completion(BaseModel):
     annotations: list[Annotation] = Field(default_factory=list)
     overall_score: str | None = None
     critique: str | None = None
-
-    @root_validator(pre=True)
-    def check_model(cls, values):
-        model_api = values["model_api"]
-        model_path = values["model_path"]
-        if bool(model_api) == bool(model_path):
-            raise ValueError(f"Either model_api or model_path (but not both) must be provided.")
-        return values
 
 class PromptWithCompletions(Prompt):
     completions: list[Completion] = Field(default_factory=list)

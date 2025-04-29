@@ -26,6 +26,10 @@ PROMPT_SOURCES = {
 #         COMPLETION GENERATION       
 # ====================================
 
+MODEL_APIS = {
+    # "gpt-4",
+}
+
 COMPLETION_MODEL_PATHS = {
     "google/gemma-3-1b-it",
 

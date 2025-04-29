@@ -78,22 +78,21 @@ def load_model(model_path: str, max_num_gpus: int = None) -> LLM:
 
 def get_response_texts(
         all_messages: list[list[dict[str, str]]],
-        model: LLM | None,
-        model_api: str | None, 
+        model: str | LLM,
         sampling_params: SamplingParams | None,
         # max_api_retry: int = MAX_API_RETRY,
     ) -> list[str | None]:
+
+    if isinstance(model, str):
+        raise ValueError("Response generation with model APIs is not implemented yet.")
     
-    if bool(model) == bool(model_api):
-        raise ValueError("Either model or model_api (but not both) must be provided.")
-    
-    if model is not None:
+    elif isinstance(model, LLM):
         all_responses = model.chat(
             all_messages, sampling_params=sampling_params)
         all_response_texts = [_.outputs[0].text for _ in all_responses]
 
     else:
-        raise ValueError("Response generation with model APIs is not implemented yet.")
+        raise ValueError("Model must be either a string or an LLM instance.")
 
     return all_response_texts
 
