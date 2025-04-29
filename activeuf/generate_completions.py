@@ -1,12 +1,11 @@
 import argparse
 import json
-import os
 import os.path as path
 
 from datasets import load_from_disk
 from vllm import SamplingParams
 
-from activeuf.schemas import Completion
+from activeuf.schemas import Completion, PromptWithCompletions
 from activeuf.configs import *
 from activeuf.utils import *
 
@@ -19,17 +18,15 @@ To generate the completions for all models, this script needs to be run multiple
 Example run command:
     python -m activeuf.generate_completions \
         --dataset_path datasets/allenai/ultrafeedback_binarized_cleaned/test_prefs \
-        --model_path HuggingFaceTB/SmolLM2-135M-Instruct
+        --model HuggingFaceTB/SmolLM2-135M-Instruct
 """
 
 def parse_args() -> argparse.Namespace:
     # Parse arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset_path", type=str, required=True, help="The path to the prompts dataset")
-    
-    parser.add_argument("--model_api", type=str, help="The API of the model to use for completions (e.g. gpt-4)")
-    parser.add_argument("--model_path", type=str, help="The path of the model to use for completions (e.g. HuggingFaceTB/SmolLM2-135M-Instruct)")
-    
+    parser.add_argument("--model", type=str, required=True, help="The Huggingface path of API of the model to use for completions (e.g. HuggingFaceTB/SmolLM2-135M-Instruct, gpt-4)")
+
     parser.add_argument("--max_num_gpus", type=int, default=MAX_NUM_GPUS, help="The maximum number of GPUs to use")
     parser.add_argument("--max_tokens", type=int, default=COMPLETION_MAX_TOKENS, help="The maximum number of tokens to generate for each completion")
     parser.add_argument("--temperature", type=int, default=COMPLETION_TEMPERATURE, help="Temperature for generation")
@@ -40,20 +37,11 @@ def parse_args() -> argparse.Namespace:
     args = parser.parse_args()
 
     if args.output_path is None:
-
-        if args.model_api:
-            safe_model_name = args.model_api.replace("/", "_")
-        elif args.model_path:
-            safe_model_name = args.model_path.replace("/", "_")
-        else:
-            raise ValueError("Either model_api or model_path must be provided")
-        
-        args.output_path = os.path.join(
-            f"{args.dataset_path.rstrip('/')}-with-{safe_model_name}-completions",
+        args.output_path = path.join(
+            f"{args.dataset_path.rstrip('/')}-with-completions", 
+            args.model.replace("/", "_"),
         )
-        assert not os.path.exists(args.output_path), f"Output path {args.output_path} already exists"
-
-        logger.info(f"Exporting to {args.output_path} because no output path was provided")
+        assert not path.exists(args.output_path), f"Output path {args.output_path} already exists"
 
     return args
 
@@ -79,12 +67,8 @@ if __name__ == "__main__":
     logger.info(f"Size of dataset: {len(dataset)}")
     idxs_needing_completion = []
     for i, sample in enumerate(dataset):
-        models_done = set(
-            [_["model_api"] for _ in sample["completions"]] + \
-            [_["model_path"] for _ in sample["completions"]]
-        )
-        models_done.discard(None)
-        if set([args.model_api, args.model_path]).isdisjoint(models_done):
+        models_done = {_["model"] for _ in sample["completions"]}
+        if args.model not in models_done:
             idxs_needing_completion.append(i)
 
     logger.info(f"Found {len(idxs_needing_completion)} samples needing completions")
@@ -92,15 +76,15 @@ if __name__ == "__main__":
         exit(0)
 
     # Load generation model and prepare sampling params
-    if args.model_path:
-        logger.info(f"Loading model from {args.model_path} for completion generation")
-        model = load_model(args.model_path, max_num_gpus=args.max_num_gpus)
+    if args.model in MODEL_APIS:
+        logger.info(f"Using {args.model} API for completion generation")
+        model = None
+        stop = None
+    else:
+        logger.info(f"Loading model from {args.model} for completion generation")
+        model = load_model(args.model, max_num_gpus=args.max_num_gpus)
         tokenizer = model.get_tokenizer()
         stop = tokenizer.eos_token if tokenizer and tokenizer.eos_token else None
-    else:
-        logger.info(f"Using API for {args.model_api} for completion generation")
-        model = None  # Can not load the model if it is only called through an API
-        stop = None
 
     sampling_params = SamplingParams(
         max_tokens = args.max_tokens,
@@ -131,7 +115,6 @@ if __name__ == "__main__":
     all_response_texts = get_response_texts(
         all_messages, 
         model = model, 
-        model_api = args.model_api, 
         sampling_params = sampling_params,
     )
 
@@ -145,8 +128,7 @@ if __name__ == "__main__":
     ):
         all_completions.append(
             Completion(
-                model_api = args.model_api,
-                model_path = args.model_path,
+                model = args.model,
                 principle = principle,
                 system_prompt = system_prompt,
                 messages = messages,
