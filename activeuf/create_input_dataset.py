@@ -48,6 +48,12 @@ def prepare_input_data_iter(dataset_name: str) -> Generator[Sample, None, None]:
                 correct_answers = x["correct_answers"],
                 incorrect_answers = x["incorrect_answers"],
             )
+    elif dataset_name == "ultrafeedback":
+        raw_dataset = load_dataset(hf_path)["train_prefs"]
+        for x in raw_dataset:
+            yield Sample(
+                instruction = x["prompt"],
+            )
     else:
         raise NotImplementedError(f"{dataset_name} is not yet supported")
 
