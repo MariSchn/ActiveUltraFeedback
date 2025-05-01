@@ -5,7 +5,7 @@ LOCAL_ENV_PATH = ".env.local"
 
 SEED = 123
 MAX_NUM_GPUS = 4
-DEFAULT_MODEL_CLASS = "tranformers"  # Which package to use for the model. ["transformers", "pipeline" "vllm"]
+DEFAULT_MODEL_CLASS = "transformers"  # Which package to use for the model. ["transformers", "pipeline" "vllm"]
 
 # ====================================
 #               DATASETS              
