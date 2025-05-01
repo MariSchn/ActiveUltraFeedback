@@ -4,6 +4,7 @@ import logging
 import os
 import time
 from typing import Union
+from tqdm import tqdm
 
 import numpy as np
 import random
@@ -147,6 +148,7 @@ def get_response_texts(
         tokenizer: AutoTokenizer | None,
         all_messages: list[list[dict[str, str]]],
         sampling_params: SamplingParams | None,
+        batch_size: int = 64,
         max_api_retry: int = MAX_API_RETRY,
         **generate_kwargs,
     ) -> list[str]:
@@ -160,6 +162,7 @@ def get_response_texts(
         tokenizer (AutoTokenizer | None): The tokenizer to use for the model. This is required if the model is a PreTrainedModel.
         all_messages (list[list[dict[str, str]]]): The messages to generate responses for. Each message is a list of dictionaries with "role" and "content" keys.
         sampling_params (SamplingParams | None): The sampling parameters to use for generation. This includes temperature, max_tokens, and top_p.
+        batch_size (int): The batch size to use for generation. This is only used if the model is a locally loaded model.
         max_api_retry (int): The maximum number of retries for API calls in case of failure.
         **generate_kwargs: Additional keyword arguments to pass to the model during generation.
     Returns:
@@ -201,50 +204,63 @@ def get_response_texts(
         if tokenizer.padding_side != "left":
             raise ValueError("Tokenizer padding side must be 'left' for text generation.")
 
-        all_messages_with_generation_prompt = tokenizer.apply_chat_template(
-            all_messages,
-            tokenize=False,
-            add_generation_prompt=True,
-        )
-        all_inputs = tokenizer(
-            all_messages_with_generation_prompt, 
-            padding=True,
-            pad_to_multiple_of=8,
-            return_tensors="pt",
-        ).to(model.device)
+        batches = [all_messages[i:i + batch_size] for i in range(0, len(all_messages), batch_size)]
+        response_texts = []
 
-        all_outputs = model.generate(
-            **all_inputs,
-            do_sample=True, # required for temperature and top_p to work
-            temperature=sampling_params.temperature,
-            max_new_tokens=sampling_params.max_tokens,
-            top_p=sampling_params.top_p,
-            **generate_kwargs,
-        )
+        for batch in tqdm(batches, desc="Generating responses", total=len(batches)):
+            batch_messages_with_generation_prompt = tokenizer.apply_chat_template(
+                batch,
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+            batch_inputs = tokenizer(
+                batch_messages_with_generation_prompt, 
+                padding=True,
+                pad_to_multiple_of=8,
+                return_tensors="pt",
+            ).to(model.device)
 
-        # AutoModelForCausalLM does not allow to return only the generated text so manually remove the input
-        all_outputs = all_outputs[:, all_inputs.input_ids.shape[1]:]
-        response_texts = tokenizer.batch_decode(all_outputs, skip_special_tokens=True)
+            batch_outputs = model.generate(
+                **batch_inputs,
+                do_sample=True, # required for temperature and top_p to work
+                temperature=sampling_params.temperature,
+                max_new_tokens=sampling_params.max_tokens,
+                top_p=sampling_params.top_p,
+                **generate_kwargs,
+            )
+
+            # AutoModelForCausalLM does not allow to return only the generated text so manually remove the input
+            batch_outputs = batch_outputs[:, batch_inputs.input_ids.shape[1]:]
+            batch_texts = tokenizer.batch_decode(batch_outputs, skip_special_tokens=True)
+
+            response_texts.extend(batch_texts)
 
     elif isinstance(model, LLM):
+        # * vLLM performs batching internally
         all_outputs = model.chat(
             all_messages, sampling_params=sampling_params, **generate_kwargs)
         response_texts = [_.outputs[0].text for _ in all_outputs]
 
     elif isinstance(model, Pipeline):
-        all_outputs = model(
-            all_messages,
-            return_full_text=False,
-            num_return_sequences=1, 
-            temperature=sampling_params.temperature, 
-            top_p=sampling_params.top_p, 
-            max_new_tokens=sampling_params.max_tokens, 
-            **generate_kwargs
-        )
-        response_texts = [_[0]["generated_text"] for _ in all_outputs]
+        batches = [all_messages[i:i + batch_size] for i in range(0, len(all_messages), batch_size)]
+        response_texts = []
+
+        for batch in tqdm(batches, desc="Generating responses", total=len(batches)):
+            batch_outputs = model(
+                batch,
+                return_full_text=False,
+                num_return_sequences=1, 
+                temperature=sampling_params.temperature, 
+                top_p=sampling_params.top_p, 
+                max_new_tokens=sampling_params.max_tokens, 
+                **generate_kwargs
+            )
+            response_texts = [_[0]["generated_text"] for _ in batch_outputs]
+
+            response_texts.extend(response_texts)
 
     else:
-        raise ValueError(f"Was not able to resolve model to be used for generation. model_name: {model_name}, model: {model}")
+        raise ValueError(f"Was not able to resolve model to be used for generation. model: {model}")
     
     return response_texts
 
