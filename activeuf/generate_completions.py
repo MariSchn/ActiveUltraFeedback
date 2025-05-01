@@ -4,6 +4,7 @@ import os.path as path
 
 from datasets import load_from_disk
 from vllm import SamplingParams
+from transformers import pipeline
 
 from activeuf.schemas import Completion, PromptWithCompletions
 from activeuf.configs import *
@@ -137,6 +138,7 @@ if __name__ == "__main__":
             ).model_dump()
         )
 
+<<<<<<< HEAD
     # Update dataset with completions
     idx2new_completion = dict(zip(idxs_needing_completion, all_completions))
     def add_completion(sample, idx):
@@ -145,12 +147,33 @@ if __name__ == "__main__":
             sample["completions"].append(new_completion)
         return sample
     dataset = dataset.map(add_completion, with_indices=True)
+=======
+    # Generate completions
+    with torch.inference_mode():
+        completion_texts = get_completion(prompts, model, tokenizer, args.model_name, sampling_params, system_prompts)
+>>>>>>> main
 
     # Export dataset
     logger.info(f"Exporting dataset to {args.output_path}")
     dataset.save_to_disk(args.output_path)
 
+<<<<<<< HEAD
     # Export args
     args_path = path.join(args.output_path, "args.json")
     with open(args_path, "w") as f_out:
         json.dump(vars(args), f_out)
+=======
+    # Export samples
+    os.makedirs(args.output_dir, exist_ok=True)
+    out_path = os.path.join(args.output_dir, f"{dataset_name}.jsonl")
+    f_out = open(out_path, "w")
+    for sample in samples:
+        print(sample.model_dump_json(), file=f_out, flush=True)
+    f_out.close()
+
+    # Free up memory
+    del model
+    del tokenizer
+    torch.cuda.empty_cache()
+    torch.cuda.reset_peak_memory_stats()
+>>>>>>> main

@@ -20,8 +20,32 @@ class Annotation(BaseModel):
     rating: str
     rating_rationale: str
     
+<<<<<<< HEAD
     type_rating: str | None = None
     type_rationale: str | None = None
+=======
+    type_rating: Optional[str] = None
+    type_rationale: Optional[str] = None
+
+class Completion(BaseModel):
+    model_name: str
+    principle: str
+    principle_prompt: str
+    response_text: str
+
+    annotations: Optional[list[Annotation]] = []
+
+    critique: Optional[str] = None
+    overall_score: Optional[str] = None
+
+class Sample(BaseModel):
+    instruction: str
+    correct_answers: Optional[list[str]] = []
+    incorrect_answers: Optional[list[str]] = []
+
+    model_names: Optional[list[str]] = []
+    completions: Optional[list[Completion]] = []
+>>>>>>> main
 
 class Message(BaseModel):
     role: str
