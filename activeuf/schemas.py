@@ -23,8 +23,8 @@ class Completion(BaseModel):
 
 class Sample(BaseModel):
     instruction: str
-    correct_answers: list[str]
-    incorrect_answers: list[str]
+    correct_answers: Optional[list[str]] = []
+    incorrect_answers: Optional[list[str]] = []
 
     model_names: Optional[list[str]] = []
     completions: Optional[list[Completion]] = []

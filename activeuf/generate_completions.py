@@ -6,6 +6,7 @@ from tqdm import tqdm
 
 import torch
 from vllm import SamplingParams
+from transformers import pipeline
 
 from activeuf.schemas import Completion
 from activeuf.configs import *
@@ -29,6 +30,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max_num_gpus", type=int, default=MAX_NUM_GPUS, help="The maximum number of GPUs to use")
     parser.add_argument("--max_tokens", type=int, default=COMPLETION_MAX_TOKENS, help="The maximum number of tokens to generate for each completion")
     parser.add_argument("--seed", type=int, default=SEED, help="Seed for random sampling")
+    parser.add_argument("--model_class", type=str, default=MODEL_CLASS, help="The class which is used to perform inference (e.g. transformers, pipeline, vllm)")
 
     parser.add_argument("--temperature", type=int, default=COMPLETION_TEMPERATURE, help="Temperature for generation")
     parser.add_argument("--top_p", type=int, default=COMPLETION_TOP_P, help="top_p value for generation")
@@ -48,21 +50,6 @@ if __name__ == "__main__":
     if isinstance(args.seed, int):
         set_seed(args.seed)
 
-    # Load generation model
-    if 'gpt-4' not in args.model_name and 'gpt-3' not in args.model_name: 
-        model = load_model(args.model_name, max_num_gpus=args.max_num_gpus)
-        tokenizer = model.get_tokenizer()
-        stop = tokenizer.eos_token if tokenizer and tokenizer.eos_token else None
-    else:
-        model = None  # Can not load the model if it is only called through an API
-        stop = None
-    sampling_params = SamplingParams(
-        max_tokens = args.max_tokens,
-        temperature = args.temperature,
-        top_p = args.top_p,
-        stop = stop,        
-    )
-
     # Load and filter samples
     samples = load_samples(args.input_dataset_path)
     to_complete = [sample for sample in samples if 
@@ -70,6 +57,19 @@ if __name__ == "__main__":
                    args.model_name not in [_.model_name for _ in sample.completions]]  # completion is not already present
     prompts = [sample.instruction for sample in to_complete]
     completion_objects = []
+
+    if not to_complete:
+        print(f"Model {args.model_name} does not have any samples to complete. Exiting...")
+        exit(0)
+
+    # Load generation model
+    model, tokenizer = load_model(args.model_name, args.max_num_gpus, args.model_class)
+    sampling_params = SamplingParams(
+        max_tokens = args.max_tokens,
+        temperature = args.temperature,
+        top_p = args.top_p,      
+    )
+    model.eval()
 
     # Sample principles (and subsequently system prompts) for generation
     system_prompts = []
@@ -88,7 +88,8 @@ if __name__ == "__main__":
         ))
 
     # Generate completions
-    completion_texts = get_completion(prompts, model, args.model_name, sampling_params, system_prompts)
+    with torch.inference_mode():
+        completion_texts = get_completion(prompts, model, tokenizer, args.model_name, sampling_params, system_prompts)
 
     # Add completions to samples
     for sample, completion_object, completion_text in zip(to_complete, completion_objects, completion_texts):
@@ -102,3 +103,9 @@ if __name__ == "__main__":
     for sample in samples:
         print(sample.model_dump_json(), file=f_out, flush=True)
     f_out.close()
+
+    # Free up memory
+    del model
+    del tokenizer
+    torch.cuda.empty_cache()
+    torch.cuda.reset_peak_memory_stats()

@@ -12,6 +12,7 @@ MODEL_CLASS = "transformers"  # Which package to use for the model. ["transforme
 # ====================================
 
 DATASET_MAP = {
+    "ultrafeedback": "allenai/ultrafeedback_binarized_cleaned",
     "truthful_qa": "truthfulqa/truthful_qa", 
     # "false_qa": "",
     # "sharegpt": "",
@@ -43,41 +44,12 @@ MODEL_MAP = {
 
     "llama-3.2-1b": "meta-llama/Llama-3.2-1B-Instruct",
     "llama-3.2-3b": "meta-llama/Llama-3.2-3B-Instruct",
-    "llama-3.3-70b-instruct": "meta-llama/Llama-3.3-70B-Instruct",
+    "llama-3.3-70b": "meta-llama/Llama-3.3-70B-Instruct",
 
     "phi-4": "microsoft/phi-4",
     "phi-4-mini": "microsoft/Phi-4-mini-instruct",
 }
 MODEL_POOL = list(MODEL_MAP.keys())
-
-# TODO: Consolidate model map and chat template somehow, maybe in a new class
-# NOTE: UltraLM series does not support the "system" role, see https://huggingface.co/openbmb/UltraLM-13b
-GPT2_CHAT_TEMPLATE = "{% for message in messages %}{{ message['content'] }} {% endfor %}"
-ULTRALM_CHAT_TEMPLATE = "{% for message in messages %}\n{% if message['role'] in ['user', 'system'] %}{{ 'User: ' + message['content'] + eos_token }}\n{% elif message['role'] == 'assistant' %}{{ 'Assistant: ' + message['content'] }}\n{% endif %}{% if loop.last and add_generation_prompt %}{{ 'Assistant: ' }}{% endif %}{% endfor %}"
-LLAMA_CHAT_TEMPLATE = "A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user's questions.\n" + "{% for message in messages %}{% if message['role'] == 'system' %}{{ message['content'] }}\n{% elif message['role'] == 'user' %}{{ 'USER: ' + message['content'] }}\n{% elif message['role'] == 'assistant' %}{{ 'ASSISTANT: ' + message['content'] + eos_token}}\n{% endif %}{% if loop.last and add_generation_prompt %}{{ 'ASSISTANT: ' }}{% endif %}{% endfor %}"
-DEBERTA_CHAT_TEMPLATE = "{% for message in messages %}\n{{ message['role'] }}: {{ message['content'] }}\n{% endfor %}\n"
-DEFAULT_CHAT_TEMPLATE = "{% for message in messages %}\n{% if message['role'] == 'user' %}\nUser: {{ message['content'] }}\n{% elif message['role'] == 'assistant' %}\nAssistant: {{ message['content'] }}\n{% elif message['role'] == 'system' %}\nSystem: {{ message['content'] }}\n{% endif %}\n{% endfor %}"
-
-# Define custom chat templates only for models that don't already have a default chat template
-MODEL2CHAT_TEMPLATE = {
-    # ! Small models are only used for debugging, so they do not necessarily need a custom chat template
-    "gpt-2": GPT2_CHAT_TEMPLATE,
-    # "opt-strict-125m": GPT2_CHAT_TEMPLATE,
-    # "babyllama-10m": GPT2_CHAT_TEMPLATE,
-    # "babyllama-100m": GPT2_CHAT_TEMPLATE,
-
-    "ultralm-13b": ULTRALM_CHAT_TEMPLATE,
-    "ultralm-65b": ULTRALM_CHAT_TEMPLATE,
-
-    "vicuna-7b": LLAMA_CHAT_TEMPLATE,
-    "vicuna-13b": LLAMA_CHAT_TEMPLATE,
-
-    "wizardlm-7b": LLAMA_CHAT_TEMPLATE,
-    "wizardlm-13b": LLAMA_CHAT_TEMPLATE,
-    "wizardlm-70b": LLAMA_CHAT_TEMPLATE,
-    
-    "deberta-v3-base": DEBERTA_CHAT_TEMPLATE,
-}
 
 # Define the data type with which each model should be loaded
 MODEL2DTYPE = {
@@ -117,6 +89,7 @@ PRINCIPLE2PROMPTS = {
 
 # Define which principles are used for which datasets
 DATASET2PRINCIPLE_POOL = {
+    "ultrafeedback": ["helpfulness", "honesty", "truthfulness"],
     "truthful_qa": ["honesty", "truthfulness"],
     # "sharegpt": ["helpfulness", "honesty", "truthfulness"],
     # "ultrachat": ["helpfulness", "honesty", "truthfulness"],
@@ -178,4 +151,3 @@ assert DEFAULT_PRINCIPLE in PRINCIPLES
 assert sorted(list(PRINCIPLE2PROMPTS.keys())) == sorted(PRINCIPLES)
 assert sorted(list(DATASET2PRINCIPLE_POOL.keys())) == sorted(DATASET_POOL)
 assert set(principle for pool in DATASET2PRINCIPLE_POOL.values() for principle in pool).issubset(set(PRINCIPLES))
-assert set(MODEL2CHAT_TEMPLATE.keys()).issubset(set(MODEL_POOL))
