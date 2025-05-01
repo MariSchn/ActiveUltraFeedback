@@ -5,7 +5,7 @@ LOCAL_ENV_PATH = ".env.local"
 
 SEED = 123
 MAX_NUM_GPUS = 4
-MODEL_CLASS = "transformers"  # Which package to use for the model. ["transformers", "pipeline" "vllm"]
+DEFAULT_MODEL_CLASS = "tranformers"  # Which package to use for the model. ["transformers", "pipeline" "vllm"]
 
 # ====================================
 #               DATASETS              
@@ -27,7 +27,8 @@ PROMPT_SOURCES = {
 # ====================================
 
 MODEL_APIS = {
-    # "gpt-4",
+    "gpt-3",
+    "gpt-4",
 }
 
 COMPLETION_MODEL_PATHS = {
@@ -54,7 +55,7 @@ COMPLETION_MODEL_PATHS = {
 }
 
 # ! When changing this from 4, the prompt template needs to be changed as well
-NUM_COMPLETION_MODELS = len(COMPLETION_MODEL_PATHS)  
+NUM_COMPLETION_MODELS = len(COMPLETION_MODEL_PATHS)
 
 # General parameters for the completions generation step
 COMPLETION_MAX_TOKENS = 1024
