@@ -3,9 +3,10 @@ import re
 import os
 import os.path as path
 from tqdm import tqdm
-from typing import List, Dict
+from typing import List, Dict, Union, Optional
 
 from vllm import LLM, SamplingParams
+from transformers import pipeline, Pipeline, AutoModelForCausalLM, AutoTokenizer, PreTrainedModel
 
 from activeuf.schemas import *
 from activeuf.configs import *
@@ -31,6 +32,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max_num_gpus", type=int, default=MAX_NUM_GPUS, help="The maximum number of GPUs to use")
     parser.add_argument("--max_api_retry", type=int, default=MAX_API_RETRY, help="The maximum number of retries for API calls")
     parser.add_argument("--max_parse_retry", type=int, default=MAX_PARSE_RETRY, help="The maximum number of retries for parsing the response")
+    parser.add_argument("--model_class", type=str, default=MODEL_CLASS, help="The class which is used to perform inference (e.g. transformers, pipeline, vllm)")
     
     parser.add_argument("--max_tokens", type=int, default=ANNOTATION_MAX_TOKENS, help="The maximum number of tokens for LLM responses")
     parser.add_argument("--temperature", type=float, default=ANNOTATION_TEMPERATURE, help="The temperature for sampling")
@@ -106,7 +108,16 @@ def parse_critique_annotation(response: str) -> List[Dict[str, str]]:
     critique, score = response[0].strip(), response[1].split(".")[0].strip()
     return critique, score
 
-def annotate_preference(sample: Sample, model_name: str, sampling_params: SamplingParams, model: LLM, num_shuffles=NUM_SHUFFLES, max_parse_retry=MAX_PARSE_RETRY, max_api_retry=MAX_API_RETRY) -> None:
+def annotate_preference(
+        sample: Sample, 
+        model: Optional[Union[LLM, Pipeline, PreTrainedModel]] = None, 
+        tokenizer: Optional[AutoTokenizer] = None,
+        model_name: Optional[str] = None, 
+        sampling_params: Optional[SamplingParams] = None, 
+        num_shuffles: Optional[int] = NUM_SHUFFLES, 
+        max_parse_retry: Optional[int] = MAX_PARSE_RETRY, 
+        max_api_retry: Optional[int] = MAX_API_RETRY
+    ) -> None:
     """
     Annotates a given sample under the aspects defined in configs.py.
     The function uses a LLM as a judge to rate the completions on the aspects using prompts defined in prompts.py.
@@ -115,14 +126,15 @@ def annotate_preference(sample: Sample, model_name: str, sampling_params: Sampli
 
     Args:
         sample (Sample): The sample to be annotated
-        model_name (str): The name of the model that is used to generate annotations
-        sampling_params (SamplingParams): The sampling parameters for the model
-        model (LLM): The loaded model to be used for annotation (if using an API call, this should be None)
-        num_shuffles (int): The number of random orderings to generate for the completions
-        max_parse_retry (int): The maximum number of retries for parsing the response
-        max_api_retry (int): The maximum number of retries for API calls
+        model (Optional[Union[LLM, Pipeline, PreTrainedModel]]): The loaded model to be used for annotation (if using an API call, this should be None)
+        tokenizer (Optional[AutoTokenizer]): The tokenizer used for the model (if using an API call, this should be None)
+        model_name (Optional[str]): The name of the model that is used to generate annotations. If None is provided the model parameter needs to be set
+        sampling_params (Optional[SamplingParams]): The sampling parameters for the model. If None is provided the default parameters are used
+        num_shuffles (Optional[int]): The number of random orderings to generate for the completions. If None is provided, the default from the configs.py file is used
+        max_parse_retry (Optional[int]): The maximum number of retries for parsing the response. If None is provided, the default from the configs.py file is used
+        max_api_retry (Optional[int]): The maximum number of retries for API calls. If None is provided, the default from the configs.py file is used
     Returns:
-        None
+        None: THe sample is modified in place
     """
     for aspect in ASPECTS:
         # Get additional world knowledge for truthfulness aspect if provided by the dataset
@@ -154,7 +166,7 @@ def annotate_preference(sample: Sample, model_name: str, sampling_params: Sampli
 
             # Get annotation for the sample, retrying if the API call fails
             # TODO: some samples in truthful_qa cannot get annotated when aspect == truthfulness/helpfulness, check if this is a bug
-            response = get_completion(ASPECT2ANNOTATION_PROMPT[aspect].format(**format_input), model, model_name, sampling_params, PREFERENCE_ANNOTATION_SYSTEM_PROMPT, max_api_retry) 
+            response = get_completion(ASPECT2ANNOTATION_PROMPT[aspect].format(**format_input), model, tokenizer, model_name, sampling_params, PREFERENCE_ANNOTATION_SYSTEM_PROMPT, max_api_retry) 
             for i in range(max_parse_retry):
                 try:
                     annotations = parse_preference_annotation(response, aspect)
@@ -164,9 +176,17 @@ def annotate_preference(sample: Sample, model_name: str, sampling_params: Sampli
                     break
                 except Exception as e:
                     # The response most likely did not follow the expected format, get another response
-                    response = get_completion(PREFERENCE_ANNOTATION_SYSTEM_PROMPT, ASPECT2ANNOTATION_PROMPT[aspect].format(**format_input), model_name, sampling_params, model, max_api_retry) 
-                    
-def annotate_critique(sample: Sample, model_name: str, sampling_params: SamplingParams, model: LLM, max_parse_retry=MAX_PARSE_RETRY, max_api_retry=MAX_API_RETRY) -> None:
+                    response = get_completion(ASPECT2ANNOTATION_PROMPT[aspect].format(**format_input), model, tokenizer, model_name, sampling_params, PREFERENCE_ANNOTATION_SYSTEM_PROMPT, max_api_retry)
+
+def annotate_critique(
+        sample: Sample, 
+        model: Optional[Union[LLM, Pipeline, PreTrainedModel]] = None, 
+        tokenizer: Optional[AutoTokenizer] = None,
+        model_name: Optional[str] = None, 
+        sampling_params: Optional[SamplingParams] = None, 
+        max_parse_retry: Optional[int] = MAX_PARSE_RETRY, 
+        max_api_retry: Optional[int] = MAX_API_RETRY
+    ) -> None:
     """
     Annotates a given sample with a critique and overall score using the prompts defined in prompts.py.
     The function uses a LLM as a judge to rate the completions on the aspects using prompts defined in prompts.py.
@@ -175,20 +195,20 @@ def annotate_critique(sample: Sample, model_name: str, sampling_params: Sampling
 
     Args:
         sample (Sample): The sample to be annotated
-        model_name (str): The name of the model that is used to generate annotations
-        sampling_params (SamplingParams): The sampling parameters for the model
-        model (LLM): The loaded model to be used for annotation (if using an API call, this should be None)
-        num_shuffles (int): The number of random orderings to generate for the completions
-        max_parse_retry (int): The maximum number of retries for parsing the response
-        max_api_retry (int): The maximum number of retries for API calls
+        model (Optional[Union[LLM, Pipeline, PreTrainedModel]]): The loaded model to be used for annotation (if using an API call, this should be None)
+        tokenizer (Optional[AutoTokenizer]): The tokenizer used for the model (if using an API call, this should be None)
+        model_name (Optional[str]): The name of the model that is used to generate annotations. If None is provided the model parameter needs to be set
+        sampling_params (Optional[SamplingParams]): The sampling parameters for the model. If None is provided the default parameters are used
+        max_parse_retry (Optional[int]): The maximum number of retries for parsing the response. If None is provided, the default from the configs.py file is used
+        max_api_retry (Optional[int]): The maximum number of retries for API calls. If None is provided, the default from the configs.py file is used
     Returns:
-        None
+        None: The sample is modified in place
     """
     for completion in sample.completions:
         # Prepare prompt
         custom_system_prompt = completion.principle_prompt if completion.principle != "verbalized_calibration" else completion.principle_prompt.split("For instance, ")[0].strip()
 
-        response = get_completion(ASPECT2ANNOTATION_PROMPT["feedback"].format(instruction="\n".join([sample.instruction, "Note: " + custom_system_prompt]), completion=completion.response_text), model, model_name, sampling_params, CRITIQUE_ANNOTATION_SYSTEM_PROMPT, max_api_retry)
+        response = get_completion(ASPECT2ANNOTATION_PROMPT["feedback"].format(instruction="\n".join([sample.instruction, "Note: " + custom_system_prompt]), completion=completion.response_text), model, tokenizer, model_name, sampling_params, CRITIQUE_ANNOTATION_SYSTEM_PROMPT, max_api_retry)
         for i in range(max_parse_retry):
             try:
                 critique, score = parse_critique_annotation(response)
@@ -199,7 +219,7 @@ def annotate_critique(sample: Sample, model_name: str, sampling_params: Sampling
                 break
             except Exception as e:
                 # The response most likely did not follow the expected format, get another response
-                response = get_completion(ASPECT2ANNOTATION_PROMPT["feedback"].format(instruction="\n".join([sample.instruction, "Note: " + custom_system_prompt]), completion=completion.response_text), model, model_name, sampling_params, CRITIQUE_ANNOTATION_SYSTEM_PROMPT, max_api_retry)
+                response = get_completion(ASPECT2ANNOTATION_PROMPT["feedback"].format(instruction="\n".join([sample.instruction, "Note: " + custom_system_prompt]), completion=completion.response_text), model, tokenizer, model_name, sampling_params, CRITIQUE_ANNOTATION_SYSTEM_PROMPT, max_api_retry)
 
 if __name__ == "__main__":
     args = parse_args()
@@ -213,17 +233,11 @@ if __name__ == "__main__":
         set_seed(args.seed)
 
     # Load annotation model
-    if 'gpt' not in args.model_name: 
-        model = load_model(args.model_name, max_num_gpus=args.max_num_gpus)
-        stop = model.tokenizer.eos_token if model.tokenizer and model.tokenizer.eos_token else None
-    else:
-        model = None  # Can not load the model if it is only called through an API
-        stop = None
+    model, tokenizer = load_model(args.model_name, args.max_num_gpus, args.model_class)
     sampling_params = SamplingParams(
-        max_tokens=args.max_tokens,
-        temperature=args.temperature,
-        top_p=args.top_p,    
-        stop=stop    
+        max_tokens = args.max_tokens,
+        temperature = args.temperature,
+        top_p = args.top_p,      
     )
 
     # Prepare output file
@@ -237,9 +251,9 @@ if __name__ == "__main__":
     # Perform annotation
     for sample in tqdm(load_samples(args.input_dataset_path)):
         if not args.no_preference:
-            annotate_preference(sample, args.model_name, sampling_params, model)
+            annotate_preference(sample, model, tokenizer, args.model_name, sampling_params)
         if not args.no_critique:
-            annotate_critique(sample, args.model_name, sampling_params, model)
+            annotate_critique(sample, model, tokenizer, args.model_name, sampling_params)
 
         # Export sample
         print(sample.model_dump_json(), file=f_out, flush=True)
