@@ -22,10 +22,16 @@ This folder contains scripts and configuration files for training a reward model
 The multi-GPU training setup allows you to efficiently train the reward model across multiple GPUs on a single node.
 
 ### **Command**
+#### **option 1**
 To execute multi-GPU training, use the following command in the terminal:
 
 ```bash
-accelerate launch --config_file=multi_gpu.yaml reward-trainer.py --output_dir=$SCRATCH/reward_model/trainedModels/TrainedModelName --reward_config=$SCRATCH/reward_model/reward-config.yaml
+accelerate launch --config_file=$SCRATCH/ActiveUltraFeedback/activeuf/reward_model/multi_gpu.yaml $SCRATCH/ActiveUltraFeedback/activeuf/reward_model/reward_trainer.py --output_dir=$SCRATCH/ActiveUltraFeedback/activeuf/reward_model/trainedModels/firstTrainedModel --reward_config=$SCRATCH/ActiveUltraFeedback/activeuf/reward_model/reward_config.yaml
+```
+#### **option 2**
+alternatively you can run **`multi_gpu.sh`** file from the terminal.
+```bash
+activeuf/reward_model/multi_gpu.sh
 ```
 
 ### **Command Breakdown**

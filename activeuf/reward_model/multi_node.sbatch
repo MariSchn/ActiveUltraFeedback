@@ -24,7 +24,7 @@ head_node_ip=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
 ######################
 
 export LAUNCHER="accelerate launch \
-    --config_file=$SCRATCH/reward-model-training2/multi_node.yaml \
+    --config_file=$SCRATCH/ActiveUltraFeedback/activeuf/reward_model/multi_node.yaml \
     --num_processes $((SLURM_NNODES * GPUS_PER_NODE)) \
     --num_machines $SLURM_NNODES \
     --rdzv_backend c10d \
@@ -33,9 +33,10 @@ export LAUNCHER="accelerate launch \
     "
 
 export ACCELERATE_DIR="${ACCELERATE_DIR:-/accelerate}"
-export PYTHON_FILE="${SCRATCH}/reward-model-training2/reward-trainer3.py"
+export PYTHON_FILE="${SCRATCH}/ActiveUltraFeedback/activeuf/reward_model/reward_trainer.py"
 export SCRIPT_ARGS=" \
-    --output_dir ${SCRATCH}/reward-model-training2/trainedModels/NewModelTrainedMultiNodeWow3 \
+    --output_dir ${SCRATCH}/ActiveUltraFeedback/activeuf/reward_model/trainedModels/NewModelTrainedMultiNode \
+    --reward_config ${SCRATCH}/ActiveUltraFeedback/activeuf/reward_model/reward_config.yaml \
     "
         
 # This step is necessary because accelerate launch does not handle multiline arguments properly
@@ -43,7 +44,7 @@ export CMD="$LAUNCHER $PYTHON_FILE $SCRIPT_ARGS"
 
 START=$(date +%s)
 
-cd $SCRATCH/reward-model-training2/
+cd $SCRATCH/ActiveUltraFeedback/
 
 srun $CMD
 

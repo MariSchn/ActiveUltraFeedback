@@ -1,22 +1,18 @@
 import random
 
 
-def calc_reward_uncertainty_random(completion_data):
-    completion_data = completion_data['input_ids']
+def calc_reward_uncertainty_random(completion_data_batch):
+    completion_data_batch = completion_data_batch['input_ids']
 
     rewards_list = []        # List of lists: rewards per prompt
     uncertainties_list = []  # List of lists: uncertainties per prompt
-
-    for entry in completion_data:
+    
+    for _ in range(len(completion_data_batch["completions"])):
         prompt_rewards = []
         prompt_uncertainties = []
-
-        for comp in entry.get('completions', []):
+        for __ in range(len(completion_data_batch["completions"][0])):
             reward = round(random.uniform(-1.0, 1.0), 3)
             uncertainty = round(random.uniform(0.0, 1.0), 3)
-
-            comp['reward'] = reward
-            comp['uncertainty'] = uncertainty
 
             prompt_rewards.append(reward)
             prompt_uncertainties.append(uncertainty)

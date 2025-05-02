@@ -3,11 +3,12 @@ import torch
 import json
 import argparse
 import numpy as np
+from torch.utils.data import DataLoader
 from activeuf.uncertainty_quantification.classes import UQTokenizer, UQModelClass, UQTrainer
 from activeuf.oracle.classes import Oracle
-from activeuf.acquisition_function.acquisition import RandomAcquisitionFunction
+from activeuf.acquisition_function.acquisition import RandomAcquisitionFunction, DoubleThompsonSampling
 
-def load_prompts_with_completions(completion_dataset):
+def load_prompts_with_completions(completion_dataset, batch_size, shuffle=True) -> DataLoader:
     data = []
 
     with open(completion_dataset, 'r') as f:
@@ -22,31 +23,34 @@ def load_prompts_with_completions(completion_dataset):
             for line in f:
                 if line.strip():  # skip empty lines
                     data.append(json.loads(line))
-    return np.array(data)
+
+    data = np.array(data)    
+    collate_fn = lambda batch: {key: [d[key] for d in batch] for key in batch[0].keys()}
+
+    dataloader = DataLoader(data, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn)
+    
+    return dataloader
 
 
-def select_prompts_with_completions(acquisition_function, prompts_with_completions, rewards, uncertainty):
-    selected_triplets = acquisition_function.select(rewards, uncertainty)
-    prompts_with_completions_for_annotation = []
+def prompts_with_two_completions(prompts_with_completions, rewards, uncertainty, acquisition_function):
+    # An array consisting of 2-element arrays (chosen completion indices)
+    selected_ids_per_prompt = acquisition_function.select(rewards, uncertainty)
+    prompts_with_two_completions_for_annotation = []
 
-    for prompt_idx, chosen_idx, rejected_idx in selected_triplets:
-        prompt = prompts_with_completions[prompt_idx]
-        completions = prompt['completions']
-        prompt_rewards = rewards[prompt_idx]
+    for idx, selected_ids in enumerate(selected_ids_per_prompt):
+        prompt = prompts_with_completions["instruction"][idx]
+        completions = prompts_with_completions['completions'][idx]
+        
+        selected_completion1 = completions[selected_ids[0]]
+        selected_completion2 = completions[selected_ids[1]]
 
-        chosen = completions[chosen_idx]
-        rejected = completions[rejected_idx]
-
-        prompts_with_completions_for_annotation.append({
-            "prompt": prompt['instruction'],
-            "prompt_id": f"prompt_{prompt_idx}",
-            "chosen": chosen['response_text'],
-            "rejected": rejected['response_text'],
-            "score_chosen": chosen.get('reward', prompt_rewards[chosen_idx]),
-            "score_rejected": rejected.get('reward', prompt_rewards[rejected_idx]),
-            "source": "---"
+        prompts_with_two_completions_for_annotation.append({
+            "prompt": prompt,
+            "selected1": selected_completion1,
+            "selected2": selected_completion2,
         })
-    return prompts_with_completions_for_annotation
+
+    return prompts_with_two_completions_for_annotation
 
 
 def save_ultrafeedback_format(prompts_with_completions_for_annotation, output_path):
@@ -69,20 +73,25 @@ def uncertainty_sampling_loop(uq_model_path, uq_model_config, uq_trainer_path, c
     oracle = Oracle()
     
     if acquisition_function_type == "double_thompson_sampling":
-        acquisition_function = RandomAcquisitionFunction() # will be changed later.
+        acquisition_function = DoubleThompsonSampling() # will be changed later.
     else: 
         acquisition_function = RandomAcquisitionFunction()
 
-    for i in range(num_iterations):
-        prompts_with_completions = load_prompts_with_completions(completion_dataset)
+    prompts_with_completions_dataloader = load_prompts_with_completions(completion_dataset, batch_size)
+    
+    iteration_number = 0
+    for prompts_with_completions in prompts_with_completions_dataloader:
         inputs = uq_tokenizer(prompts_with_completions)  # Dict[str, torch.Tensor] - Dictionary with keys “input_ids” and “attention_maks”
         rewards, uncertainty = uq_trainer.model(inputs)  # torch.Tensors with Shape: (n_prompts, n_completions)
-        prompts_with_completions_for_annotation = select_prompts_with_completions(acquisition_function, prompts_with_completions,rewards, uncertainty)
+        prompts_with_completions_for_annotation = prompts_with_two_completions(prompts_with_completions, rewards, uncertainty, acquisition_function)
         labels = oracle(prompts_with_completions_for_annotation)
         dataset.append((prompts_with_completions_for_annotation, labels))
         uq_trainer.training_step(prompts_with_completions_for_annotation, labels)
+        if iteration_number == num_iterations - 1: break 
+        else: iteration_number += 1
+        
 
-    #TODO: save dataset, Martin's job.
+    #TODO: save dataset, Martin's job. (We can add prompt_ids here)
     
 def main(config):
     uncertainty_sampling_loop(config.uq_model_path, config.uq_model_config, config.uq_trainer_path, config.completion_dataset, config.num_iterations, config.acquisition_function_type, config.batch_size)
@@ -92,10 +101,10 @@ if __name__ == "__main__":
     parser.add_argument("--uq-model-path", type=str, help="Path to uncertainty quantification model.")
     parser.add_argument("--uq-model-config", type=str, help="Path to uncertainty quantification config.")
     parser.add_argument("--uq-trainer-path", type=str, help="Path to uncertainty quantification trainer.")
-    parser.add_argument("--completion-dataset", type=str, required=True, help="Number of iterations in uncertainty sampling.")
+    parser.add_argument("--completion-dataset", type=str, required=True, help="Path to the prompt dataset.")
     parser.add_argument("--num-iterations", type=int, default=10, help="Number of iterations in uncertainty sampling.")
     parser.add_argument("--batch-size", type=int, default=3, help="Batch Size for uncertainty sampling.")
-    parser.add_argument("--acquisition_function_type", type=str, help="Acquistion function type")
+    parser.add_argument("--acquisition_function_type", type=str, default="double_thompson_sampling", help="Acquistion function type")
     config = parser.parse_args()
 
     main(config)
