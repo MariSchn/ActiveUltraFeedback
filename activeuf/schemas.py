@@ -16,24 +16,14 @@ class Prompt(BaseModel):
         return values
 
 class Annotation(BaseModel):
+    model_name: str
     aspect: str
 
     rating: str
     rating_rationale: str
     
-    type_rating: str | None = None
+    type: str | None = None
     type_rationale: str | None = None
-
-class Completion(BaseModel):
-    model_name: str
-    principle: str
-    principle_prompt: str
-    response_text: str
-
-    annotations: Optional[list[Annotation]] = []
-
-    critique: Optional[str] = None
-    overall_score: Optional[str] = None
 
 class Message(BaseModel):
     role: str
@@ -47,8 +37,8 @@ class Completion(BaseModel):
     response_text: str
 
     annotations: list[Annotation] = Field(default_factory=list)
-    overall_score: str | None = None
     critique: str | None = None
+    overall_score: str | None = None
 
 class PromptWithCompletions(Prompt):
     completions: list[Completion] = Field(default_factory=list)

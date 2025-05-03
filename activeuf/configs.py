@@ -123,16 +123,14 @@ ASPECT2ANNOTATION_PROMPT = {
     "instruction_following": INSTRUCTION_FOLLOWING_ANNOTATION_SYSTEM_PROMPT,
     "honesty": HONESTY_ANNOTATION_SYSTEM_PROMPT,
     "truthfulness": TRUTHFULNESS_ANNOTATION_SYSTEM_PROMPT,
-    "truthfulness_without_answer": TRUTHFULNESS_WITHOUT_ANSWER_ANNOTATION_SYSTEM_PROMPT,
     "helpfulness": HELPFULNESS_ANNOTATION_SYSTEM_PROMPT,
-    "helpfulness_without_answer": HELPFULNESS_WITHOUT_ANSWER_ANNOTATION_SYSTEM_PROMPT,
-    "feedback": FEEDBACK_ANNOTATION_SYSTEM_PROMPT
 }
 
 # Regex patterns used to extract the ratings and rationales from the annotation model's response
 ASPECT2ANNOTATION_PATTERN = {
     "instruction_following": r"Rating: (.+?)\nRationale: (.+)",
     "honesty": r"Rating: (.+?)\nRationale: (.+)",
-    "truthfulness": r"Type: (.+?)\nRationale: (.+?)\nRating: (.+?)\nRationale: (.+)",
-    "helpfulness": r"Type: (.+?)\nRationale: (.+?)\nRating: (.+?)\nRationale: (.+)"
+    "truthfulness": r"Type: (.+?)\nType rationale: (.+?)\nRating: (.+?)\nRationale: (.+)",
+    "helpfulness": r"Type: (.+?)\nType rationale: (.+?)\nRating: (.+?)\nRationale: (.+)",
 }
+FEEDBACK_ANNOTATION_PATTERN = r"Critique: (.+?)\nOverall score: (.+)"
