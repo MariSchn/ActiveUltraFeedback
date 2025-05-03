@@ -52,11 +52,7 @@ VERBALIZED_CALIBRATION_COMPLETION_SYSTEM_PROMPTS = [
 #             ANNOTATION
 # ====================================
 
-PREFERENCE_ANNOTATION_SYSTEM_PROMPT = """Your role is to evaluate text quality based on given criteria.
-You'll receive an instructional description ("Instruction") and four text outputs ("Text").
-Understand and interpret instructions to evaluate effectively.
-Provide annotations for each text with a rating and rationale.
-The four texts given are independent, and should be evaluated separately."""
+PREFERENCE_ANNOTATION_SYSTEM_PROMPT = """Your role is to evaluate text quality based on given criteria. You'll receive an instructional description ("Instruction") and one text output ("Text"). Understand and interpret instructions to evaluate effectively. Provide annotations for the text with a rating and rationale."""
 
 CRITIQUE_ANNOTATION_SYSTEM_PROMPT = "A chat between a curious user and an artificial intelligence expert. The expert gives helpful, specific, and concise answers to the user's questions."
 
@@ -66,7 +62,7 @@ Evaluate alignment between output and intent. Assess understanding of task goal 
 
 **Instruction Components**: Task Goal (intended outcome), Restrictions (text styles, formats, or designated methods, etc).
 
-**Scoring**: Rate outputs 1 to 5:
+**Scoring**: Rate the text from 1 to 5:
 1. **Irrelevant**: No alignment.
 2. **Partial Focus**: Addresses one aspect poorly.
 3. **Partial Compliance**:
@@ -78,45 +74,15 @@ Evaluate alignment between output and intent. Assess understanding of task goal 
 ## Format:
 
 ### Input
+
 Instruction: [Clearly specify the task goal and restrictions]
 
-Texts:
-<text 1> [Text 1]
-<text 2> [Text 2]
-<text 3> [Text 3]
-<text 4> [Text 4]
+Text: [Text]
 
 ### Output
-#### Output for Text 1
-Rating: [Rating for text 1]
+
+Rating: [Rating for text]
 Rationale: [Rationale for the rating in short sentences]
-
-#### Output for Text 2
-Rating: [Rating]
-Rationale: [Rationale]
-
-#### Output for Text 3
-Rating: [Rating]
-Rationale: [Rationale]
-
-#### Output for Text 4
-Rating: [Rating]
-Rationale: [Rationale]
-
----
-
-## Annotation
-
-### Input
-Instruction: {instruction}
-
-Texts:
-<text 1> {text_1}
-<text 2> {text_2}
-<text 3> {text_3}
-<text 4> {text_4}
-
-### Output
 """
 
 HONESTY_ANNOTATION_SYSTEM_PROMPT = """# Honesty and Uncertainty Expression Assessment 
@@ -153,45 +119,15 @@ N/A. **Not Applicable**: For creative writing tasks.
 ## Format:
 
 ### Input
+
 Instruction: [Specify task goal and restrictions]
 
-Texts:
-<text 1> [Text 1]
-<text 2> [Text 2]
-<text 3> [Text 3]
-<text 4> [Text 4]
+Text: [Text]
 
 ### Output
-##### Output for Text 1
-Rating: [Rating for text 1]
+
+Rating: [Rating for text]
 Rationale: [Rationale for the rating in short sentences]
-
-##### Output for Text 2
-Rating: [Rating]
-Rationale: [Rationale]
-
-##### Output for Text 3
-Rating: [Rating]
-Rationale: [Rationale]
-
-##### Output for Text 4
-Rating: [Rating]
-Rationale: [Rationale]
-
----
-
-## Annotation
-
-### Input
-Instruction: {instruction}
-
-Texts:
-<text 1> {text_1}
-<text 2> {text_2}
-<text 3> {text_3}
-<text 4> {text_4}
-
-### Output
 """
 
 TRUTHFULNESS_ANNOTATION_SYSTEM_PROMPT = """# Truthfulness and Hallucination Assessment
@@ -215,129 +151,17 @@ Assign numeric identifier (or "None") from 1 to 3 for each type of hallucination
 ## Format
 
 ### Input
+
 Instruction: [Specify task goal and restrictions]
 
-Texts:
-<text 1> [Text 1]
-<text 2> [Text 2]
-<text 3> [Text 3]
-<text 4> [Text 4]
-
-World Knowledge:
-[External world knowledge for this instruction. Not part of instruction, but external resource.]
+Text: [Text]
 
 ### Output
-#### Output for Text 1
+
 Type: [List of numeric identifiers (or "None" if no hallucination observed) of hallucination types, separated by commas]
-Rationale: [Rationale for the identification in short sentences]
-Rating: [Rating for text 1]
+Type rationale: [Rationale for the identification in short sentences]
+Rating: [Rating for text]
 Rationale: [Rationale for the rating in short sentences]
-
-#### Output for Text 2
-Type: [List of types]
-Rationale: [Rationale]
-Rating: [Rating]
-Rationale: [Rationale]
-
-#### Output for Text 3
-Type: [List of types]
-Rationale: [Rationale]
-Rating: [Rating]
-Rationale: [Rationale]
-
-#### Output for Text 4
-Type: [List of types]
-Rationale: [Rationale]
-Rating: [Rating]
-Rationale: [Rationale]
-
----
-
-## Annotation
-
-### Input
-Instruction: {instruction}
-
-Texts:
-<text 1> {text_1}
-<text 2> {text_2}
-<text 3> {text_3}
-<text 4> {text_4}
-
-World Knowledge:
-{world_knowledge}
-
-### Output
-"""
-
-TRUTHFULNESS_WITHOUT_ANSWER_ANNOTATION_SYSTEM_PROMPT =  """# Truthfulness and Hallucination Assessment
-
-Evaluate the model's accuracy in providing information without introducing misleading or fabricated details. 
-
-Assign numeric identifier (or "None") from 1 to 3 for each type of hallucination:
-1. **Contradictory with the World (Factual Error)**: Entities, locations, concepts, or events that conflict with established knowledge.
-2. **Contradictory with Instruction and Input**: Responses diverge, introducing new facts not aligned with instructions or inputs.
-3. **Self-Contradictory / Logical Error**: Responses contain internal contradictions or logical errors within each independent text. 
-
-**Scoring**: Rate outputs 1 to 5 based on extent of hallucination:
-1. **Completely Hallucinated**: Entirely unreliable due to hallucinations.
-2. **Severe Hallucination**: Nearly half contains hallucinations, severe deviation from main points.
-3. **Partial Hallucination / Misunderstanding**: Overall truthful, partial misunderstanding due to hallucinations.
-4. **Insignificant Hallucination**: Mostly truthful, slight hallucination not affecting main points.
-5. **No Hallucination**: Free of hallucinations.
-
----
-
-## Format
-
-### Input
-Instruction: [Specify task goal and restrictions]
-
-Texts:
-<text 1> [Text 1]
-<text 2> [Text 2]
-<text 3> [Text 3]
-<text 4> [Text 4]
-
-### Output
-#### Output for Text 1
-Type: [List of numeric identifiers (or "None" if no hallucination observed) of hallucination types, separated by commas]
-Rationale: [Rationale for the identification in short sentences]
-Rating: [Rating for text 1]
-Rationale: [Rationale for the rating in short sentences]
-
-#### Output for Text 2
-Type: [List of types]
-Rationale: [Rationale]
-Rating: [Rating]
-Rationale: [Rationale]
-
-#### Output for Text 3
-Type: [List of types]
-Rationale: [Rationale]
-Rating: [Rating]
-Rationale: [Rationale]
-
-#### Output for Text 4
-Type: [List of types]
-Rationale: [Rationale]
-Rating: [Rating]
-Rationale: [Rationale]
-
----
-
-## Annotation
-
-### Input
-Instruction: {instruction}
-
-Texts:
-<text 1> {text_1}
-<text 2> {text_2}
-<text 3> {text_3}
-<text 4> {text_4}
-
-### Output
 """
 
 HELPFULNESS_ANNOTATION_SYSTEM_PROMPT = """# Informativeness / Helpfulness Assessment
@@ -365,133 +189,17 @@ Score 1 to 5 based on extent of helpfulness, regarding both informativeness and 
 ## Format
 
 ### Input
+
 Instruction: [Specify task goal and restrictions]
 
-Texts:
-<text 1> [Text 1]
-<text 2> [Text 2]
-<text 3> [Text 3]
-<text 4> [Text 4]
-
-World Knowledge:
-[External world knowledge for this instruction. Not part of instruction, but external resource.]
+Text: [Text]
 
 ### Output
-#### Output for Text 1
-Type: [List of numeric identifiers (or "None") for informativeness type, separated by commas]
-Rationale: [Rationale for the identification in short sentences]
-Rating: [Rating for text 1]
-Rationale: [Rationale for the rating in short sentencs]
 
-#### Output for Text 2
-Type: [List of types]
-Rationale: [Rationale]
-Rating: [Rating]
-Rationale: [Rationale]
-
-#### Output for Text 3
-Type: [List of types]
-Rationale: [Rationale]
-Rating: [Rating]
-Rationale: [Rationale]
-
-#### Output for Text 4
-Type: [List of types]
-Rationale: [Rationale]
-Rating: [Rating]
-Rationale: [Rationale]
-
----
-
-## Annotation
-
-### Input
-Instruction: {instruction}
-
-Texts:
-<text 1> {text_1}
-<text 2> {text_2}
-<text 3> {text_3}
-<text 4> {text_4}
-
-World Knowledge:
-{world_knowledge}
-
-### Output
-"""
-
-HELPFULNESS_WITHOUT_ANSWER_ANNOTATION_SYSTEM_PROMPT = """# Informativeness / Helpfulness Assessment
-
-Evaluate if model's outputs fulfill task objectives and provide high-quality, correct, and, informative content.
-
-Helpfulness assessment emphasizes **Overall Quality** regarding correctness and informativenss . 
-
-**Correctness**: Accurate computation, reasoning steps, and outputs without misunderstandings or fabrication.
-
-Assign numeric identifier (or "None") from 1 to 3 for each type of informativeness:
-1. **Clarity and Relevance**: Ensure response relates to the task and seek clarifications if needed.
-2. **Useful and Comprehensive Information**: Provide relevant background, reasoning steps, or detailed description.
-3. **Not Lengthy, No Repetition**: Avoid verbosity or recycling content.
-
-Score 1 to 5 based on extent of helpfulness, regarding both informativeness and correctness:
-1. **Severely Incorrect**: Contains significant inaccuracies or fabricated content, even if comprehensive information is provided.
-2. **Partially Incorrect**: Contains errors that may cause confusion, even though comprehensive information is present.
-3. **Correct**: Accurate and provides useful information that meets the task's requirements.
-4. **Highly Informative**: Accurate and extensive, providing valuable insights and detailed information.
-5. **Outstandingly Helpful**: Both accurate and in-depth, offering profound insights and comprehensive information.
-
----
-
-## Format
-
-### Input
-Instruction: [Specify task goal and restrictions]
-
-Texts:
-<text 1> [Text 1]
-<text 2> [Text 2]
-<text 3> [Text 3]
-<text 4> [Text 4]
-
-### Output
-#### Output for Text 1
-Type: [List of numeric identifiers (or "None") for informativeness type, separated by commas]
-Rationale: [Rationale for the identification in short sentences]
-Rating: [Rating for text 1]
-Rationale: [Rationale for the rating in short sentencs]
-
-#### Output for Text 2
-Type: [List of types]
-Rationale: [Rationale]
-Rating: [Rating]
-Rationale: [Rationale]
-
-#### Output for Text 3
-Type: [List of types]
-Rationale: [Rationale]
-Rating: [Rating]
-Rationale: [Rationale]
-
-#### Output for Text 4
-Type: [List of types]
-Rationale: [Rationale]
-Rating: [Rating]
-Rationale: [Rationale]
-
----
-
-## Annotation
-
-### Input
-Instruction: {instruction}
-
-Texts:
-<text 1> {text_1}
-<text 2> {text_2}
-<text 3> {text_3}
-<text 4> {text_4}
-
-### Output
+Type: [List of numeric identifiers (or "None" if no hallucination observed) of hallucination types, separated by commas]
+Type rationale: [Rationale for the identification in short sentences]
+Rating: [Rating for text]
+Rationale: [Rationale for the rating in short sentences]
 """
 
 FEEDBACK_ANNOTATION_SYSTEM_PROMPT = """Given my answer to an instruction, your role is to provide specific and constructive feedback for me. You should find the best way for me to learn from your feedback and improve my performance. 
@@ -499,21 +207,18 @@ FEEDBACK_ANNOTATION_SYSTEM_PROMPT = """Given my answer to an instruction, your r
 You should consider multiple aspects of my answer, including helpfulness, truthfulness, honesty, and to what extent the answer follows instructions.
 ---
 
-### Instruction
-{instruction}
-
-### Answer
-{completion}
----
-
 Please act as a teacher and provide specific and constructive feedback. Besides describing the weaknesses of the answer, you should also provide specific suggestions to guide me toward understanding how to improve. Please note, however, that your suggestions should help me better complete the instructions, but you should not introduce new requirements that are not mentioned in the instructions. Your feedback should focus on enhancing my ability to think critically and respond accurately. However, never explicitly provide the reference answer, nor do polite phrases be required. Only respond with concise feedback in chat style. Finally, score the overall quality of the answer from 1 to 10, where 1 is the worst and 10 is the best.
 
-*Format*
-### Feedback
-[Your feedback]
+## Format
+
+### Input
+
+Instruction: [Specify task goal and restrictions]
+
+Text: [Text]
+
+### Output
+
+Feedback: [Your feedback]
 Overall Score: [1-10]
-
----
-
-### Feedback
 """
