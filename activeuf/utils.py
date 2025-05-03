@@ -108,16 +108,29 @@ def load_model(
             model_name,
             padding_side="left"
         )
-    elif model_class == "vllm":
-        model = LLM(
-            model_name, 
-            gpu_memory_utilization=0.95, 
-            swap_space=1, 
-            tensor_parallel_size=tensor_parallel_size, 
-            trust_remote_code=True, 
-            dtype="auto",
-            **model_kwargs
-        )
+    elif model_class == "vllm":      
+        # Search over tensor_parallel_size, as number of attention heads needs to be divisible by it
+        tps = tensor_parallel_size
+        model = None
+
+        while model is None and tps > 0:
+            try:
+                model = LLM(
+                    model_name, 
+                    gpu_memory_utilization=0.95, 
+                    swap_space=1, 
+                    tensor_parallel_size=tps, 
+                    trust_remote_code=True, 
+                    dtype="auto",
+                    **model_kwargs
+                )
+            except Exception as e:
+                print(f"Failed to load model with tensor_parallel_size={tps}: {e}")
+                print(f"Retrying with tensor_parallel_size={tps-1}...")
+                tps -= 1
+        if model is None:
+            raise ValueError(f"Failed to load model {model_name} with any tensor_parallel_size.")
+        
         tokenizer = model.get_tokenizer()
     elif model_class == "pipeline":
         model = pipeline(

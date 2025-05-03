@@ -194,7 +194,6 @@ if __name__ == "__main__":
 
     logger.info(f"Using {args.model_name} for annotation")
     model, tokenizer = load_model(args.model_name, args.model_class)
-    model.eval()
     sampling_params = SamplingParams(
         max_tokens = args.max_tokens,
         temperature = args.temperature,
