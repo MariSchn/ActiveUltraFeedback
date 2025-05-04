@@ -251,7 +251,11 @@ def get_response_texts(
     elif isinstance(model, LLM):
         # * vLLM performs batching internally
         all_outputs = model.chat(
-            all_messages, sampling_params=sampling_params, **generate_kwargs)
+            all_messages, 
+            sampling_params=sampling_params, 
+            # chat_template=tokenizer.chat_template, # * Must be set for Gemma-3-1b-it as otherwise vLLM gets stuck in an infinite requests loop, fetching the same request over and over again
+            **generate_kwargs
+        )
         response_texts = [_.outputs[0].text for _ in all_outputs]
 
     elif isinstance(model, Pipeline):
