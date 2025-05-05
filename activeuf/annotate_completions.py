@@ -39,7 +39,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--top_p", type=float, default=ANNOTATION_TOP_P, help="The top_p for sampling")
 
     parser.add_argument("--output_path", type=str, help="Where to export the annotated dataset")
-    parser.add_argument("--debug", action="store_true", help="If set, will only annotate the first 10 samples")
+    parser.add_argument("--debug", action="store_true", help="If set, will only annotate the first 2 samples")
     args = parser.parse_args()
 
     if not args.output_path:
@@ -62,12 +62,12 @@ def parse_annotation_from_response_text(response_text: str, aspect: str) -> dict
         dict[str, str]: A dictionary that follows the Annotation schema
     """
     annotation_pattern = ASPECT2ANNOTATION_PATTERN[aspect]
-    matches = re.search(annotation_pattern, response_text, re.DOTALL)
+    matches = re.search(annotation_pattern, response_text, re.DOTALL | re.I)
     groups = matches.groups()
 
     return Annotation(
         aspect=aspect,
-        model_name=args.model_name,
+        annotator_name=args.model_name,
 
         type=groups[-4] if len(groups) == 4 else None,
         type_rationale=groups[-3] if len(groups) == 4 else None,
@@ -76,7 +76,7 @@ def parse_annotation_from_response_text(response_text: str, aspect: str) -> dict
     ).model_dump()
 
 def parse_critique_from_response_text(response_text: str) -> dict[str, str]:
-    matches = re.search(FEEDBACK_ANNOTATION_PATTERN, response_text, re.DOTALL)
+    matches = re.search(FEEDBACK_ANNOTATION_PATTERN, response_text, re.DOTALL | re.I)
     groups = matches.groups()
 
     return {"critique": groups[0], "overall_score": groups[1]}
@@ -86,7 +86,7 @@ def annotate(
         model: str | LLM | Pipeline | PreTrainedModel, 
         tokenizer: AutoTokenizer | None,
         sampling_params: SamplingParams | None, 
-    ):
+    ) -> Dataset:
     """
     Annotates a given dataset with completions under the aspects defined in configs.py.
     The function uses a LLM as a judge to rate the completions on the aspects using prompts defined in prompts.py.
@@ -98,52 +98,56 @@ def annotate(
         tokenizer (AutoTokenizer | None): The tokenizer used for the model (if using an API call, this should be None)
         sampling_params (SamplingParams | None): The sampling parameters for the model. If None is provided the default parameters are used
     """
-    # ASPECT ANNOTATION
-    logger.info("Annotating completions on aspects")
-    aspects = list(ASPECT2ANNOTATION_PROMPT)
-    for aspect in aspects:
-        annotation_prompt = ASPECT2ANNOTATION_PROMPT[aspect]
-        for sample in dataset:
-            
-            # identify completions that need annotation for this aspect
-            idxs_needing_annotation = [
-                i for i, completion in enumerate(sample["completions"])
-                if aspect not in {_["aspect"] for _ in completion["annotations"]}
-            ]
+    # prepare new column for the annotated completions
+    all_annotated_completions = dataset["completions"]
 
-            # construct messages for annotation of each completion
-            all_messages = []
-            for i in idxs_needing_annotation:
-                completion = sample["completions"][i]
-                all_messages.append([
-                    Message(
-                        role="system", 
-                        content=PREFERENCE_ANNOTATION_SYSTEM_PROMPT).model_dump(),
-                    Message(role="system", content=annotation_prompt).model_dump(),
-                    Message(
-                        role="user", 
-                        content=f"Instruction: {sample['prompt']}\n\nText: {completion['response_text']}",
-                    ).model_dump(),
-                ])
+    # # ASPECT ANNOTATION # disabled for now
+    # logger.info("Annotating completions on aspects")
+    # aspects = list(ASPECT2ANNOTATION_PROMPT)
+    # for aspect in aspects:
+    #     aspect_annotation_prompt = ASPECT2ANNOTATION_PROMPT[aspect]
+    #     for sample, annotated_completions in zip(dataset, all_annotated_completions):
             
-            # generate responses for all messages
-            response_texts = get_response_texts(model, tokenizer, all_messages, sampling_params)
+    #         # identify completions that need annotation for this aspect
+    #         idxs_needing_annotation = [
+    #             i for i, completion in enumerate(sample["completions"])
+    #             if aspect not in {_["aspect"] for _ in completion["annotations"]}
+    #         ]
 
-            # extract annotations from response texts (warn, but don't fail if parsing error)
-            for i, response_text in zip(idxs_needing_annotation, response_texts):
-                try:
-                    annotation = parse_annotation_from_response_text(aspect, response_text)
-                    sample["completions"][i]["annotations"].append(annotation)                
-                except:
-                    print(f"Failed to annotate a completion for prompt_id={sample['prompt_id']} on aspect={aspect}")
+    #         # construct messages for annotation of each completion
+    #         all_messages = []
+    #         for i in idxs_needing_annotation:
+    #             completion = sample["completions"][i]
+    #             all_messages.append([
+    #                 Message(
+    #                     role="system", 
+    #                     content=PREFERENCE_ANNOTATION_SYSTEM_PROMPT,
+    #                 ).model_dump(),
+    #                 Message(
+    #                     role="user", 
+    #                     content=f"{aspect_annotation_prompt}\n\nInstruction: {sample['prompt']}\n\nText: {completion['response_text']}",
+    #                 ).model_dump(),
+    #             ])
+            
+    #         # generate responses for all messages
+    #         response_texts = get_response_texts(model, tokenizer, all_messages, sampling_params)
+
+    #         # extract annotations from response texts (warn, but don't fail if parsing error)
+    #         for i, response_text in zip(idxs_needing_annotation, response_texts):
+    #             try:
+    #                 annotation = parse_annotation_from_response_text(response_text, aspect)
+    #                 annotated_completions[i]["annotations"].append(annotation)
+    #             except:
+    #                 logger.info(f"Failed to annotate a completion for prompt_id={sample['prompt_id']} on aspect={aspect}")
+    #                 logger.info(response_text)
         
-        if args.debug:
-            logger.info("Debug mode: only annotating on one aspect")
-            break
+    #     if args.debug:
+    #         logger.info("Debug mode: only annotating on one aspect")
+    #         break
 
     # CRITIQUE ANNOTATION
     logger.info("Critiquing completions")
-    for sample in tqdm(dataset):
+    for sample, annotated_completions in zip(dataset, all_annotated_completions):
         # identify completions that need an "overall" critique
         idxs_needing_annotation = [
             i for i, completion in enumerate(sample["completions"])
@@ -155,8 +159,10 @@ def annotate(
         for i in idxs_needing_annotation:
             completion = sample["completions"][i]
             all_messages.append([
-                Message(role="system", content=CRITIQUE_ANNOTATION_SYSTEM_PROMPT).model_dump(),
-                Message(role="system", content=FEEDBACK_ANNOTATION_SYSTEM_PROMPT).model_dump(),
+                Message(
+                    role="system", 
+                    content=CRITIQUE_ANNOTATION_SYSTEM_PROMPT + "\n" + FEEDBACK_ANNOTATION_SYSTEM_PROMPT
+                ).model_dump(),
                 Message(
                     role="user", 
                     content=f"Instruction: {sample['prompt']}\n\nText: {completion['response_text']}",
@@ -169,10 +175,16 @@ def annotate(
         # extract critiques from response texts (warn, but don't fail if parsing error)
         for i, response_text in zip(idxs_needing_annotation, response_texts):
             try:
-                critique = parse_critique_from_response_text(aspect, response_text)
-                sample["completions"][i].update(critique)
+                critique = parse_critique_from_response_text(response_text)
+                annotated_completions[i].update(critique)
             except:
-                print(f"Failed to critique a completion for prompt_id={sample['prompt_id']} on overall")
+                logger.info(f"Failed to critique a completion for prompt_id={sample['prompt_id']} on overall")
+                logger.info(response_text)
+
+    # replace existing completions with annotated completions
+    dataset = dataset.remove_columns("completions")
+    dataset = dataset.add_column("completions", all_annotated_completions)
+    return dataset
 
 if __name__ == "__main__":
     args = parse_args()
@@ -189,8 +201,8 @@ if __name__ == "__main__":
         lambda x: PromptWithCompletions(**x).model_dump()
     )
     if args.debug:
-        logger.info("Debug mode: only generating completions for the first 10 samples")
-        dataset = dataset.select(range(10))
+        logger.info("Debug mode: only generating completions for the first 2 samples")
+        dataset = dataset.select(range(2))
 
     logger.info(f"Using {args.model_name} for annotation")
     model, tokenizer = load_model(args.model_name, args.model_class)
@@ -201,7 +213,7 @@ if __name__ == "__main__":
     )
 
     logger.info("Annotating dataset")
-    annotate(dataset, model, tokenizer, sampling_params)
+    dataset = annotate(dataset, model, tokenizer, sampling_params)
 
     logger.info(f"Saving annotated dataset to {args.output_path}")
     dataset.save_to_disk(args.output_path)
