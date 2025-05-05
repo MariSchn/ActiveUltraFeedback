@@ -62,7 +62,7 @@ def sample_system_prompt(principle: str) -> str:
 
 def load_model(
         model_name: str, 
-        model_class: str = "transformers",
+        model_class: str = DEFAULT_MODEL_CLASS,
         max_num_gpus: int | None = None, 
         **model_kwargs,
     ) -> Union[
