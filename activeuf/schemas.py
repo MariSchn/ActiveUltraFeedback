@@ -1,66 +1,55 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, root_validator
 from typing import Optional
 
+from activeuf.configs import PROMPT_SOURCES
+
+class Prompt(BaseModel):
+    source: str | None
+    prompt: str
+    prompt_id: str
+
+    @root_validator(pre=True)
+    def check_source(cls, values):
+        source = values["source"]
+        if source is not None and source not in PROMPT_SOURCES:
+            raise ValueError(f"Invalid source: {source}. Must be one of {PROMPT_SOURCES}.")
+        return values
+
 class Annotation(BaseModel):
+    annotator_name: str
     aspect: str
 
     rating: str
     rating_rationale: str
     
-    type_rating: Optional[str] = None
-    type_rationale: Optional[str] = None
-
-class Completion(BaseModel):
-    model_name: str
-    principle: str
-    principle_prompt: str
-    response_text: str
-
-    annotations: Optional[list[Annotation]] = []
-
-    critique: Optional[str] = None
-    overall_score: Optional[str] = None
-
-class Sample(BaseModel):
-    instruction: str
-    correct_answers: Optional[list[str]] = []
-    incorrect_answers: Optional[list[str]] = []
-
-    model_names: Optional[list[str]] = []
-    completions: Optional[list[Completion]] = []
+    type: str | None = None
+    type_rationale: str | None = None
 
 class Message(BaseModel):
-    content: str
     role: str
+    content: str
 
-class BinaryPreferenceConversation(BaseModel):
+class Completion(BaseModel):
+    model: str
+    principle: str
+    system_prompt: str
+    messages: list[Message]
+    response_text: str
+
+    annotations: list[Annotation] = Field(default_factory=list)
+    critique: str | None = None
+    overall_score: str | None = None
+
+class PromptWithCompletions(Prompt):
+    completions: list[Completion] = Field(default_factory=list)
+
+class BinaryPreferenceConversation(Prompt):
     chosen: list[Message]
     rejected: list[Message]
+    messages: list[Message]
+
     score_chosen: float
     score_rejected: float
 
-if __name__ == "__main__":
-    annotation = Annotation(
-        principle="helpfulness", 
-        rating="2", 
-        rating_rationale="I liked it"
-    )
-    print(annotation)
-
-    completion = Completion(
-        model_name="gpt-2",
-        principle="honesty",
-        principle_prompt="How can I help you?",
-        response_text="I can help you with that.",
-        annotations=[annotation],
-    )
-    print(completion)
-
-    sample = Sample(
-        instruction="How can I help you?",
-        correct_answers=["I can help you with that."],
-        incorrect_answers=["I can't help you with that."],
-        model_names=["gpt-2"],
-        completions=[completion],
-    )
-    print(sample)
+    completion_chosen: Completion
+    completion_rejected: Completion

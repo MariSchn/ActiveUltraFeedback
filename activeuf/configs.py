@@ -5,65 +5,57 @@ LOCAL_ENV_PATH = ".env.local"
 
 SEED = 123
 MAX_NUM_GPUS = 4
-MODEL_CLASS = "transformers"  # Which package to use for the model. ["transformers", "pipeline" "vllm"]
+DEFAULT_MODEL_CLASS = "vllm"  # Which package to use for the model. ["transformers", "pipeline" "vllm"]
 
 # ====================================
 #               DATASETS              
 # ====================================
 
-DATASET_MAP = {
-    "ultrafeedback": "allenai/ultrafeedback_binarized_cleaned",
-    "truthful_qa": "truthfulqa/truthful_qa", 
-    # "false_qa": "",
-    # "sharegpt": "",
-    # "ultrachat": "",
-    # "flan": "",
-    # "evol_instruct": "",
-}
-DATASET_POOL = list(DATASET_MAP.keys())
-
-# ====================================
-#               MODELS              
-# ====================================
-
-# TODO: Complete model map
-MODEL_MAP = {
-    "gemma-3-1b": "google/gemma-3-1b-it",
-
-    "smollm-2-135m": "HuggingFaceTB/SmolLM2-135M-Instruct",
-    "smollm-2-360m": "HuggingFaceTB/SmolLM2-360M-Instruct",
-    "smollm-2-1.7b": "HuggingFaceTB/SmolLM2-1.7B-Instruct",
-
-    "qwen-2.5-0.5b": "Qwen/Qwen2.5-0.5B-Instruct",
-    "qwen-2.5-1.5b": "Qwen/Qwen2.5-1.5B-Instruct",
-    "qwen-2.5-3b": "Qwen/Qwen2.5-3B-Instruct",
-    "qwen-2.5-7b": "Qwen/Qwen2.5-7B-Instruct",
-    "qwen-2.5-14b": "Qwen/Qwen2.5-14B-Instruct",
-    "qwen-2.5-32b": "Qwen/Qwen2.5-32B-Instruct",
-    "qwen-2.5-72b": "Qwen/Qwen2.5-72B-Instruct",
-
-    "llama-3.2-1b": "meta-llama/Llama-3.2-1B-Instruct",
-    "llama-3.2-3b": "meta-llama/Llama-3.2-3B-Instruct",
-    "llama-3.3-70b": "meta-llama/Llama-3.3-70B-Instruct",
-
-    "phi-4": "microsoft/phi-4",
-    "phi-4-mini": "microsoft/Phi-4-mini-instruct",
-}
-MODEL_POOL = list(MODEL_MAP.keys())
-
-# Define the data type with which each model should be loaded
-MODEL2DTYPE = {
-    "starchat": "bfloat16",
-    "mpt-30b-chat": "bfloat16",
-    "falcon-40b-instruct": "bfloat16",
+PROMPT_SOURCES = {
+    "evol_instruct",
+    "false_qa",
+    "flan_v2_cot",
+    "flan_v2_flan2021",
+    "flan_v2_niv2",
+    "flan_v2_p3",
+    "sharegpt",
+    "ultrachat",
 }
 
 # ====================================
 #         COMPLETION GENERATION       
 # ====================================
 
+MODEL_APIS = {
+    "gpt-3",
+    "gpt-4",
+}
+
+COMPLETION_MODEL_PATHS = {
+    "google/gemma-3-1b-it",
+
+    "HuggingFaceTB/SmolLM2-135M-Instruct",
+    "HuggingFaceTB/SmolLM2-360M-Instruct",
+    "HuggingFaceTB/SmolLM2-1.7B-Instruct",
+
+    "Qwen/Qwen2.5-0.5B-Instruct",
+    "Qwen/Qwen2.5-1.5B-Instruct",
+    "Qwen/Qwen2.5-3B-Instruct",
+    "Qwen/Qwen2.5-7B-Instruct",
+    "Qwen/Qwen2.5-14B-Instruct",
+    "Qwen/Qwen2.5-32B-Instruct",
+    "Qwen/Qwen2.5-72B-Instruct",
+
+    "meta-llama/Llama-3.2-1B-Instruct",
+    "meta-llama/Llama-3.2-3B-Instruct",
+    "meta-llama/Llama-3.3-70B-Instruct",
+
+    "microsoft/phi-4",
+    "microsoft/Phi-4-mini-instruct",
+}
+
 # ! When changing this from 4, the prompt template needs to be changed as well
-NUM_MODELS = len(MODEL_POOL)  
+NUM_COMPLETION_MODELS = len(COMPLETION_MODEL_PATHS)
 
 # General parameters for the completions generation step
 COMPLETION_MAX_TOKENS = 1024
@@ -80,7 +72,7 @@ PRINCIPLES = [
 DEFAULT_PRINCIPLE = "helpfulness"
 
 # System prompts to be used when generating completions
-PRINCIPLE2PROMPTS = {
+PRINCIPLE2SYSTEM_PROMPTS = {
     "helpfulness": HELPFULNESS_COMPLETION_SYSTEM_PROMPTS,
     "honesty": HONESTY_COMPLETION_SYSTEM_PROMPTS,
     "truthfulness": TRUTHFULNESS_COMPLETION_SYSTEM_PROMPTS,
@@ -88,14 +80,13 @@ PRINCIPLE2PROMPTS = {
 }
 
 # Define which principles are used for which datasets
-DATASET2PRINCIPLE_POOL = {
-    "ultrafeedback": ["helpfulness", "honesty", "truthfulness"],
+PROMPT_SOURCE2PRINCIPLES = {
     "truthful_qa": ["honesty", "truthfulness"],
-    # "sharegpt": ["helpfulness", "honesty", "truthfulness"],
-    # "ultrachat": ["helpfulness", "honesty", "truthfulness"],
-    # "flan": ["helpfulness", "verbalized_calibration"],
-    # "false_qa": ["honesty", "truthfulness"],
-    # "evol_instruct": ["helpfulness"],
+    "sharegpt": ["helpfulness", "honesty", "truthfulness"],
+    "ultrachat": ["helpfulness", "honesty", "truthfulness"],
+    "flan": ["helpfulness", "verbalized_calibration"],
+    "false_qa": ["honesty", "truthfulness"],
+    "evol_instruct": ["helpfulness"],
 }
 
 # ====================================
@@ -105,8 +96,6 @@ DATASET2PRINCIPLE_POOL = {
 ANNOTATION_MODEL = "" 
 
 # General parameters for the annotation step
-ANNOTATE_PREFERENCE = True
-ANNOTATE_CRITIQUE = True
 NUM_SHUFFLES = 1
 
 ANNOTATION_MAX_TOKENS = 1024
@@ -132,22 +121,14 @@ ASPECT2ANNOTATION_PROMPT = {
     "instruction_following": INSTRUCTION_FOLLOWING_ANNOTATION_SYSTEM_PROMPT,
     "honesty": HONESTY_ANNOTATION_SYSTEM_PROMPT,
     "truthfulness": TRUTHFULNESS_ANNOTATION_SYSTEM_PROMPT,
-    "truthfulness_without_answer": TRUTHFULNESS_WITHOUT_ANSWER_ANNOTATION_SYSTEM_PROMPT,
     "helpfulness": HELPFULNESS_ANNOTATION_SYSTEM_PROMPT,
-    "helpfulness_without_answer": HELPFULNESS_WITHOUT_ANSWER_ANNOTATION_SYSTEM_PROMPT,
-    "feedback": FEEDBACK_ANNOTATION_SYSTEM_PROMPT
 }
 
 # Regex patterns used to extract the ratings and rationales from the annotation model's response
 ASPECT2ANNOTATION_PATTERN = {
     "instruction_following": r"Rating: (.+?)\nRationale: (.+)",
     "honesty": r"Rating: (.+?)\nRationale: (.+)",
-    "truthfulness": r"Type: (.+?)\nRationale: (.+?)\nRating: (.+?)\nRationale: (.+)",
-    "helpfulness": r"Type: (.+?)\nRationale: (.+?)\nRating: (.+?)\nRationale: (.+)"
+    "truthfulness": r"Type: (.+?)\nType rationale: (.+?)\nRating: (.+?)\nRationale: (.+)",
+    "helpfulness": r"Type: (.+?)\nType rationale: (.+?)\nRating: (.+?)\nRationale: (.+)",
 }
-
-# Sanity checks
-assert DEFAULT_PRINCIPLE in PRINCIPLES
-assert sorted(list(PRINCIPLE2PROMPTS.keys())) == sorted(PRINCIPLES)
-assert sorted(list(DATASET2PRINCIPLE_POOL.keys())) == sorted(DATASET_POOL)
-assert set(principle for pool in DATASET2PRINCIPLE_POOL.values() for principle in pool).issubset(set(PRINCIPLES))
+FEEDBACK_ANNOTATION_PATTERN = r"Feedback: (.+?)\nOverall score: (\d+)"
