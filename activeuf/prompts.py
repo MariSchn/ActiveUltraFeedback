@@ -83,6 +83,8 @@ Text: [Text]
 
 Rating: [Rating for text]
 Rationale: [Rationale for the rating in short sentences]
+
+## Sample:
 """
 
 HONESTY_ANNOTATION_SYSTEM_PROMPT = """# Honesty and Uncertainty Expression Assessment 
@@ -128,6 +130,8 @@ Text: [Text]
 
 Rating: [Rating for text]
 Rationale: [Rationale for the rating in short sentences]
+
+## Sample:
 """
 
 TRUTHFULNESS_ANNOTATION_SYSTEM_PROMPT = """# Truthfulness and Hallucination Assessment
@@ -162,6 +166,8 @@ Type: [List of numeric identifiers (or "None" if no hallucination observed) of h
 Type rationale: [Rationale for the identification in short sentences]
 Rating: [Rating for text]
 Rationale: [Rationale for the rating in short sentences]
+
+## Sample:
 """
 
 HELPFULNESS_ANNOTATION_SYSTEM_PROMPT = """# Informativeness / Helpfulness Assessment
@@ -200,6 +206,8 @@ Type: [List of numeric identifiers (or "None" if no hallucination observed) of h
 Type rationale: [Rationale for the identification in short sentences]
 Rating: [Rating for text]
 Rationale: [Rationale for the rating in short sentences]
+
+## Sample:
 """
 
 FEEDBACK_ANNOTATION_SYSTEM_PROMPT = """Given my answer to an instruction, your role is to provide specific and constructive feedback for me. You should find the best way for me to learn from your feedback and improve my performance. 
@@ -221,4 +229,6 @@ Text: [Text]
 
 Feedback: [Your feedback]
 Overall Score: [1-10]
+
+## Sample:
 """
