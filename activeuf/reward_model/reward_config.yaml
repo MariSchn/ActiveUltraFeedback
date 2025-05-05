@@ -21,7 +21,7 @@ training:
   remove_unused_columns: false
   max_length: 1024
   report_to: none
-  max_steps: 3
+  max_steps: 5000
   truncation: true
   return_tensors: "pt"
 

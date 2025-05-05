@@ -13,7 +13,7 @@ def train_and_save_model(config, args):
     output_dir = args.output_dir
     general_config = config.get("general", {})
     dataset_name = general_config.get("dataset_name", "trl-lib/ultrafeedback_binarized")
-    base_model = general_config.get("base_model", "meta-llama/Llama-3.2-1B-Instruct")
+    base_model = general_config.get("base_model", "meta-llama/Llama-3.2-3B-Instruct")
     random_seed = general_config.get("seed", 42)
     lora_config = config.get("lora", {})
     training_config = config.get("training", {})
@@ -90,9 +90,9 @@ def train_and_save_model(config, args):
 
     with accelerator.main_process_first():
         reward_datasets = dataset.map(preprocess_function, batched=True)
-        # testing training speed on different GPU sizes for specific size datasets.
-        # reward_datasets["train"] = reward_datasets["train"].select(range(8000))
-        # print(f"\n\n Length is: {len(reward_datasets["train"])}\n\n\n")
+        # # # #testing training speed on different GPU sizes for specific size datasets.
+        reward_datasets["train"] = reward_datasets["train"].select(range(5000))
+        print(f"\n\n Length is: {len(reward_datasets["train"])}\n\n\n")
 
     train_dataset = reward_datasets["train"]
     eval_dataset = reward_datasets["test"]
@@ -102,7 +102,7 @@ def train_and_save_model(config, args):
 
     optimizer = AdamW(model.parameters(), lr=float(optimization_config.get("lr", 2e-5)))
 
-    num_training_steps = training_config.get("max_steps", 100) # Limit total steps
+    num_training_steps = training_config.get("max_steps", 5000)
     # total elements considered per step:     num_processes * BATCH_SIZE_PER_GPU  or  NUM_GPUS * BATCH_SIZE_PER_GPU
     lr_scheduler = get_linear_schedule_with_warmup(
         optimizer=optimizer,
@@ -194,12 +194,13 @@ if __name__ == "__main__":
             config = yaml.safe_load(f)
     except FileNotFoundError:
         print(f"Error: The specified reward configuration file '{args.reward_config}' was not found.")
+        print("Continuing with default parameters")
     except yaml.YAMLError as e:
         print(f"Error: Failed to parse the reward configuration file '{args.reward_config}'.")
         print(f"Details: {e}")
+        print("Continuing with default parameters")
     except Exception as e:
         print(f"An unexpected error occurred while loading the reward configuration file: {e}")
-    finally:
         print("Continuing with default parameters")
         
     train_and_save_model(config=config, args=args)

@@ -2,6 +2,7 @@ import random
 import torch
 import json
 import argparse
+import yaml
 import numpy as np
 from torch.utils.data import DataLoader
 from activeuf.uncertainty_quantification.classes import UQTokenizer, UQModelClass, UQTrainer
@@ -34,7 +35,7 @@ def load_prompts_with_completions(completion_dataset, batch_size, shuffle=True) 
 
 def prompts_with_two_completions(prompts_with_completions, rewards, uncertainty, acquisition_function):
     # An array consisting of 2-element arrays (chosen completion indices)
-    selected_ids_per_prompt = acquisition_function.select(rewards, uncertainty)
+    selected_ids_per_prompt = acquisition_function(rewards, uncertainty)
     prompts_with_two_completions_for_annotation = []
 
     for idx, selected_ids in enumerate(selected_ids_per_prompt):
@@ -64,7 +65,7 @@ def save_ultrafeedback_format(prompts_with_completions_for_annotation, output_pa
     return prompts_with_completions_for_annotation    
 
 
-def uncertainty_sampling_loop(uq_model_path, uq_model_config, uq_trainer_path, completion_dataset, num_iterations, acquisition_function_type, batch_size):
+def uncertainty_sampling_loop(uq_model_path, uq_model_config, uq_trainer_path, completion_dataset, num_iterations, acquisition_function_type, batch_size, acquisition_config):
     uq_tokenizer = UQTokenizer.from_pretrained(uq_model_path, uq_model_config)
     uq_model = UQModelClass.from_pretrained(uq_model_path)
     uq_trainer = UQTrainer(UQTokenizer, uq_model, uq_trainer_path)
@@ -73,7 +74,9 @@ def uncertainty_sampling_loop(uq_model_path, uq_model_config, uq_trainer_path, c
     oracle = Oracle()
     
     if acquisition_function_type == "double_thompson_sampling":
-        acquisition_function = DoubleThompsonSampling() # will be changed later.
+        max_iterations = acquisition_config.get("max_iterations", 10)
+        beta = acquisition_config.get("beta", 1)
+        acquisition_function = DoubleThompsonSampling(beta=beta, max_iterations=max_iterations) # will be changed later.
     else: 
         acquisition_function = RandomAcquisitionFunction()
 
@@ -94,7 +97,22 @@ def uncertainty_sampling_loop(uq_model_path, uq_model_config, uq_trainer_path, c
     #TODO: save dataset, Martin's job. (We can add prompt_ids here)
     
 def main(config):
-    uncertainty_sampling_loop(config.uq_model_path, config.uq_model_config, config.uq_trainer_path, config.completion_dataset, config.num_iterations, config.acquisition_function_type, config.batch_size)
+    try:
+        # Attempt to load the reward configuration file
+        with open(config.acquisition_config, "r") as f:
+            acquisition_config = yaml.safe_load(f)
+    except FileNotFoundError:
+        print(f"Error: The specified reward configuration file '{config.acquisition_config}' was not found.")
+        print("Continuing with default parameters")
+    except yaml.YAMLError as e:
+        print(f"Error: Failed to parse the reward configuration file '{config.reward_config}'.")
+        print(f"Details: {e}")
+        print("Continuing with default parameters")
+    except Exception as e:
+        print(f"An unexpected error occurred while loading the reward configuration file: {e}")
+        print("Continuing with default parameters")
+
+    uncertainty_sampling_loop(config.uq_model_path, config.uq_model_config, config.uq_trainer_path, config.completion_dataset, config.num_iterations, config.acquisition_function_type, config.batch_size, acquisition_config)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train reward model using reward config YAML.")
@@ -105,6 +123,7 @@ if __name__ == "__main__":
     parser.add_argument("--num-iterations", type=int, default=10, help="Number of iterations in uncertainty sampling.")
     parser.add_argument("--batch-size", type=int, default=3, help="Batch Size for uncertainty sampling.")
     parser.add_argument("--acquisition_function_type", type=str, default="double_thompson_sampling", help="Acquistion function type")
+    parser.add_argument("--acquisition_config", type=str, default="activeuf/acquisition_function/acquisition_config.yaml", help="acquisition function configuration file path")
     config = parser.parse_args()
 
     main(config)
