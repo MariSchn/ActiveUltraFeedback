@@ -96,8 +96,6 @@ PROMPT_SOURCE2PRINCIPLES = {
 ANNOTATION_MODEL = "" 
 
 # General parameters for the annotation step
-ANNOTATE_PREFERENCE = True
-ANNOTATE_CRITIQUE = True
 NUM_SHUFFLES = 1
 
 ANNOTATION_MAX_TOKENS = 1024
@@ -133,4 +131,4 @@ ASPECT2ANNOTATION_PATTERN = {
     "truthfulness": r"Type: (.+?)\nType rationale: (.+?)\nRating: (.+?)\nRationale: (.+)",
     "helpfulness": r"Type: (.+?)\nType rationale: (.+?)\nRating: (.+?)\nRationale: (.+)",
 }
-FEEDBACK_ANNOTATION_PATTERN = r"Critique: (.+?)\nOverall score: (.+)"
+FEEDBACK_ANNOTATION_PATTERN = r"Feedback: (.+?)\nOverall score: (\d+)"
