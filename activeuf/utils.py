@@ -190,7 +190,7 @@ def get_response_texts(
                 for _ in range(max_api_retry):
                     try:
                         response = openai.ChatCompletion.create(
-                            model="gpt-4",
+                            model=model,
                             messages=messages,
                             temperature=sampling_params.temperature,
                             max_tokens=sampling_params.max_tokens,
@@ -253,7 +253,7 @@ def get_response_texts(
         all_outputs = model.chat(
             all_messages, 
             sampling_params=sampling_params, 
-            # chat_template=tokenizer.chat_template, # * Must be set for Gemma-3-1b-it as otherwise vLLM gets stuck in an infinite requests loop, fetching the same request over and over again
+            chat_template=tokenizer.chat_template, # * Must be set for Gemma-3-1b-it as otherwise vLLM gets stuck in an infinite requests loop, fetching the same request over and over again
             **generate_kwargs
         )
         response_texts = [_.outputs[0].text for _ in all_outputs]
