@@ -1,0 +1,34 @@
+general:
+  base_model: meta-llama/Llama-3.2-1B-Instruct
+  dataset_name: trl-lib/ultrafeedback_binarized
+  seed: 42
+  torch_dtype: bfloat16
+
+lora:
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  bias: none
+  task_type: SEQ_CLS
+  target_module_patterns: ["query", "key", "value"]
+
+training:
+  train_batch_size: 8
+  eval_batch_size: 8
+  epochs: 1
+  grad_acc_steps: 2
+  logging_steps: 10
+  save_strategy: "no"
+  save_steps: 500
+  remove_unused_columns: false
+  max_length: 1024
+  report_to: none
+  max_steps: -1
+  bf16: true
+
+optimization:
+  optimizer: adamw_torch
+  learning_rate: 2e-5
+
+lr_scheduling:
+  num_warmup_steps: 10
