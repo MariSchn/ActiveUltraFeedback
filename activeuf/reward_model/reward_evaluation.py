@@ -5,9 +5,10 @@ import argparse
 import os
 import json
 import pandas as pd
+import subprocess
 
 
-def eval_rewardbench(model, dataset, split, chat_template, batch_size, load_json=False, logging=False):
+def eval_rewardbench(model, dataset, split, chat_template, batch_size, load_json=False, logging=True):
     # Prepare result file path
     result_dir = "results_rewardbench"
     result_file = os.path.join(result_dir, f"{model}.json")
@@ -29,7 +30,7 @@ def eval_rewardbench(model, dataset, split, chat_template, batch_size, load_json
     # Run the command and handle logging
     try:
         if logging:
-            log_file = os.path.join(result_dir, f"{model}_{dataset.split("/")[-1]}log.txt")
+            log_file = os.path.join(result_dir, f"{model}_{dataset.split("/")[-1]}_log.txt")
             with open(log_file, "w") as log:
                 subprocess.run(command, check=True, stdout=log, stderr=log, text=True)
         else:
@@ -145,7 +146,7 @@ def evaluate_datasets(model, dataset_path, split, chat_template, batch_size, col
     sources = set(dataset[column])
     for src in sources:
         local_dataset_path = os.path.join(f"{dataset_path}-{split}", f"{src}.json")
-        eval_rewardbench(model, local_dataset_path, split, chat_template, batch_size, load_json=True)
+        debug_rewardbench(model, local_dataset_path, split, chat_template, batch_size, load_json=True)
 
 
 def collect_results():
@@ -172,15 +173,15 @@ def main(config):
         split= "test_prefs"
         column = "source"
         split_ultrafeedback_dataset(dataset, split, column)
-        #evaluate_datasets(config.model, dataset, split, config.chat_template, config.batch_size, column=column)
-        #eval_rewardbench(config.model, dataset, split, config.chat_template, config.batch_size)
+        evaluate_datasets(config.model, dataset, split, config.chat_template, config.batch_size, column=column)
+        eval_rewardbench(config.model, dataset, split, config.chat_template, config.batch_size)
 
     elif dataset == "allenai/reward-bench":
         split= "filtered"
         column = "subset"
         split_reward_bench_dataset(dataset, split, column)
-        #evaluate_datasets(config.model, dataset, split, config.chat_template, config.batch_size, column=column)
-        #eval_rewardbench(config.model, dataset, split, config.chat_template, config.batch_size)
+        evaluate_datasets(config.model, dataset, split, config.chat_template, config.batch_size, column=column)
+        eval_rewardbench(config.model, dataset, split, config.chat_template, config.batch_size)
 
 
 if __name__ == "__main__":
