@@ -1,9 +1,27 @@
+import random
 from typing import List, Dict
 
 import numpy as np
 
 from datasets import Dataset
 from activeuf.annotate_completions import annotate
+
+def parse_oracle_class(oracle_class: str):
+    """
+    Parses the oracle class name and returns the corresponding oracle class.
+    
+    Args:
+        oracle_class (str): The name of the oracle class to parse.
+        
+    Returns:
+        BaseOracle: The corresponding oracle class.
+    """
+    if oracle_class.lower() == "random":
+        return RandomOracle
+    elif oracle_class.lower() == "ultrafeedback":
+        return UltraFeedbackOracle
+    else:
+        raise ValueError(f"Unknown oracle class: {oracle_class}")
 
 class BaseOracle:
     """
@@ -58,8 +76,19 @@ class RandomOracle(BaseOracle):
                 - "chosen": The chosen completion text.
                 - "rejected": The rejected completion text.
         """
-        raise NotImplementedError("TODO: Implement the RandomOracle")
+        annotated_samples = []
 
+        for sample in prompts_with_completions_for_annotation:
+            chosen, rejected = random.sample([sample["selected1"], sample["selected2"]], 2)
+
+            annotated_samples.append({
+                "prompt": sample["prompt"],
+                "chosen": chosen,
+                "rejected": rejected
+            })
+
+        return annotated_samples
+    
 class UltraFeedbackOracle(BaseOracle):
     """
     This oracle implements the annotation approach proposed in the paper https://arxiv.org/abs/2310.01377.
