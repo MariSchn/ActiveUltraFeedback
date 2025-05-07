@@ -31,7 +31,7 @@ class BaseOracle:
     def __init__(self):
         pass
 
-    def __call__(self, prompts_with_completions: List[Dict[str, str]]) -> Dict[str, List[str]]:
+    def __call__(self, prompts_with_completions: List[Dict[str, str]]) -> List[Dict[str, str]]:
         """
         This function should be overridden by subclasses to implement the specific oracle logic.
         The oracle takes prompts with two completions and selects which completion is the chosen and which is the rejected one.
@@ -43,11 +43,11 @@ class BaseOracle:
                 - "completion_1": The first completion text.
                 - "completion_2": The second completion text.
         Returns:
-            Dict[str, List[str]]: A dictionary containing a the annotated samples
-                The dictionary has the following keys
-                - "prompt": The prompt texts.
-                - "chosen": The chosen completion texts.
-                - "rejected": The rejected completion texts.
+            List[Dict[str, str]]: A list of dictionaries, each containing a sample.
+                Each dictionary should have the following keys
+                - "prompt": The prompt text.
+                - "chosen": The chosen completion text.
+                - "rejected": The rejected completion text.
         """
         raise NotImplementedError("This method should be overridden by subclasses.")
 
@@ -59,7 +59,7 @@ class RandomOracle(BaseOracle):
     def __init__(self):
         super().__init__()
 
-    def __call__(self, prompts_with_completions: List[Dict[str, str]]) -> Dict[str, List[str]]:
+    def __call__(self, prompts_with_completions: List[Dict[str, str]]) -> List[Dict[str, str]]:
         """
         Rnadomly selects among the two passed completions which one is the chosen and which one is the rejected one.
         
@@ -70,24 +70,23 @@ class RandomOracle(BaseOracle):
                 - "completion_1": The first completion text.
                 - "completion_2": The second completion text.
         Returns:
-            Dict[str, List[str]]: A dictionary containing a the annotated samples
-                The dictionary has the following keys
-                - "prompt": The prompt texts.
-                - "chosen": The chosen completion texts.
-                - "rejected": The rejected completion texts.
+            List[Dict[str, str]]: A list of dictionaries, each containing a sample.
+                Each dictionary should have the following keys
+                - "prompt": The prompt text.
+                - "chosen": The chosen completion text.
+                - "rejected": The rejected completion text.
         """
-        annotated_samples = {
-            "prompt": [],
-            "chosen": [],
-            "rejected": []
-        }
+        annotated_samples = []
 
         for sample in prompts_with_completions:
             chosen, rejected = random.sample([sample["completion_1"], sample["completion_2"]], 2)
 
-            annotated_samples["prompt"].append(sample["prompt"])
-            annotated_samples["chosen"].append(chosen)
-            annotated_samples["rejected"].append(rejected)
+            annotated_sample = {
+                "prompt": sample["prompt"],
+                "chosen": chosen,
+                "rejected": rejected
+            }
+            annotated_samples.append(annotated_sample)
 
         return annotated_samples
     
@@ -115,7 +114,7 @@ class UltraFeedbackOracle(BaseOracle):
         self.dataset_cache = dataset_cache
         self.output_path = output_path
 
-    def __call__(self, prompts_with_completions: List[Dict[str, str]]) -> Dict[str, List[str]]:
+    def __call__(self, prompts_with_completions: List[Dict[str, str]]) -> List[Dict[str, str]]:
         """
         Selects among the two passed completions which one is the chosen and which one is the rejected one.
         
@@ -126,10 +125,10 @@ class UltraFeedbackOracle(BaseOracle):
                 - "completion_1": The first completion text.
                 - "completion_2": The second completion text.
         Returns:
-            Dict[str, List[str]]: A dictionary containing a the annotated samples
-                The dictionary has the following keys
-                - "prompt": The prompt texts.
-                - "chosen": The chosen completion texts.
-                - "rejected": The rejected completion texts.
+            List[Dict[str, str]]: A list of dictionaries, each containing a sample.
+                Each dictionary should have the following keys
+                - "prompt": The prompt text.
+                - "chosen": The chosen completion text.
+                - "rejected": The rejected completion text.
         """
         raise NotImplementedError("TODO: Implement the UltraFeedbackOracle")

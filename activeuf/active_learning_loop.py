@@ -25,19 +25,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--uq_model_config", type=str, help="Path to uncertainty quantification config.")
     parser.add_argument("--uq_trainer_path", type=str, help="Path to uncertainty quantification trainer.")
 
+    parser.add_argument("--oracle_type", type=str, default="ultrafeedback", help="Type of oracle to use.", choices=["random", "ultrafeedback"])
+
     parser.add_argument("--completion_dataset", type=str, required=True, help="Path to the prompt dataset.")
     parser.add_argument("--output_size", type=int, default=None, help="Desired output size of the dataset. If not provided, the entire input dataset will be used")
     parser.add_argument("--output_path", type=str, help="Path to save the annotated dataset.")
 
     parser.add_argument("--num_iterations", type=int, default=10, help="Number of iterations in uncertainty sampling.")
     parser.add_argument("--batch_size", type=int, default=3, help="Batch Size for uncertainty sampling.")
+    parser.add_argument("--seed", type=int, default=SEED, help="Random seed for reproducibility.")
     
     parser.add_argument("--acquisition_function_type", type=str, default="double_thompson_sampling", help="Acquistion function type")
     parser.add_argument("--acquisition_config", type=str, default="activeuf/acquisition_function/acquisition_config.yaml", help="acquisition function configuration file path")
     args = parser.parse_args()
 
     if not args.output_path:
-        args.output_path = f"{args.dataset_path.rstrip('/')}-active"
+        args.output_path = f"{args.completion_dataset.rstrip('/')}-active"
     assert not os.path.exists(args.output_path), f"Output path {args.output_path} already exists"
 
     return args
@@ -60,13 +63,13 @@ if __name__ == "__main__":
     except FileNotFoundError:
         print(f"Error: The specified reward configuration file '{args.acquisition_config}' was not found.")
     except yaml.YAMLError as e:
-        print(f"Error: Failed to parse the reward configuration file '{args.reward_config}'.")
+        print(f"Error: Failed to parse the acquisition configuration file '{args.acquisition_config}'.")
         print(f"Details: {e}")
     except Exception as e:
-        print(f"An unexpected error occurred while loading the reward configuration file: {e}")
+        print(f"An unexpected error occurred while loading the acquisition configuration file: {e}")
 
-    logger.info(f"Loading Input Dataset {args.dataset_path}")
-    dataset = load_from_disk(args.dataset_path)
+    logger.info(f"Loading Input Dataset {args.completion_dataset}")
+    dataset = load_from_disk(args.completion_dataset)
     dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
 
     logger.info(f"Creating acquisition function {args.acquisition_function_type}")
@@ -107,21 +110,28 @@ if __name__ == "__main__":
 
         # Select the completions that should be used for the binarized sample
         selected_idx = acquisition_function(reward, lower_bound, upper_bound)
-        selected_completions = None  # TODO
+        selected_completions = []
+        for i, (idx_1, idx_2) in enumerate(selected_idx):
+            selected_completions.append({
+                "prompt": batch["prompt"][i],
+                "completion_1": batch["completions"][i][idx_1],
+                "completion_2": batch["completions"][i][idx_2]
+            })
 
         # Call oracle to determine which is chosen and which is rejected
-        labels = oracle(selected_completions)
+        annotated_batch = oracle(selected_completions)
 
         # Add the batch to the output dataset
-        # TODO: Check if this is done properly
-        output_dataset = output_dataset.add_item({
-            "prompt": batch["prompt"],
-            "chosen": None,
-            "rejected": None
-        })
+        for sample in annotated_batch:
+            output_dataset = output_dataset.add_item(sample)
 
         # Train the reward model with the new data
-        uq_pipeline.train(output_dataset, labels)
+        uq_pipeline.train(output_dataset)
+
+        # Check if we have reached the desired output size
+        if args.output_size and len(output_dataset) >= args.output_size:
+            logger.info(f"Reached desired output size of {args.output_size}. Stopping data generation.")
+            break
 
     logger.info(f"Saving output dataset to {args.output_path}")
     os.makedirs(args.output_path, exist_ok=True)
