@@ -6,7 +6,7 @@ import yaml
 import numpy as np
 from torch.utils.data import DataLoader
 from activeuf.uncertainty_quantification.classes import UQTokenizer, UQModelClass, UQTrainer
-from activeuf.oracle.classes import Oracle
+from activeuf.oracle.oracles import BaseOracle, RandomOracle, UltraFeedbackOracle
 from activeuf.acquisition_function.acquisition import RandomAcquisitionFunction, DoubleThompsonSampling
 
 def load_prompts_with_completions(completion_dataset, batch_size, shuffle=True) -> DataLoader:
