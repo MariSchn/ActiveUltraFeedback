@@ -25,10 +25,10 @@ The oracle is then used to determine which completion is chosen and which is rej
 
 Example run command:
     torchrun -m activeuf.active_learning_loop \
-        --completion_dataset /iopsstor/scratch/cscs/smarian/datasets/allenai/ultrafeedback_binarized_cleaned/train_prefs-with-completions-merged \
+        --completion_dataset /iopsstor/scratch/cscs/smarian/datasets/allenai/ultrafeedback_binarized_cleaned/train_prefs-with-completions-sanitized \
         --output_size 100
 
-    torchrun -m activeuf.active_learning_loop --completion_dataset /iopsstor/scratch/cscs/smarian/datasets/allenai/ultrafeedback_binarized_cleaned/train_prefs-with-completions-merged --output_size 100
+    torchrun -m activeuf.active_learning_loop --completion_dataset /iopsstor/scratch/cscs/smarian/datasets/allenai/ultrafeedback_binarized_cleaned/train_prefs-with-completions-sanitized --output_size 100
 """
 
 def parse_args() -> argparse.Namespace:
@@ -80,6 +80,7 @@ if __name__ == "__main__":
     logger.info(f"Loading Input Dataset {args.completion_dataset}")
     dataset = load_from_disk(args.completion_dataset)
     dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
+    # TODO: Implement custom collate function to handle batching better. E.g. the role field of messages has length of batch_size, even though it should not have been batched
 
     logger.info(f"Creating acquisition function {args.acquisition_function_type}")
     if args.acquisition_function_type == "double_thompson_sampling":
@@ -119,9 +120,31 @@ if __name__ == "__main__":
         "rejected": []
     })
 
+    num_completions = len(dataset[0]["completions"])
     for batch in tqdm(dataloader, total=args.output_size // args.batch_size):
+        # Prepare batch to be input into the model
+        # TODO: Check if this can be done nicer, e.g. using a custom collate function
+        prompts = [
+            [
+                {
+                    "role": "user", 
+                    "content": prompt},
+            ] * 16
+            for prompt in batch["prompt"]
+        ]
+        completions = [
+            ([
+                {
+                    "role": "system", 
+                    "content": batch["completions"][model_idx]["response_text"][sample_idx]
+                } 
+            ]
+            for model_idx in range(num_completions))
+            for sample_idx in range(args.batch_size)
+        ]
+
         # Get reward and uncertainty (lower and upper bounds)
-        result = uq_pipeline(batch)
+        result = uq_pipeline.predict(prompts, completions)
         reward, lower_bound, upper_bound = result[0, :], result[1, :], result[2, :]
 
         # Select the completions that should be used for the binarized sample
