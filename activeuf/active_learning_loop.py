@@ -121,30 +121,40 @@ if __name__ == "__main__":
     })
 
     num_completions = len(dataset[0]["completions"])
+    tokenizer = uq_pipeline.model.tokenizer
     for batch in tqdm(dataloader, total=args.output_size // args.batch_size):
         # Prepare batch to be input into the model
         # TODO: Check if this can be done nicer, e.g. using a custom collate function
-        prompts = [
+        all_messages = [
             [
                 {
                     "role": "user", 
-                    "content": prompt},
-            ] * 16
-            for prompt in batch["prompt"]
-        ]
-        completions = [
-            ([
+                    "content": batch["prompt"][sample_idx]
+                },
                 {
                     "role": "system", 
                     "content": batch["completions"][model_idx]["response_text"][sample_idx]
                 } 
             ]
-            for model_idx in range(num_completions))
+            for model_idx in range(num_completions)
             for sample_idx in range(args.batch_size)
         ]
 
+        model_inputs = tokenizer.apply_chat_template(
+            all_messages,
+            tokenize=False,
+            add_generation_prompt=False,
+        )
+        model_inputs = tokenizer(
+            model_inputs, 
+            padding=True,
+            pad_to_multiple_of=8,
+            return_tensors="pt",
+        ).to(uq_pipeline.model.device)
+
         # Get reward and uncertainty (lower and upper bounds)
-        result = uq_pipeline.predict(prompts, completions)
+        outputs = uq_pipeline.model(**model_inputs)
+        result = outputs["rewards"].detach()
         reward, lower_bound, upper_bound = result[0, :], result[1, :], result[2, :]
 
         # Select the completions that should be used for the binarized sample
