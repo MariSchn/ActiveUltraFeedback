@@ -81,6 +81,14 @@ def parse_critique_from_response_text(response_text: str) -> dict[str, str]:
 
     return {"critique": groups[0], "overall_score": groups[1]}
 
+def annotate_completion(
+        completion: dict[str, str],
+        model: str | LLM | Pipeline | PreTrainedModel,
+        tokenizer: AutoTokenizer | None,
+        sampling_params: SamplingParams | None,
+    ) -> Completion:
+    raise NotImplementedError("TODO: Implement this function to annotate a single completion to be used in the loop")
+
 def annotate(
         dataset: Dataset, 
         model: str | LLM | Pipeline | PreTrainedModel, 
@@ -106,7 +114,7 @@ def annotate(
     # aspects = list(ASPECT2ANNOTATION_PROMPT)
     # for aspect in aspects:
     #     aspect_annotation_prompt = ASPECT2ANNOTATION_PROMPT[aspect]
-    #     for sample, annotated_completions in zip(dataset, all_annotated_completions):
+    #     for sample, annotated_completions in tqdm(zip(dataset, all_annotated_completions)):
             
     #         # identify completions that need annotation for this aspect
     #         idxs_needing_annotation = [
@@ -130,7 +138,7 @@ def annotate(
     #             ])
             
     #         # generate responses for all messages
-    #         response_texts = get_response_texts(model, tokenizer, all_messages, sampling_params)
+    #         response_texts = get_response_texts(model, tokenizer, all_messages, sampling_params, use_tqdm=False)
 
     #         # extract annotations from response texts (warn, but don't fail if parsing error)
     #         for i, response_text in zip(idxs_needing_annotation, response_texts):
@@ -147,7 +155,8 @@ def annotate(
 
     # CRITIQUE ANNOTATION
     logger.info("Critiquing completions")
-    for sample, annotated_completions in zip(dataset, all_annotated_completions):
+    zipped = list(zip(dataset, all_annotated_completions))
+    for sample, annotated_completions in tqdm(zipped, total=len(zipped)):
         # identify completions that need an "overall" critique
         idxs_needing_annotation = [
             i for i, completion in enumerate(sample["completions"])
@@ -170,7 +179,7 @@ def annotate(
             ])
 
         # generate responses for all messages
-        response_texts = get_response_texts(model, tokenizer, all_messages, sampling_params)
+        response_texts = get_response_texts(model, tokenizer, all_messages, sampling_params, use_tqdm=False)
         
         # extract critiques from response texts (warn, but don't fail if parsing error)
         for i, response_text in zip(idxs_needing_annotation, response_texts):

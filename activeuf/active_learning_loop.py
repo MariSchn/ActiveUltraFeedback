@@ -8,7 +8,7 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader
 from datasets import load_from_disk, Dataset
 
-from rewarduq.models import ENNRewardModelPipeline
+from rewarduq.models import ENNRewardModelPipeline, ENNRewardModelConfig, ENNRewardModelTrainerConfig
 
 from activeuf.oracle.oracles import BaseOracle, RandomOracle, UltraFeedbackOracle
 from activeuf.acquisition_function.acquisition import RandomAcquisitionFunction, DoubleThompsonSampling
@@ -18,12 +18,22 @@ from activeuf.schemas import *
 
 logger = get_logger(__name__)
 
+"""
+This script takes a dataset with completions as input and generate a binary preference dataset, determining the best completion (chosen/rejected) pair,
+using an uncertainty quantification reward model, followed by an acquisition function, which determines which 2 completions should be selected for the oracle.
+The oracle is then used to determine which completion is chosen and which is rejected.
+
+Example run command:
+    torchrun -m activeuf.active_learning_loop \
+        --completion_dataset /iopsstor/scratch/cscs/smarian/datasets/allenai/ultrafeedback_binarized_cleaned/train_prefs-with-completions-merged \
+        --output_size 100
+
+    torchrun -m activeuf.active_learning_loop --completion_dataset /iopsstor/scratch/cscs/smarian/datasets/allenai/ultrafeedback_binarized_cleaned/train_prefs-with-completions-merged --output_size 100
+"""
+
 def parse_args() -> argparse.Namespace:
     # Parse arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument("--uq_model_path", type=str, help="Path to uncertainty quantification model.")
-    parser.add_argument("--uq_model_config", type=str, help="Path to uncertainty quantification config.")
-    parser.add_argument("--uq_trainer_path", type=str, help="Path to uncertainty quantification trainer.")
 
     parser.add_argument("--oracle_type", type=str, default="ultrafeedback", help="Type of oracle to use.", choices=["random", "ultrafeedback"])
 
@@ -31,11 +41,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output_size", type=int, default=None, help="Desired output size of the dataset. If not provided, the entire input dataset will be used")
     parser.add_argument("--output_path", type=str, help="Path to save the annotated dataset.")
 
-    parser.add_argument("--num_iterations", type=int, default=10, help="Number of iterations in uncertainty sampling.")
     parser.add_argument("--batch_size", type=int, default=3, help="Batch Size for uncertainty sampling.")
     parser.add_argument("--seed", type=int, default=SEED, help="Random seed for reproducibility.")
     
-    parser.add_argument("--acquisition_function_type", type=str, default="double_thompson_sampling", help="Acquistion function type")
+    parser.add_argument("--acquisition_function_type", type=str, default="double_thompson_sampling", help="Acquistion function type", choices=["double_thompson_sampling", "random"])
     parser.add_argument("--acquisition_config", type=str, default="activeuf/acquisition_function/acquisition_config.yaml", help="acquisition function configuration file path")
     args = parser.parse_args()
 
@@ -90,11 +99,18 @@ if __name__ == "__main__":
     else:
         raise ValueError(f"Unknown oracle type: {args.oracle_type}")
 
-    logger.info(f"Creating UQ model {args.uq_model_path}")
+    logger.info(f"Creating UQ model")
     if args.acquisition_function_type != "random":
         # * If the acquisition function is random, there is no need to calculate uncertainties
         # TODO: Pass correct arguments to the UQ model
-        uq_pipeline = ENNRewardModelPipeline()
+        uq_pipeline = ENNRewardModelPipeline(
+            ENNRewardModelConfig(
+                base_model_name_or_path="meta-llama/Llama-3.2-1B-Instruct"
+            ),
+            ENNRewardModelTrainerConfig(
+
+            )
+        )
 
     logger.info(f"Starting data generation loop")
     output_dataset = Dataset.from_dict({
