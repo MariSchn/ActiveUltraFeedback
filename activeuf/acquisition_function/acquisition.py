@@ -10,7 +10,7 @@ class AcquisitionFunction(ABC):
     Abstract base class for acquisition functions.
     """
     @abstractmethod
-    def __call__(self, rewards: torch.Tensor, uncertainty: torch.Tensor) -> list:
+    def __call__(self, rewards: torch.Tensor, lower_bounds: torch.Tensor, upper_bounds: torch.Tensor) -> list:
         """
         Selects indices of prompts/completions for annotation.
 
@@ -32,7 +32,7 @@ class RandomAcquisitionFunction(AcquisitionFunction):
     def __init__(self):
         super().__init__()
 
-    def __call__(self, rewards: list, uncertainty: list) -> list:
+    def __call__(self, rewards: torch.Tensor, lower_bounds: torch.Tensor, upper_bounds: torch.Tensor) -> list:
         """
         rewards: List of lists (prompt x completions)
         uncertainty: List of lists (same shape, not used here)
@@ -59,11 +59,11 @@ class DoubleThompsonSampling(AcquisitionFunction):
         self.max_iterations = max_iterations
         self.beta = beta
         
-    def __call__(self, rewards: list, uncertainties: list) -> list:
+    def __call__(self, rewards: torch.Tensor, lower_bounds: torch.Tensor, upper_bounds: torch.Tensor) -> list:
         selected_ids_batch = []
         for i in range(len(rewards)):
             #step 1 - selecting first response
-            response_1 = self.dto_optimize(rewards[i], uncertainties[i])
+            response_1 = self.dts_optimize(rewards[i], lower_bounds[i], upper_bounds[i])
             
             #step 2 - selecting second response
             response_2 = response_1
@@ -72,50 +72,24 @@ class DoubleThompsonSampling(AcquisitionFunction):
                 if iterations == self.max_iterations:
                     response_2 = np.random.randint(0, len(rewards[i]))
                 else:
-                    response_2 = self.dto_optimize(rewards[i], uncertainties[i])
+                    response_2 = self.dts_optimize(rewards[i], lower_bounds[i], upper_bounds[i])
                     iterations += 1
             
             selected_ids_batch.append((response_1, response_2))
 
         return selected_ids_batch
         
-    def dto_optimize(self, reward_list, uncertainty_list):
+    """
+        For beta=1, we uniformly sample the reward from the interval [lower_bound; upper_bound].
+    """
+    def dts_optimize(self, reward_list, lower_bound_list, upper_bound_list):
         r_epistemic_index = []
         for j in range(len(reward_list)):
             z = np.random.uniform(-1, 1)
-            r_x_y_epistemic_index = reward_list[j] + self.beta * z * np.sqrt(uncertainty_list[j])
-            r_epistemic_index.append(r_x_y_epistemic_index)
-        return np.argmax(r_epistemic_index)
-    
-class DoubleThompsonSamplingOld(AcquisitionFunction):
-    def __init__(self, max_iterations=10):
-        super().__init__()
-        self.max_iterations = max_iterations
-        
-    def __call__(self, rewards: list, uncertainties: list) -> list:
-        selected_ids_batch = []
-        for i in range(len(rewards)):
-            #step 1 - selecting first response
-            response_1 = self.dto_optimize(rewards[i], uncertainties[i])
-            
-            #step 2 - selecting second response
-            response_2 = response_1
-            iterations = 0
-            while response_1 == response_2:
-                if iterations == self.max_iterations:
-                    response_2 = np.random.randint(0, len(rewards[i]))
-                else:
-                    response_2 = self.dto_optimize(rewards[i], uncertainties[i])
-                    iterations += 1
-            
-            selected_ids_batch.append((response_1, response_2))
+            difference_half = (upper_bound_list[j] - lower_bound_list[j]) / 2
+            reward_middle = lower_bound_list[j] + difference_half
 
-        return selected_ids_batch
-        
-    def dto_optimize(self, reward_list, uncertainty_list):
-        r_epistemic_index = []
-        for j in range(len(reward_list)):
-            r_x_y_epistemic_index = np.random.normal(reward_list[j], np.sqrt(uncertainty_list[j]))
+            r_x_y_epistemic_index = reward_middle + self.beta * z * difference_half
             r_epistemic_index.append(r_x_y_epistemic_index)
         return np.argmax(r_epistemic_index)
     

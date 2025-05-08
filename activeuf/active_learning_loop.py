@@ -154,8 +154,9 @@ if __name__ == "__main__":
 
         # Get reward and uncertainty (lower and upper bounds)
         outputs = uq_pipeline.model(**model_inputs)
-        result = outputs["rewards"].detach()
-        reward, lower_bound, upper_bound = result[0, :], result[1, :], result[2, :]
+        result = outputs["rewards"].detach().view(args.batch_size, -1, 3)
+
+        reward, lower_bound, upper_bound = result[:, :, 0], result[:, :, 1], result[:, :, 2]
 
         # Select the completions that should be used for the binarized sample
         selected_idx = acquisition_function(reward, lower_bound, upper_bound)
@@ -163,8 +164,8 @@ if __name__ == "__main__":
         for i, (idx_1, idx_2) in enumerate(selected_idx):
             selected_completions.append({
                 "prompt": batch["prompt"][i],
-                "completion_1": batch["completions"][i][idx_1],
-                "completion_2": batch["completions"][i][idx_2]
+                "completion_1": batch["completions"][idx_1]["response_text"][i],
+                "completion_2": batch["completions"][idx_2]["response_text"][i]
             })
 
         # Call oracle to determine which is chosen and which is rejected
