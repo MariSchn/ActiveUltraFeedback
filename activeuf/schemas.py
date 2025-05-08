@@ -4,7 +4,7 @@ from typing import Optional
 from activeuf.configs import PROMPT_SOURCES
 
 class Prompt(BaseModel):
-    source: str | None
+    source: str
     prompt: str
     prompt_id: str
 
@@ -22,8 +22,8 @@ class Annotation(BaseModel):
     rating: str
     rating_rationale: str
     
-    type: str | None = None
-    type_rationale: str | None = None
+    type: str = ""
+    type_rationale: str = ""
 
 class Message(BaseModel):
     role: str
@@ -37,8 +37,8 @@ class Completion(BaseModel):
     response_text: str
 
     annotations: list[Annotation] = Field(default_factory=list)
-    critique: str | None = None
-    overall_score: str | None = None
+    critique: str = ""
+    overall_score: str = ""
 
 class PromptWithCompletions(Prompt):
     completions: list[Completion] = Field(default_factory=list)
