@@ -48,38 +48,38 @@ def parse_args() -> argparse.Namespace:
 
     return args
 
-def parse_annotation_from_response_text(response_text: str, aspect: str) -> dict[str, str]:
-    """
-    Processes the response from an evaluation/annotation model and extracts the ratings and rationales for each completion from the response.
-    As it is not always guaranteed that the response follows the expected format, the function will raise an error if the response does not follow the expected format.
+# def parse_annotation_from_response_text(response_text: str, aspect: str) -> dict[str, str]:
+#     """
+#     Processes the response from an evaluation/annotation model and extracts the ratings and rationales for each completion from the response.
+#     As it is not always guaranteed that the response follows the expected format, the function will raise an error if the response does not follow the expected format.
 
-    Preference annotation refers to the rating in regards to one specific aspect, e.g. instruction following, truthfulness, etc. on a scale from 1 to 5.
+#     Preference annotation refers to the rating in regards to one specific aspect, e.g. instruction following, truthfulness, etc. on a scale from 1 to 5.
 
-    Args:
-        response_text (str): The response from the evaluation/annotation model
-        aspect (str): The aspect with which the response text was annotated
-    Returns:
-        dict[str, str]: A dictionary that follows the Annotation schema
-    """
-    annotation_pattern = ASPECT2ANNOTATION_PATTERN[aspect]
-    matches = re.search(annotation_pattern, response_text, re.DOTALL | re.I)
-    groups = matches.groups()
+#     Args:
+#         response_text (str): The response from the evaluation/annotation model
+#         aspect (str): The aspect with which the response text was annotated
+#     Returns:
+#         dict[str, str]: A dictionary that follows the Annotation schema
+#     """
+#     annotation_pattern = ASPECT2ANNOTATION_PATTERN[aspect]
+#     matches = re.search(annotation_pattern, response_text, re.DOTALL | re.I)
+#     groups = matches.groups()
 
-    return Annotation(
-        aspect=aspect,
-        annotator_name=args.model_name,
+#     return Annotation(
+#         aspect=aspect,
+#         annotator_name=args.model_name,
 
-        type=groups[-4] if len(groups) == 4 else None,
-        type_rationale=groups[-3] if len(groups) == 4 else None,
-        rating=groups[-2],
-        rating_rationale=groups[-1],
-    ).model_dump()
+#         type=groups[-4] if len(groups) == 4 else None,
+#         type_rationale=groups[-3] if len(groups) == 4 else None,
+#         rating=groups[-2],
+#         rating_rationale=groups[-1],
+#     ).model_dump()
 
-def parse_critique_from_response_text(response_text: str) -> dict[str, str]:
-    matches = re.search(FEEDBACK_ANNOTATION_PATTERN, response_text, re.DOTALL | re.I)
-    groups = matches.groups()
+# def parse_critique_from_response_text(response_text: str) -> dict[str, str]:
+#     matches = re.search(FEEDBACK_ANNOTATION_PATTERN, response_text, re.DOTALL | re.I)
+#     groups = matches.groups()
 
-    return {"critique": groups[0], "overall_score": groups[1]}
+#     return {"critique": groups[0], "overall_score": groups[1]}
 
 def annotate(
         dataset: Dataset, 
@@ -161,7 +161,7 @@ def annotate(
             all_messages.append([
                 Message(
                     role="system", 
-                    content=CRITIQUE_ANNOTATION_SYSTEM_PROMPT + "\n" + FEEDBACK_ANNOTATION_SYSTEM_PROMPT
+                    content=SCORE_ANNOTATION_SYSTEM_PROMPT,
                 ).model_dump(),
                 Message(
                     role="user", 
@@ -175,8 +175,9 @@ def annotate(
         # extract critiques from response texts (warn, but don't fail if parsing error)
         for i, response_text in zip(idxs_needing_annotation, response_texts):
             try:
-                critique = parse_critique_from_response_text(response_text)
-                annotated_completions[i].update(critique)
+                annotated_completions[i]["overall_score"] = response_text
+                # critique = parse_critique_from_response_text(response_text)
+                # annotated_completions[i].update(critique)
             except:
                 logger.info(f"Failed to critique a completion for prompt_id={sample['prompt_id']} on overall")
                 logger.info(response_text)
@@ -207,7 +208,7 @@ if __name__ == "__main__":
     logger.info(f"Using {args.model_name} for annotation")
     model, tokenizer = load_model(args.model_name, args.model_class)
     sampling_params = SamplingParams(
-        max_tokens = args.max_tokens,
+        max_tokens = 10,
         temperature = args.temperature,
         top_p = args.top_p,      
     )

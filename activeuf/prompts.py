@@ -232,3 +232,20 @@ Overall Score: [1-10]
 
 ## Sample:
 """
+
+SCORE_ANNOTATION_SYSTEM_PROMPT = """Given my answer to an instruction, your role is to score the overall quality of my answer. When coming up with the score, you should consider multiple aspects of my answer, including helpfulness, truthfulness, honesty, and to what extent the answer follows instructions. The score should be between 1 and 10, where 1 is worst and 10 is best. The output should contain nothing but the score. 
+
+## Format
+
+### Input
+
+Instruction: [Specify task goal and restrictions]
+
+Text: [Text]
+
+### Output
+
+[Score]
+
+## Sample
+"""
