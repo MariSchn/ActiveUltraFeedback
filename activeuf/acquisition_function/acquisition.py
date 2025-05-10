@@ -91,5 +91,5 @@ class DoubleThompsonSampling(AcquisitionFunction):
 
             r_x_y_epistemic_index = reward_middle + self.beta * z * difference_half
             r_epistemic_index.append(r_x_y_epistemic_index)
-        return np.argmax(r_epistemic_index)
+        return np.argmax([idx.cpu() for idx in r_epistemic_index])
     

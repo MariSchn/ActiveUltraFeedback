@@ -3,7 +3,7 @@ from typing import List, Dict
 
 import numpy as np
 
-from datasets import Dataset
+from datasets import Dataset, load_from_disk
 from activeuf.annotate_completions import annotate
 
 def parse_oracle_class(oracle_class: str):
@@ -40,14 +40,20 @@ class BaseOracle:
             prompts_with_completions (List[Dict[str, str]]): A list of dictionaries, each containing a prompt and 2 completions.
                 Each dictionary should have the following keys:
                 - "prompt": The prompt text.
+                - "prompt_id": The prompt id.
                 - "completion_1": The first completion text.
+                - "model_1": The model of the first completion.
                 - "completion_2": The second completion text.
+                - "model_2": The model of the second completion.
         Returns:
             List[Dict[str, str]]: A list of dictionaries, each containing a sample.
                 Each dictionary should have the following keys
                 - "prompt": The prompt text.
+                - "prompt_id": The prompt id.
                 - "chosen": The chosen completion text.
+                - "chosen_model": The model of the chosen completion.
                 - "rejected": The rejected completion text.
+                - "rejected_model": The model of the rejected completion.
         """
         raise NotImplementedError("This method should be overridden by subclasses.")
 
@@ -67,27 +73,43 @@ class RandomOracle(BaseOracle):
             prompts_with_completions (List[Dict[str, str]]): A list of dictionaries, each containing a prompt and 2 completions.
                 Each dictionary should have the following keys:
                 - "prompt": The prompt text.
+                - "prompt_id": The prompt id.
                 - "completion_1": The first completion text.
+                - "model_1": The model of the first completion.
                 - "completion_2": The second completion text.
+                - "model_2": The model of the second completion.
         Returns:
             List[Dict[str, str]]: A list of dictionaries, each containing a sample.
                 Each dictionary should have the following keys
                 - "prompt": The prompt text.
+                - "prompt_id": The prompt id.
                 - "chosen": The chosen completion text.
+                - "chosen_model": The model of the chosen completion.
                 - "rejected": The rejected completion text.
+                - "rejected_model": The model of the rejected completion.
         """
         annotated_samples = []
 
         for sample in prompts_with_completions:
-            chosen, rejected = random.sample([sample["completion_1"], sample["completion_2"]], 2)
-
-            annotated_sample = {
-                "prompt": sample["prompt"],
-                "chosen": chosen,
-                "rejected": rejected
-            }
-            annotated_samples.append(annotated_sample)
-
+            if random.random() < 0.5:
+                annotated_samples.append({
+                    "prompt": sample["prompt"],
+                    "prompt_id": sample["prompt_id"],
+                    "chosen": sample["completion_1"],
+                    "chosen_model": sample["model_1"],
+                    "rejected": sample["completion_2"],
+                    "rejected_model": sample["model_2"],
+                })
+            else:
+                annotated_samples.append({
+                    "prompt": sample["prompt"],
+                    "prompt_id": sample["prompt_id"],
+                    "chosen": sample["completion_2"],
+                    "chosen_model": sample["model_2"],
+                    "rejected": sample["completion_1"],
+                    "rejected_model": sample["model_1"],
+                })
+        
         return annotated_samples
     
 class UltraFeedbackOracle(BaseOracle):
@@ -96,39 +118,65 @@ class UltraFeedbackOracle(BaseOracle):
     It uses a LLM as a judge to annotate the completions for multiple aspects.
     The completion with the highest overall score is selected as the chosen one, and the other one is selected as the rejected one.
     """
-    def __init__(self, dataset_cache: Dataset | None = None, output_path: str | None = None):
+    def __init__(self, annotated_dataset_path: str | None = None):
         """
         Initializes the UltarFeedbackOracle.
 
-        Pass a dataset_cache if you want to cache the annotations the oracle generates.
-
         Args:
-            dataset_cache (Dataset, optional): A Hugging Face Dataset to cache the annotations. Defaults to None.
-            output_path (str, optional): The path to save the dataset cache. If using a dataset_cache, this is required. Defaults to None.
+            annotated_dataset_path (str | None): Use this to pass a dataset which has pre-computed annotations. This avoids having to actually run the annotation step.
+                The prompts that are passed to the oracle should be the same as in this dataset. If None, the oracle will run the annotation step.
         """
         super().__init__()
 
-        if dataset_cache is not None and output_path is None:
-            raise ValueError("If using a dataset_cache, you must provide an output_path to save it.")
-
-        self.dataset_cache = dataset_cache
-        self.output_path = output_path
+        self.dataset = load_from_disk(annotated_dataset_path) if annotated_dataset_path else None
 
     def __call__(self, prompts_with_completions: List[Dict[str, str]]) -> List[Dict[str, str]]:
         """
         Selects among the two passed completions which one is the chosen and which one is the rejected one.
         
         Args:
-            prompts_with_completions_for_annotation (List[Dict[str, str]]): A list of dictionaries, each containing a prompt and 2 completions.
+            prompts_with_completions (List[Dict[str, str]]): A list of dictionaries, each containing a prompt and 2 completions.
                 Each dictionary should have the following keys:
                 - "prompt": The prompt text.
+                - "prompt_id": The prompt id.
                 - "completion_1": The first completion text.
+                - "model_1": The model of the first completion.
                 - "completion_2": The second completion text.
+                - "model_2": The model of the second completion.
         Returns:
             List[Dict[str, str]]: A list of dictionaries, each containing a sample.
                 Each dictionary should have the following keys
                 - "prompt": The prompt text.
+                - "prompt_id": The prompt id.
                 - "chosen": The chosen completion text.
+                - "chosen_model": The model of the chosen completion.
                 - "rejected": The rejected completion text.
+                - "rejected_model": The model of the rejected completion.
         """
-        raise NotImplementedError("TODO: Implement the UltraFeedbackOracle")
+        # Use pre-computed annotations if available
+        if self.dataset is not None:
+            binarized_batch = []
+
+            # TODO Maybe process a batch at once instead of one by one
+            for sample in prompts_with_completions:
+                sample_1 = self.dataset.filter(lambda x: x["prompt_id"] == sample["completion_1"]["prompt_id"])
+                sample_2 = self.dataset.filter(lambda x: x["prompt_id"] == sample["completion_2"]["prompt_id"])
+                if len(sample_1) == 0:
+                    raise ValueError(f"No matching sample found in the dataset for prompt_id: {sample_1['prompt_id']}")
+                if len(sample_2) == 0:
+                    raise ValueError(f"No matching sample found in the dataset for prompt_id: {sample_2['prompt_id']}")
+                
+
+                overall_score_1 = sample_1["overall_score"]
+                overall_score_2 = sample_2["overall_score"]
+
+                binarized_sample = {
+                    "prompt": sample["prompt"],
+                    "chosen": overall_score_1 if overall_score_1 > overall_score_2 else overall_score_2,
+                    "rejected": overall_score_2 if overall_score_1 > overall_score_2 else overall_score_1,
+                }
+                binarized_batch.append(binarized_sample)
+
+            return binarized_batch
+
+        raise NotImplementedError("The UltraFeedbackOracle is currently only implemented for pre-computed annotations.")

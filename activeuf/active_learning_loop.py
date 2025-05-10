@@ -109,7 +109,7 @@ if __name__ == "__main__":
                 base_model_name_or_path="meta-llama/Llama-3.2-1B-Instruct"
             ),
             ENNRewardModelTrainerConfig(
-
+                report_to="none"  # * TEMPORARY: Disable logging to wandb
             )
         )
 
@@ -117,7 +117,9 @@ if __name__ == "__main__":
     output_dataset = Dataset.from_dict({
         "prompt": [],
         "chosen": [],
-        "rejected": []
+        "chosen_model": [],
+        "rejected": [],
+        "rejected_model": [],
     })
 
     num_completions = len(dataset[0]["completions"])
@@ -162,12 +164,16 @@ if __name__ == "__main__":
         selected_idx = acquisition_function(reward, lower_bound, upper_bound)
         selected_completions = []
         for i, (idx_1, idx_2) in enumerate(selected_idx):
+            # TODO: Check if there is a cleaner way to do this
             selected_completions.append({
                 "prompt": batch["prompt"][i],
+                "prompt_id": batch["prompt_id"][i],
                 "completion_1": batch["completions"][idx_1]["response_text"][i],
-                "completion_2": batch["completions"][idx_2]["response_text"][i]
+                "model_1": batch["completions"][idx_1]["model"][0],
+                "completion_2": batch["completions"][idx_2]["response_text"][i],
+                "model_2": batch["completions"][idx_2]["model"][0],
             })
-
+        
         # Call oracle to determine which is chosen and which is rejected
         annotated_batch = oracle(selected_completions)
 
