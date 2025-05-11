@@ -4,6 +4,7 @@ import yaml
 import os
 import numpy as np
 from tqdm import tqdm
+from collections import deque
 
 from torch.utils.data import DataLoader
 from datasets import load_from_disk, Dataset
@@ -46,6 +47,7 @@ def parse_args() -> argparse.Namespace:
     
     parser.add_argument("--acquisition_function_type", type=str, default="double_thompson_sampling", help="Acquistion function type", choices=["double_thompson_sampling", "random"])
     parser.add_argument("--acquisition_config", type=str, default="activeuf/acquisition_function/acquisition_config.yaml", help="acquisition function configuration file path")
+    parser.add_argument("--replay_buffer_size", type=int, default=3200, help="Size of the replay buffer for the ENN reward model training.")
     args = parser.parse_args()
 
     if not args.output_path:
@@ -114,13 +116,8 @@ if __name__ == "__main__":
         )
 
     logger.info(f"Starting data generation loop")
-    output_dataset = Dataset.from_dict({
-        "prompt": [],
-        "chosen": [],
-        "chosen_model": [],
-        "rejected": [],
-        "rejected_model": [],
-    })
+    replay_buffer = deque(maxlen=args.replay_buffer_size)
+    all_outputs = []
 
     num_completions = len(dataset[0]["completions"])
     tokenizer = uq_pipeline.model.tokenizer
@@ -179,18 +176,21 @@ if __name__ == "__main__":
 
         # Add the batch to the output dataset
         for sample in annotated_batch:
-            output_dataset = output_dataset.add_item(sample)
+            replay_buffer.append(sample)
+            all_outputs.append(sample)
 
         # Train the reward model with the new data
+        output_dataset = Dataset.from_list(list(replay_buffer))
         uq_pipeline.train(output_dataset)
 
         # Check if we have reached the desired output size
-        if args.output_size and len(output_dataset) >= args.output_size:
+        if args.output_size and len(all_outputs) >= args.output_size:
             logger.info(f"Reached desired output size of {args.output_size}. Stopping data generation.")
             break
 
     logger.info(f"Saving output dataset to {args.output_path}")
     os.makedirs(args.output_path, exist_ok=True)
+    output_dataset = Dataset.from_list(all_outputs)
     output_dataset.save_to_disk(args.output_path)
 
     args_path = os.path.join(args.output_path, "args.json")
