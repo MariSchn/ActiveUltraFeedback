@@ -20,15 +20,16 @@ It uses a LLM as a judge to rate the completions based on the aspects defined in
 
 Example run command:
     python -m activeuf.annotate_completions \
-        --dataset_path datasets/allenai/ultrafeedback_binarized_cleaned/test_prefs-with-completions-merged \
-        --model_name "meta-llama/Llama-3.2-1B-Instruct"
+        --dataset_path datasets/allenai/ultrafeedback_binarized_cleaned/train_prefs-with-completions-sanitized \
+        --model_name "meta-llama/Llama-3.2-1B-Instruct" \
+        --part "first"
 """
 
 def parse_args() -> argparse.Namespace:
     # Parse arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset_path", type=str, required=True, help="The path to the dataset with completions to be annotated")
-    parser.add_argument("--model_name", type=str, required=True, help="The Huggingface path or API of the model to use for completions (e.g. HuggingFaceTB/SmolLM2-135M-Instruct, gpt-4)")
+    parser.add_argument("--model_name", type=str, required=True, help="The Huggingface path or API of the model to use for annotations (e.g. HuggingFaceTB/SmolLM2-135M-Instruct, gpt-4)")
 
     parser.add_argument("--seed", type=int, default=SEED, help="Seed for random sampling")
     parser.add_argument("--max_num_gpus", type=int, default=MAX_NUM_GPUS, help="The maximum number of GPUs to use")
@@ -39,47 +40,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--top_p", type=float, default=ANNOTATION_TOP_P, help="The top_p for sampling")
 
     parser.add_argument("--output_path", type=str, help="Where to export the annotated dataset")
-    parser.add_argument("--debug", action="store_true", help="If set, will only annotate the first 2 samples")
+    parser.add_argument("--debug", action="store_true", help="If set, will only annotate the first few samples")
+
+    parser.add_argument("--download_dir", type=str, default="./hf_cache", help="Local path to model weights")
+    parser.add_argument("--part", type=str, choices=["first", "second", "third", "fourth"], help="Which part of the dataset to annotate")
     args = parser.parse_args()
 
     if not args.output_path:
-        args.output_path = f"{args.dataset_path.rstrip('/')}-annotated"
+        args.output_path = f"{args.dataset_path.rstrip('/')}-annotated-{args.part}"
     assert not path.exists(args.output_path), f"Output path {args.output_path} already exists"
 
     return args
-
-def parse_annotation_from_response_text(response_text: str, aspect: str) -> dict[str, str]:
-    """
-    Processes the response from an evaluation/annotation model and extracts the ratings and rationales for each completion from the response.
-    As it is not always guaranteed that the response follows the expected format, the function will raise an error if the response does not follow the expected format.
-
-    Preference annotation refers to the rating in regards to one specific aspect, e.g. instruction following, truthfulness, etc. on a scale from 1 to 5.
-
-    Args:
-        response_text (str): The response from the evaluation/annotation model
-        aspect (str): The aspect with which the response text was annotated
-    Returns:
-        dict[str, str]: A dictionary that follows the Annotation schema
-    """
-    annotation_pattern = ASPECT2ANNOTATION_PATTERN[aspect]
-    matches = re.search(annotation_pattern, response_text, re.DOTALL | re.I)
-    groups = matches.groups()
-
-    return Annotation(
-        aspect=aspect,
-        annotator_name=args.model_name,
-
-        type=groups[-4] if len(groups) == 4 else None,
-        type_rationale=groups[-3] if len(groups) == 4 else None,
-        rating=groups[-2],
-        rating_rationale=groups[-1],
-    ).model_dump()
-
-def parse_critique_from_response_text(response_text: str) -> dict[str, str]:
-    matches = re.search(FEEDBACK_ANNOTATION_PATTERN, response_text, re.DOTALL | re.I)
-    groups = matches.groups()
-
-    return {"critique": groups[0], "overall_score": groups[1]}
 
 def annotate(
         dataset: Dataset, 
@@ -101,57 +72,13 @@ def annotate(
     # prepare new column for the annotated completions
     all_annotated_completions = dataset["completions"]
 
-    # # ASPECT ANNOTATION # disabled for now
-    # logger.info("Annotating completions on aspects")
-    # aspects = list(ASPECT2ANNOTATION_PROMPT)
-    # for aspect in aspects:
-    #     aspect_annotation_prompt = ASPECT2ANNOTATION_PROMPT[aspect]
-    #     for sample, annotated_completions in zip(dataset, all_annotated_completions):
-            
-    #         # identify completions that need annotation for this aspect
-    #         idxs_needing_annotation = [
-    #             i for i, completion in enumerate(sample["completions"])
-    #             if aspect not in {_["aspect"] for _ in completion["annotations"]}
-    #         ]
-
-    #         # construct messages for annotation of each completion
-    #         all_messages = []
-    #         for i in idxs_needing_annotation:
-    #             completion = sample["completions"][i]
-    #             all_messages.append([
-    #                 Message(
-    #                     role="system", 
-    #                     content=PREFERENCE_ANNOTATION_SYSTEM_PROMPT,
-    #                 ).model_dump(),
-    #                 Message(
-    #                     role="user", 
-    #                     content=f"{aspect_annotation_prompt}\n\nInstruction: {sample['prompt']}\n\nText: {completion['response_text']}",
-    #                 ).model_dump(),
-    #             ])
-            
-    #         # generate responses for all messages
-    #         response_texts = get_response_texts(model, tokenizer, all_messages, sampling_params)
-
-    #         # extract annotations from response texts (warn, but don't fail if parsing error)
-    #         for i, response_text in zip(idxs_needing_annotation, response_texts):
-    #             try:
-    #                 annotation = parse_annotation_from_response_text(response_text, aspect)
-    #                 annotated_completions[i]["annotations"].append(annotation)
-    #             except:
-    #                 logger.info(f"Failed to annotate a completion for prompt_id={sample['prompt_id']} on aspect={aspect}")
-    #                 logger.info(response_text)
-        
-    #     if args.debug:
-    #         logger.info("Debug mode: only annotating on one aspect")
-    #         break
-
     # CRITIQUE ANNOTATION
     logger.info("Critiquing completions")
-    for sample, annotated_completions in zip(dataset, all_annotated_completions):
+    for sample, annotated_completions in tqdm(zip(dataset, all_annotated_completions)):
         # identify completions that need an "overall" critique
         idxs_needing_annotation = [
             i for i, completion in enumerate(sample["completions"])
-            if not completion["critique"] or not completion["overall_score"]
+            if not completion["overall_score"]
         ]
 
         # construct messages for critique of each completion
@@ -161,7 +88,7 @@ def annotate(
             all_messages.append([
                 Message(
                     role="system", 
-                    content=CRITIQUE_ANNOTATION_SYSTEM_PROMPT + "\n" + FEEDBACK_ANNOTATION_SYSTEM_PROMPT
+                    content=SCORE_ANNOTATION_SYSTEM_PROMPT,
                 ).model_dump(),
                 Message(
                     role="user", 
@@ -175,8 +102,7 @@ def annotate(
         # extract critiques from response texts (warn, but don't fail if parsing error)
         for i, response_text in zip(idxs_needing_annotation, response_texts):
             try:
-                critique = parse_critique_from_response_text(response_text)
-                annotated_completions[i].update(critique)
+                annotated_completions[i]["overall_score"] = response_text
             except:
                 logger.info(f"Failed to critique a completion for prompt_id={sample['prompt_id']} on overall")
                 logger.info(response_text)
@@ -197,15 +123,29 @@ if __name__ == "__main__":
         set_seed(args.seed)
 
     logger.info(f"Loading {args.dataset_path}")
-    dataset = load_from_disk(args.dataset_path).map(
+    dataset = load_from_disk(args.dataset_path)
+    dataset = dataset.map(
         lambda x: PromptWithCompletions(**x).model_dump()
     )
     if args.debug:
         logger.info("Debug mode: only generating completions for the first 2 samples")
-        dataset = dataset.select(range(2))
+        dataset = dataset.select(range(100))
+
+    n = len(dataset)
+    m = (n // 4) + 1
+    idxs = list(range(0, n+m, m))
+    if args.part == "first":
+        dataset = dataset.select(range(idxs[0], idxs[1]))
+    elif args.part == "second":
+        dataset = dataset.select(range(idxs[1], idxs[2]))
+    elif args.part == "third":
+        dataset = dataset.select(range(idxs[2], idxs[3]))
+    elif args.part == "fourth":
+        dataset = dataset.select(range(idxs[3], idxs[4]))
+    logger.info(f"{n}, {len(dataset)}, {args.part}")
 
     logger.info(f"Using {args.model_name} for annotation")
-    model, tokenizer = load_model(args.model_name, args.model_class)
+    model, tokenizer = load_model(args.model_name, args.model_class, download_dir=args.download_dir)
     sampling_params = SamplingParams(
         max_tokens = args.max_tokens,
         temperature = args.temperature,

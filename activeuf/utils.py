@@ -254,6 +254,7 @@ def get_response_texts(
             all_messages, 
             sampling_params=sampling_params, 
             chat_template=tokenizer.chat_template, # * Must be set for Gemma-3-1b-it as otherwise vLLM gets stuck in an infinite requests loop, fetching the same request over and over again
+            use_tqdm=False, # to avoid spamming the console with progress bars
             **generate_kwargs
         )
         response_texts = [_.outputs[0].text for _ in all_outputs]
