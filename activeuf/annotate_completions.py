@@ -21,8 +21,8 @@ It uses a LLM as a judge to rate the completions based on the aspects defined in
 Example run command:
     python -m activeuf.annotate_completions \
         --dataset_path datasets/allenai/ultrafeedback_binarized_cleaned/train_prefs-with-completions-sanitized \
-        --model_name "meta-llama/Llama-3.2-1B-Instruct" \
-        --part "first"
+        --model_name "meta-llama/Llama-3.3-70B-Instruct" \
+        --part 0
 """
 
 def parse_args() -> argparse.Namespace:
@@ -43,7 +43,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--debug", action="store_true", help="If set, will only annotate the first few samples")
 
     parser.add_argument("--download_dir", type=str, default="./hf_cache", help="Local path to model weights")
-    parser.add_argument("--part", type=str, choices=["first", "second", "third", "fourth"], help="Which part of the dataset to annotate")
+    parser.add_argument("--part", type=int, help="Which part of the dataset to annotate")
     args = parser.parse_args()
 
     if not args.output_path:
@@ -124,25 +124,20 @@ if __name__ == "__main__":
 
     logger.info(f"Loading {args.dataset_path}")
     dataset = load_from_disk(args.dataset_path)
+    dataset = dataset.select(range(15208, len(dataset)))
     dataset = dataset.map(
         lambda x: PromptWithCompletions(**x).model_dump()
     )
     if args.debug:
-        logger.info("Debug mode: only generating completions for the first 2 samples")
+        logger.info("Debug mode: only generating completions for the first few samples")
         dataset = dataset.select(range(100))
 
     n = len(dataset)
-    m = (n // 4) + 1
+    m = (n // 12) + 1
     idxs = list(range(0, n+m, m))
-    if args.part == "first":
-        dataset = dataset.select(range(idxs[0], idxs[1]))
-    elif args.part == "second":
-        dataset = dataset.select(range(idxs[1], idxs[2]))
-    elif args.part == "third":
-        dataset = dataset.select(range(idxs[2], idxs[3]))
-    elif args.part == "fourth":
-        dataset = dataset.select(range(idxs[3], idxs[4]))
-    logger.info(f"{n}, {len(dataset)}, {args.part}")
+    k = int(args.part)
+    dataset = dataset.select(range(idxs[k], idxs[k+1]))
+    logger.info(f"{n}, {k}, {idxs[k]}, {idxs[k+1]}")
 
     logger.info(f"Using {args.model_name} for annotation")
     model, tokenizer = load_model(args.model_name, args.model_class, download_dir=args.download_dir)
