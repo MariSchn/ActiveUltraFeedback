@@ -56,6 +56,15 @@ def parse_args() -> argparse.Namespace:
 
     return args
 
+def custom_collate_fn(batch):
+    b = len(batch)
+    return {
+        "prompt_id": [x["prompt_id"] for x in batch for _ in range(b)],
+        "prompt": [x["prompt"] for x in batch for _ in range(b)],
+        "source": [x["source"] for x in batch for _ in range(b)],
+        "completions": [[_ for _ in x["completions"]] for x in batch],
+    }
+
 if __name__ == "__main__":
     args = parse_args()
 
@@ -81,7 +90,7 @@ if __name__ == "__main__":
 
     logger.info(f"Loading Input Dataset {args.completion_dataset}")
     dataset = load_from_disk(args.completion_dataset)
-    dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
+    dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, collate_fn=custom_collate_fn)
     # TODO: Implement custom collate function to handle batching better. E.g. the role field of messages has length of batch_size, even though it should not have been batched
 
     logger.info(f"Creating acquisition function {args.acquisition_function_type}")
@@ -122,6 +131,7 @@ if __name__ == "__main__":
     num_completions = len(dataset[0]["completions"])
     tokenizer = uq_pipeline.model.tokenizer
     for batch in tqdm(dataloader, total=args.output_size // args.batch_size):
+        m = len(batch["completions"])
         # Prepare batch to be input into the model
         # TODO: Check if this can be done nicer, e.g. using a custom collate function
         all_messages = [
@@ -132,11 +142,11 @@ if __name__ == "__main__":
                 },
                 {
                     "role": "system", 
-                    "content": batch["completions"][model_idx]["response_text"][sample_idx]
+                    "content": batch["completions"][sample_idx][model_idx]["response_text"]
                 } 
             ]
-            for model_idx in range(num_completions)
-            for sample_idx in range(args.batch_size)
+            for sample_idx in range(m)
+            for model_idx in range(len(batch["completions"][sample_idx]))
         ]
 
         model_inputs = tokenizer.apply_chat_template(
@@ -153,7 +163,7 @@ if __name__ == "__main__":
 
         # Get reward and uncertainty (lower and upper bounds)
         outputs = uq_pipeline.model(**model_inputs)
-        result = outputs["rewards"].detach().view(args.batch_size, -1, 3)
+        result = outputs["rewards"].detach().view(m, -1, 3)
 
         reward, lower_bound, upper_bound = result[:, :, 0], result[:, :, 1], result[:, :, 2]
 
@@ -165,10 +175,12 @@ if __name__ == "__main__":
             selected_completions.append({
                 "prompt": batch["prompt"][i],
                 "prompt_id": batch["prompt_id"][i],
-                "completion_1": batch["completions"][idx_1]["response_text"][i],
-                "model_1": batch["completions"][idx_1]["model"][0],
-                "completion_2": batch["completions"][idx_2]["response_text"][i],
-                "model_2": batch["completions"][idx_2]["model"][0],
+                "completion_1": batch["completions"][i][idx_1]["response_text"],
+                "overall_score_1": batch["completions"][i][idx_1]["overall_score"],
+                "model_1": batch["completions"][i][idx_1]["model"],
+                "completion_2": batch["completions"][i][idx_2]["response_text"],
+                "overall_score_2": batch["completions"][i][idx_2]["overall_score"],
+                "model_2": batch["completions"][i][idx_2]["model"],
             })
         
         # Call oracle to determine which is chosen and which is rejected
@@ -180,6 +192,7 @@ if __name__ == "__main__":
             all_outputs.append(sample)
 
         # Train the reward model with the new data
+        logger.info("training uq")
         output_dataset = Dataset.from_list(list(replay_buffer))
         uq_pipeline.train(output_dataset)
 
