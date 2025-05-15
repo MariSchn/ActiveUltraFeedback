@@ -2,6 +2,7 @@ import random
 from typing import List, Dict
 
 import numpy as np
+import regex as re
 
 from datasets import Dataset, load_from_disk
 from activeuf.annotate_completions import annotate
@@ -118,17 +119,18 @@ class UltraFeedbackOracle(BaseOracle):
     It uses a LLM as a judge to annotate the completions for multiple aspects.
     The completion with the highest overall score is selected as the chosen one, and the other one is selected as the rejected one.
     """
-    def __init__(self, annotated_dataset_path: str | None = None):
-        """
-        Initializes the UltarFeedbackOracle.
-
-        Args:
-            annotated_dataset_path (str | None): Use this to pass a dataset which has pre-computed annotations. This avoids having to actually run the annotation step.
-                The prompts that are passed to the oracle should be the same as in this dataset. If None, the oracle will run the annotation step.
-        """
+    def __init__(self):
         super().__init__()
 
-        self.dataset = load_from_disk(annotated_dataset_path) if annotated_dataset_path else None
+    def parse_overall_score_str(self, overall_score_str: str) -> int:
+        try:
+            match = re.search(r"(\d+)", overall_score_str)
+            score = int(match.group())
+            score = max(0, min(score, 10))
+            return score
+        except:
+            print(f"Could not parse overall score from {overall_score_str}")
+            return 0
 
     def __call__(self, prompts_with_completions: List[Dict[str, str]]) -> List[Dict[str, str]]:
         """
@@ -154,29 +156,18 @@ class UltraFeedbackOracle(BaseOracle):
                 - "rejected_model": The model of the rejected completion.
         """
         # Use pre-computed annotations if available
-        if self.dataset is not None:
-            binarized_batch = []
+        binarized_batch = []
 
-            # TODO Maybe process a batch at once instead of one by one
-            for sample in prompts_with_completions:
-                sample_1 = self.dataset.filter(lambda x: x["prompt_id"] == sample["completion_1"]["prompt_id"])
-                sample_2 = self.dataset.filter(lambda x: x["prompt_id"] == sample["completion_2"]["prompt_id"])
-                if len(sample_1) == 0:
-                    raise ValueError(f"No matching sample found in the dataset for prompt_id: {sample_1['prompt_id']}")
-                if len(sample_2) == 0:
-                    raise ValueError(f"No matching sample found in the dataset for prompt_id: {sample_2['prompt_id']}")
-                
+        # TODO Maybe process a batch at once instead of one by one
+        for sample in prompts_with_completions:
+            overall_score_1 = self.parse_overall_score_str(sample["overall_score_1"])
+            overall_score_2 = self.parse_overall_score_str(sample["overall_score_2"])
 
-                overall_score_1 = sample_1["overall_score"]
-                overall_score_2 = sample_2["overall_score"]
+            binarized_sample = {
+                "prompt": sample["prompt"],
+                "chosen": sample["completion_1"] if overall_score_1 > overall_score_2 else sample["completion_2"],
+                "rejected": sample["completion_2"] if overall_score_1 > overall_score_2 else sample["completion_1"],
+            }
+            binarized_batch.append(binarized_sample)
 
-                binarized_sample = {
-                    "prompt": sample["prompt"],
-                    "chosen": overall_score_1 if overall_score_1 > overall_score_2 else overall_score_2,
-                    "rejected": overall_score_2 if overall_score_1 > overall_score_2 else overall_score_1,
-                }
-                binarized_batch.append(binarized_sample)
-
-            return binarized_batch
-
-        raise NotImplementedError("The UltraFeedbackOracle is currently only implemented for pre-computed annotations.")
+        return binarized_batch
