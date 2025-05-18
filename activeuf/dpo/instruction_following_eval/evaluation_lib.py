@@ -77,7 +77,6 @@ def test_instruction_following_strict(
     prompt_to_response,
 ):
   """Tests response to see if instrutions are followed."""
-  print(inp.prompt in prompt_to_response)
   response = prompt_to_response[inp.prompt]
   instruction_list = inp.instruction_id_list
   is_following_list = []
