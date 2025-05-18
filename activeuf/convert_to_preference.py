@@ -11,15 +11,15 @@ logger = get_logger(__name__)
 
 """
 This script can be used to convert a dataset with completions and annotations for every completion to turn it into a binarized dataset.
-For this the script uses the approach described in the ultrafeedback paper (https://arxiv.org/abs/2310.01377), 
-which randomly samples 4 models/completions and chooses the best as chosen and randomly samples the rejected from the remaining 3.
+For this the script uses:
+    - Randomly sampling two completions and choosing the one with the highest overall score as chosen and the other as rejected.
+    - The approach described in the ultrafeedback paper (https://arxiv.org/abs/2310.01377) which randomly samples 4 models/completions and chooses the best as chosen and randomly samples the rejected from the remaining 3.
 
 Example run command:
-    python -m activeuf.convert_to_ultrafeedback \
-        --input_path /iopsstor/scratch/cscs/smarian/datasets/allenai/ultrafeedback_binarized_cleaned/train_prefs-with-completions-sanitized-annotated-first \
-        --output_path /iopsstor/scratch/cscs/smarian/datasets/allenai/ultrafeedback_binarized_cleaned/train_prefs-with-completions-sanitized-annotated-first-ultrafeedback
+    python -m activeuf.convert_to_preference \
+        --input_path /iopsstor/scratch/cscs/smarian/datasets/ultrafeedback_annotated
 
-python -m activeuf.convert_to_ultrafeedback --input_path /iopsstor/scratch/cscs/smarian/datasets/allenai/ultrafeedback_binarized_cleaned/train_prefs-with-completions-sanitized-annotated-first --output_path /iopsstor/scratch/cscs/smarian/datasets/allenai/ultrafeedback_binarized_cleaned/train_prefs-with-completions-sanitized-annotated-first-ultrafeedback
+python -m activeuf.convert_to_preference --input_path /iopsstor/scratch/cscs/smarian/datasets/ultrafeedback_annotated
 """
 
 
@@ -35,8 +35,9 @@ def parse_args() -> argparse.Namespace:
     args = parser.parse_args()
 
     if not args.output_path:
-        args.output_path = f"{args.input_path.rstrip('/')}-ultrafeedback"
-    assert not os.path.exists(args.output_path), f"Output path {args.output_path} already exists"
+        args.output_path = args.input_path
+    assert not os.path.exists(f"{args.output_path}_random"), f"Output path {args.output_path}_random already exists"
+    assert not os.path.exists(f"{args.output_path}_ultrafeedback"), f"Output path {args.output_path}_ultrafeedback already exists"
 
     return args
 
@@ -68,6 +69,34 @@ def convert_to_ultrafeedback(sample):
         "rejected_model": rejected_completions["model"],
     }
 
+def convert_to_random(sample):
+    """
+    Converts a sample from a dataset containing completions for every completion into a binarized datastyle
+    by randomly sampling 2 completions and choosing one as chosen and the other as rejected.
+    """
+
+    num_completions = len(sample["completions"])
+    if num_completions < 2:
+        raise ValueError("Need at least 2 completions to convert to random style")
+    
+    # Randomly sample 2 completions
+    sampled_indices = random.sample(range(num_completions), 2)
+    sampled_completions = [sample["completions"][i] for i in sampled_indices]
+    sampled_completions = sorted(sampled_completions, key=lambda x: x["overall_score"], reverse=True)
+
+    # Choose one completion as chosen and the other as rejected
+    chosen_completion = sampled_completions[0]
+    rejected_completion = sampled_completions[1]
+
+    return {
+        "prompt": sample["prompt"],
+        "prompt_id": sample["prompt_id"],
+        "chosen": chosen_completion["response_text"],
+        "chosen_model": chosen_completion["model"],
+        "rejected": rejected_completion["response_text"],
+        "rejected_model": rejected_completion["model"],
+    }
+
 
 if __name__ == "__main__":
     args = parse_args()
@@ -79,6 +108,13 @@ if __name__ == "__main__":
     logger.info("Loading dataset")
     dataset = load_from_disk(args.input_path)
 
+    logger.info("Converting dataset to random style")
+    random_dataset = dataset.map(
+        convert_to_random, 
+        remove_columns=dataset.column_names,
+        desc="Converting to random style"
+    )
+
     logger.info("Converting dataset to ultrafeedback style")
     ultrafeedback_dataset = dataset.map(
         convert_to_ultrafeedback, 
@@ -86,5 +122,9 @@ if __name__ == "__main__":
         desc="Converting to ultrafeedback style"
     )
 
-    logger.info("Saving dataset")
-    ultrafeedback_dataset.save_to_disk(args.output_path)
+    print(len(random_dataset))
+    print(len(ultrafeedback_dataset))
+
+    logger.info("Saving datasets")
+    random_dataset.save_to_disk(f"{args.output_path}_random")
+    ultrafeedback_dataset.save_to_disk(f"{args.output_path}_ultrafeedback")
