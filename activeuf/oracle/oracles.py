@@ -1,30 +1,26 @@
+from abc import ABC, abstractmethod
 import random
-from typing import List, Dict
 
-import numpy as np
 import regex as re
 
-from datasets import Dataset, load_from_disk
-from activeuf.annotate_completions import annotate
-
-def parse_oracle_class(oracle_class: str):
+def init_oracle(oracle_name: str):
     """
     Parses the oracle class name and returns the corresponding oracle class.
     
     Args:
-        oracle_class (str): The name of the oracle class to parse.
+        oracle_name (str): The name of the oracle class to parse.
         
     Returns:
         BaseOracle: The corresponding oracle class.
     """
-    if oracle_class.lower() == "random":
-        return RandomOracle
-    elif oracle_class.lower() == "ultrafeedback":
-        return UltraFeedbackOracle
+    if oracle_name.lower() == "random":
+        return RandomOracle()
+    elif oracle_name.lower() == "ultrafeedback":
+        return UltraFeedbackOracle()
     else:
-        raise ValueError(f"Unknown oracle class: {oracle_class}")
+        raise ValueError(f"Unknown oracle class: {oracle_name}")
 
-class BaseOracle:
+class BaseOracle(ABC):
     """
     This is the base class for all oracles. It defines the interface that all oracles must implement.
     The task of oracles is: Given 2 completions for the same prompt, select which one is the chosen and which one is the rejected one.
@@ -32,22 +28,23 @@ class BaseOracle:
     def __init__(self):
         pass
 
-    def __call__(self, prompts_with_completions: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    @abstractmethod
+    def __call__(self, prompts_with_completions: list[dict[str, str]]) -> list[dict[str, str]]:
         """
         This function should be overridden by subclasses to implement the specific oracle logic.
         The oracle takes prompts with two completions and selects which completion is the chosen and which is the rejected one.
 
         Args:
-            prompts_with_completions (List[Dict[str, str]]): A list of dictionaries, each containing a prompt and 2 completions.
+            prompts_with_completions (list[dict[str, str]]): A list of dictionaries, each containing a prompt and 2 completions.
                 Each dictionary should have the following keys:
                 - "prompt": The prompt text.
                 - "prompt_id": The prompt id.
-                - "completion_1": The first completion text.
+                - "response_text_1": The first completion text.
                 - "model_1": The model of the first completion.
-                - "completion_2": The second completion text.
+                - "response_text_2": The second completion text.
                 - "model_2": The model of the second completion.
         Returns:
-            List[Dict[str, str]]: A list of dictionaries, each containing a sample.
+            list[dict[str, str]]: A list of dictionaries, each containing a sample.
                 Each dictionary should have the following keys
                 - "prompt": The prompt text.
                 - "prompt_id": The prompt id.
@@ -56,7 +53,7 @@ class BaseOracle:
                 - "rejected": The rejected completion text.
                 - "rejected_model": The model of the rejected completion.
         """
-        raise NotImplementedError("This method should be overridden by subclasses.")
+        pass
 
 class RandomOracle(BaseOracle):
     """
@@ -66,21 +63,21 @@ class RandomOracle(BaseOracle):
     def __init__(self):
         super().__init__()
 
-    def __call__(self, prompts_with_completions: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    def __call__(self, prompts_with_completions: list[dict[str, str]]) -> list[dict[str, str]]:
         """
         Rnadomly selects among the two passed completions which one is the chosen and which one is the rejected one.
         
         Args:
-            prompts_with_completions (List[Dict[str, str]]): A list of dictionaries, each containing a prompt and 2 completions.
+            prompts_with_completions (list[dict[str, str]]): A list of dictionaries, each containing a prompt and 2 completions.
                 Each dictionary should have the following keys:
                 - "prompt": The prompt text.
                 - "prompt_id": The prompt id.
-                - "completion_1": The first completion text.
+                - "response_text_1": The first completion text.
                 - "model_1": The model of the first completion.
-                - "completion_2": The second completion text.
+                - "response_text_2": The second completion text.
                 - "model_2": The model of the second completion.
         Returns:
-            List[Dict[str, str]]: A list of dictionaries, each containing a sample.
+            list[dict[str, str]]: A list of dictionaries, each containing a sample.
                 Each dictionary should have the following keys
                 - "prompt": The prompt text.
                 - "prompt_id": The prompt id.
@@ -89,29 +86,23 @@ class RandomOracle(BaseOracle):
                 - "rejected": The rejected completion text.
                 - "rejected_model": The model of the rejected completion.
         """
-        annotated_samples = []
+        out = []
 
-        for sample in prompts_with_completions:
-            if random.random() < 0.5:
-                annotated_samples.append({
-                    "prompt": sample["prompt"],
-                    "prompt_id": sample["prompt_id"],
-                    "chosen": sample["completion_1"],
-                    "chosen_model": sample["model_1"],
-                    "rejected": sample["completion_2"],
-                    "rejected_model": sample["model_2"],
-                })
-            else:
-                annotated_samples.append({
-                    "prompt": sample["prompt"],
-                    "prompt_id": sample["prompt_id"],
-                    "chosen": sample["completion_2"],
-                    "chosen_model": sample["model_2"],
-                    "rejected": sample["completion_1"],
-                    "rejected_model": sample["model_1"],
-                })
-        
-        return annotated_samples
+        for x in prompts_with_completions:
+            chosen_int, rejected_int = 1, 2
+            if random.random() > 0.5:
+                chosen_int, rejected_int = rejected_int, chosen_int
+            out.append({
+                "prompt": x["prompt"],
+                "prompt_id": x["prompt_id"],
+                "chosen": x[f"response_text_{chosen_int}"],
+                "chosen_model": x[f"model_{chosen_int}"],
+                "chosen_score": x[f"overall_score_{chosen_int}"],
+                "rejected": x[f"response_text_{rejected_int}"],
+                "rejected_model": x[f"model_{rejected_int}"],
+                "rejected_score": x[f"overall_score_{rejected_int}"],
+            })
+        return out
     
 class UltraFeedbackOracle(BaseOracle):
     """
@@ -132,42 +123,44 @@ class UltraFeedbackOracle(BaseOracle):
             print(f"Could not parse overall score from {overall_score_str}")
             return 0
 
-    def __call__(self, prompts_with_completions: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    def __call__(self, prompts_with_completions: list[dict[str, str]]) -> list[dict[str, str]]:
         """
         Selects among the two passed completions which one is the chosen and which one is the rejected one.
         
         Args:
-            prompts_with_completions (List[Dict[str, str]]): A list of dictionaries, each containing a prompt and 2 completions.
+            prompts_with_completions (list[dict[str, str]]): A list of dictionaries, each containing a prompt and 2 completions.
                 Each dictionary should have the following keys:
                 - "prompt": The prompt text.
                 - "prompt_id": The prompt id.
-                - "completion_1": The first completion text.
+                - "response_text_1": The first completion text.
                 - "model_1": The model of the first completion.
-                - "completion_2": The second completion text.
+                - "response_text_2": The second completion text.
                 - "model_2": The model of the second completion.
         Returns:
-            List[Dict[str, str]]: A list of dictionaries, each containing a sample.
+            list[dict[str, str]]: A list of dictionaries, each containing a sample.
                 Each dictionary should have the following keys
                 - "prompt": The prompt text.
                 - "prompt_id": The prompt id.
                 - "chosen": The chosen completion text.
                 - "chosen_model": The model of the chosen completion.
+                - "chosen_score": The overall score of the chosen completion.
                 - "rejected": The rejected completion text.
                 - "rejected_model": The model of the rejected completion.
+                - "rejected_score": The overall score of the rejected completion.
         """
-        # Use pre-computed annotations if available
-        binarized_batch = []
-
-        # TODO Maybe process a batch at once instead of one by one
-        for sample in prompts_with_completions:
-            overall_score_1 = self.parse_overall_score_str(sample["overall_score_1"])
-            overall_score_2 = self.parse_overall_score_str(sample["overall_score_2"])
-
-            binarized_sample = {
-                "prompt": sample["prompt"],
-                "chosen": sample["completion_1"] if overall_score_1 > overall_score_2 else sample["completion_2"],
-                "rejected": sample["completion_2"] if overall_score_1 > overall_score_2 else sample["completion_1"],
-            }
-            binarized_batch.append(binarized_sample)
-
-        return binarized_batch
+        out = []
+        for x in prompts_with_completions:
+            chosen_int, rejected_int = 1, 2
+            if self.parse_overall_score_str(x["overall_score_1"]) < self.parse_overall_score_str(x["overall_score_2"]):
+                chosen_int, rejected_int = 2, 1
+            out.append({
+                "prompt": x["prompt"],
+                "prompt_id": x["prompt_id"],
+                "chosen": x[f"response_text_{chosen_int}"],
+                "chosen_model": x[f"model_{chosen_int}"],
+                "chosen_score": x[f"overall_score_{chosen_int}"],
+                "rejected": x[f"response_text_{rejected_int}"],
+                "rejected_model": x[f"model_{rejected_int}"],
+                "rejected_score": x[f"overall_score_{rejected_int}"],
+            })
+        return out
