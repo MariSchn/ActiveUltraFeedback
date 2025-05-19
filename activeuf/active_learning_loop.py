@@ -2,22 +2,20 @@ import json
 import argparse
 import yaml
 import os
-import numpy as np
-from tqdm import tqdm
+import time
 from collections import deque
 
+import torch
 from torch.utils.data import DataLoader
 from datasets import load_from_disk, Dataset
 
 from rewarduq.models import ENNRewardModelPipeline, ENNRewardModelConfig, ENNRewardModelTrainerConfig
 
-from activeuf.oracle.oracles import BaseOracle, RandomOracle, UltraFeedbackOracle
 from activeuf.acquisition_function.acquisition import RandomAcquisitionFunction, DoubleThompsonSampling
-from activeuf.utils import get_logger, setup, set_seed
+from activeuf.oracle.oracles import init_oracle
+from activeuf.utils import get_logger, setup, set_seed, get_timestamp
 from activeuf.configs import *
 from activeuf.schemas import *
-
-logger = get_logger(__name__)
 
 """
 This script takes a dataset with completions as input and generate a binary preference dataset, determining the best completion (chosen/rejected) pair,
@@ -26,47 +24,50 @@ The oracle is then used to determine which completion is chosen and which is rej
 
 Example run command:
     torchrun -m activeuf.active_learning_loop \
-        --completion_dataset /iopsstor/scratch/cscs/smarian/datasets/allenai/ultrafeedback_binarized_cleaned/train_prefs-with-completions-sanitized \
+        --completions_dataset_path datasets/ultrafeedback_annotated \
         --output_size 100
-
-    torchrun -m activeuf.active_learning_loop --completion_dataset /iopsstor/scratch/cscs/smarian/datasets/allenai/ultrafeedback_binarized_cleaned/train_prefs-with-completions-sanitized --output_size 100
 """
 
 def parse_args() -> argparse.Namespace:
     # Parse arguments
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--oracle_type", type=str, default="ultrafeedback", help="Type of oracle to use.", choices=["random", "ultrafeedback"])
+    parser.add_argument("--oracle_name", type=str, default="ultrafeedback", help="Type of oracle to use.", choices=["random", "ultrafeedback"])
 
-    parser.add_argument("--completion_dataset", type=str, required=True, help="Path to the prompt dataset.")
+    parser.add_argument("--completions_dataset_path", type=str, required=True, help="Path to the completions dataset.")
     parser.add_argument("--output_size", type=int, default=None, help="Desired output size of the dataset. If not provided, the entire input dataset will be used")
     parser.add_argument("--output_path", type=str, help="Path to save the annotated dataset.")
+    parser.add_argument("--logs_path", type=str, help="Path to save the logs for this script.")
 
     parser.add_argument("--batch_size", type=int, default=3, help="Batch Size for uncertainty sampling.")
     parser.add_argument("--seed", type=int, default=SEED, help="Random seed for reproducibility.")
     
     parser.add_argument("--acquisition_function_type", type=str, default="double_thompson_sampling", help="Acquistion function type", choices=["double_thompson_sampling", "random"])
     parser.add_argument("--acquisition_config", type=str, default="activeuf/acquisition_function/acquisition_config.yaml", help="acquisition function configuration file path")
-    parser.add_argument("--replay_buffer_size", type=int, default=3200, help="Size of the replay buffer for the ENN reward model training.")
+    parser.add_argument("--replay_buffer_size", type=int, default=20, help="Size of the replay buffer for the ENN reward model training.")
     args = parser.parse_args()
 
     if not args.output_path:
-        args.output_path = f"{args.completion_dataset.rstrip('/')}-active"
+        args.output_path = f"{args.completions_dataset_path.rstrip('/')}-active-{get_timestamp()}"
     assert not os.path.exists(args.output_path), f"Output path {args.output_path} already exists"
+
+    if not args.logs_path:
+        args.logs_path = f"logs/{get_timestamp()}.log"
 
     return args
 
 def custom_collate_fn(batch):
-    b = len(batch)
     return {
-        "prompt_id": [x["prompt_id"] for x in batch for _ in range(b)],
-        "prompt": [x["prompt"] for x in batch for _ in range(b)],
-        "source": [x["source"] for x in batch for _ in range(b)],
-        "completions": [[_ for _ in x["completions"]] for x in batch],
+        "prompt_id": [x["prompt_id"] for x in batch],
+        "prompt": [x["prompt"] for x in batch],
+        "source": [x["source"] for x in batch],
+        "completions": [x["completions"] for x in batch],
     }
+
 
 if __name__ == "__main__":
     args = parse_args()
+    logger = get_logger(__name__, args.logs_path)
 
     logger.info("Logging into HuggingFace")
     setup(login_to_hf=True)
@@ -88,10 +89,14 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"An unexpected error occurred while loading the acquisition configuration file: {e}")
 
-    logger.info(f"Loading Input Dataset {args.completion_dataset}")
-    dataset = load_from_disk(args.completion_dataset)
-    dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, collate_fn=custom_collate_fn)
-    # TODO: Implement custom collate function to handle batching better. E.g. the role field of messages has length of batch_size, even though it should not have been batched
+    logger.info(f"Loading completions from {args.completions_dataset_path}")
+    dataset = load_from_disk(args.completions_dataset_path)
+    dataloader = DataLoader(
+        dataset, 
+        batch_size=args.batch_size, 
+        collate_fn=custom_collate_fn,
+        shuffle=True, 
+    )
 
     logger.info(f"Creating acquisition function {args.acquisition_function_type}")
     if args.acquisition_function_type == "double_thompson_sampling":
@@ -103,17 +108,11 @@ if __name__ == "__main__":
     else:
         raise ValueError(f"Unknown acquisition function type: {args.acquisition_function_type}")
 
-    logger.info(f"Creating oracle {args.oracle_type}")
-    if args.oracle_type == "random":
-        oracle = RandomOracle()
-    elif args.oracle_type == "ultrafeedback":
-        oracle = UltraFeedbackOracle()
-    else:
-        raise ValueError(f"Unknown oracle type: {args.oracle_type}")
+    logger.info(f"Creating oracle {args.oracle_name}")
+    oracle = init_oracle(args.oracle_name)
 
     logger.info(f"Creating UQ model")
-    if args.acquisition_function_type != "random":
-        # * If the acquisition function is random, there is no need to calculate uncertainties
+    if args.acquisition_function_type == "double_thompson_sampling":
         # TODO: Pass correct arguments to the UQ model
         uq_pipeline = ENNRewardModelPipeline(
             ENNRewardModelConfig(
@@ -123,30 +122,32 @@ if __name__ == "__main__":
                 report_to="none"  # * TEMPORARY: Disable logging to wandb
             )
         )
+    # * If the acquisition function is random, there is no need to calculate uncertainties
 
     logger.info(f"Starting data generation loop")
     replay_buffer = deque(maxlen=args.replay_buffer_size)
-    all_outputs = []
+    output_dataset = []
 
-    num_completions = len(dataset[0]["completions"])
     tokenizer = uq_pipeline.model.tokenizer
-    for batch in tqdm(dataloader, total=args.output_size // args.batch_size):
-        m = len(batch["completions"])
+    for i, batch in enumerate(dataloader):
+        logger.info(f"Processing batch {i}")
+
+        start = time.time()
+        n_samples = len(batch["prompt_id"])
         # Prepare batch to be input into the model
-        # TODO: Check if this can be done nicer, e.g. using a custom collate function
         all_messages = [
             [
                 {
                     "role": "user", 
-                    "content": batch["prompt"][sample_idx]
+                    "content": batch["prompt"][sample_idx],
                 },
                 {
                     "role": "system", 
-                    "content": batch["completions"][sample_idx][model_idx]["response_text"]
+                    "content": completion["response_text"],
                 } 
             ]
-            for sample_idx in range(m)
-            for model_idx in range(len(batch["completions"][sample_idx]))
+            for sample_idx in range(n_samples)
+            for completion in batch["completions"][sample_idx]
         ]
 
         model_inputs = tokenizer.apply_chat_template(
@@ -160,51 +161,65 @@ if __name__ == "__main__":
             pad_to_multiple_of=8,
             return_tensors="pt",
         ).to(uq_pipeline.model.device)
+        end = time.time()
+        logger.info(f"- Preprocessing took {end - start:.2f}s")
 
         # Get reward and uncertainty (lower and upper bounds)
-        outputs = uq_pipeline.model(**model_inputs)
-        result = outputs["rewards"].detach().view(m, -1, 3)
+        start = time.time()
+        with torch.no_grad():
+            outputs = uq_pipeline.model(**model_inputs)
+        end = time.time()
+        logger.info(f"- Uncertainty quantification took {end - start:.2f}s")
 
-        reward, lower_bound, upper_bound = result[:, :, 0], result[:, :, 1], result[:, :, 2]
+        temp = outputs["rewards"].detach().view(n_samples, -1, 3)
+        rewards, lower_bounds, upper_bounds = temp[:,:,0], temp[:,:,1], temp[:,:,2]
 
         # Select the completions that should be used for the binarized sample
-        selected_idx = acquisition_function(reward, lower_bound, upper_bound)
-        selected_completions = []
-        for i, (idx_1, idx_2) in enumerate(selected_idx):
-            # TODO: Check if there is a cleaner way to do this
-            selected_completions.append({
-                "prompt": batch["prompt"][i],
+        acquisition_idxs = acquisition_function(
+            rewards, lower_bounds, upper_bounds
+        )
+        acquired_batch = [
+            {   
                 "prompt_id": batch["prompt_id"][i],
-                "completion_1": batch["completions"][i][idx_1]["response_text"],
-                "overall_score_1": batch["completions"][i][idx_1]["overall_score"],
-                "model_1": batch["completions"][i][idx_1]["model"],
-                "completion_2": batch["completions"][i][idx_2]["response_text"],
-                "overall_score_2": batch["completions"][i][idx_2]["overall_score"],
-                "model_2": batch["completions"][i][idx_2]["model"],
-            })
+                "source": batch["source"][i],
+                "prompt": batch["prompt"][i],
+                "response_text_1": batch["completions"][i][a]["response_text"],
+                "model_1": batch["completions"][i][a]["model"],
+                "overall_score_1": batch["completions"][i][a]["overall_score"],
+                "response_text_2": batch["completions"][i][b]["response_text"],
+                "model_2": batch["completions"][i][b]["model"],
+                "overall_score_2": batch["completions"][i][b]["overall_score"],
+            }
+            for i, (a, b) in enumerate(acquisition_idxs)
+        ]
         
         # Call oracle to determine which is chosen and which is rejected
-        annotated_batch = oracle(selected_completions)
+        annotated_batch = oracle(acquired_batch)
 
-        # Add the batch to the output dataset
-        for sample in annotated_batch:
-            replay_buffer.append(sample)
-            all_outputs.append(sample)
+        # Add the batch to the replay buffer
+        output_dataset.extend(annotated_batch)
+        replay_buffer.extend(annotated_batch)
+
+        logger.info(f"Saving output dataset to {args.output_path}")
+        start = time.time()
+        os.makedirs(args.output_path, exist_ok=True)
+        temp = Dataset.from_list(output_dataset)
+        temp.save_to_disk(args.output_path)
+        end = time.time()
+        logger.info(f"- Saving took {end - start:.2f}s")
 
         # Train the reward model with the new data
-        logger.info("training uq")
-        output_dataset = Dataset.from_list(list(replay_buffer))
-        uq_pipeline.train(output_dataset)
+        start = time.time()
+        train_dataset = Dataset.from_list(list(replay_buffer))
+        uq_pipeline.train(train_dataset)
+        end = time.time()
+        logger.info(f"- Training took {end - start:.2f}s")
+        logger.info(f"Done with batch {i}\n")
 
         # Check if we have reached the desired output size
-        if args.output_size and len(all_outputs) >= args.output_size:
+        if args.output_size and len(output_dataset) >= args.output_size:
             logger.info(f"Reached desired output size of {args.output_size}. Stopping data generation.")
             break
-
-    logger.info(f"Saving output dataset to {args.output_path}")
-    os.makedirs(args.output_path, exist_ok=True)
-    output_dataset = Dataset.from_list(all_outputs)
-    output_dataset.save_to_disk(args.output_path)
 
     args_path = os.path.join(args.output_path, "args.json")
     with open(args_path, "w") as f_out:
