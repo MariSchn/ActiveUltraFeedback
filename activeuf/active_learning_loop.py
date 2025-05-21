@@ -25,7 +25,6 @@ The oracle is then used to determine which completion is chosen and which is rej
 Example run command:
     torchrun -m activeuf.active_learning_loop \
         --completions_dataset_path datasets/ultrafeedback_annotated \
-        --output_size 40
 """
 
 def parse_args() -> argparse.Namespace:
@@ -39,13 +38,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output_path", type=str, help="Path to save the annotated dataset.")
     parser.add_argument("--logs_path", type=str, help="Path to save the logs for this script.")
 
-    parser.add_argument("--batch_size", type=int, default=3, help="Batch Size for uncertainty sampling.")
+    parser.add_argument("--batch_size", type=int, default=8, help="Batch Size for uncertainty sampling.")
     parser.add_argument("--max_length", type=int, default=1024, help="Max length for the tokenizer.")
     parser.add_argument("--seed", type=int, default=SEED, help="Random seed for reproducibility.")
     
     parser.add_argument("--acquisition_function_type", type=str, default="double_thompson_sampling", help="Acquistion function type", choices=["double_thompson_sampling", "random"])
     parser.add_argument("--acquisition_config", type=str, default="activeuf/acquisition_function/configs.yaml", help="acquisition function configuration file path")
-    parser.add_argument("--replay_buffer_size", type=int, default=10, help="Size of the replay buffer for the ENN reward model training.")
+    parser.add_argument("--replay_buffer_size", type=int, default=32, help="Size of the replay buffer for the ENN reward model training.")
     args = parser.parse_args()
 
     if not args.output_path:
@@ -66,6 +65,7 @@ def custom_collate_fn(batch):
     }
 
 if __name__ == "__main__":
+
     args = parse_args()
     logger = get_logger(__name__, args.logs_path)
 
@@ -104,12 +104,12 @@ if __name__ == "__main__":
 
     logger.info(f"Creating UQ model")
     if args.acquisition_function_type == "double_thompson_sampling":
-        # TODO: Pass correct arguments to the UQ model
         uq_pipeline = ENNRewardModelPipeline(
             ENNRewardModelConfig(
                 base_model_name_or_path="meta-llama/Llama-3.2-1B-Instruct"
             ),
             ENNRewardModelTrainerConfig(
+                num_train_epochs=1,
                 report_to="none"  # * TEMPORARY: Disable logging to wandb
             )
         )
@@ -228,7 +228,7 @@ if __name__ == "__main__":
         # Train UQ model on replay buffer
         start = time.time()
         model.train()
-        uq_pipeline.train(Dataset.from_list(annotated_batch))
+        uq_pipeline.train(Dataset.from_list(replay_buffer))
         end = time.time()
         logger.info(f"- Training took {end - start:.2f}s")
         logger.info(f"Done with batch {i}\n")
