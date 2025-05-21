@@ -5,61 +5,83 @@ import argparse
 import numpy as np
 from abc import ABC, abstractmethod
 
-class AcquisitionFunction(ABC):
+class BaseAcquisitionFunction(ABC):
     """
     Abstract base class for acquisition functions.
     """
     @abstractmethod
-    def __call__(self, rewards: torch.Tensor, lower_bounds: torch.Tensor, upper_bounds: torch.Tensor) -> list:
+    def __call__(self, *args, **kwargs) -> list[list[int, int]]:
         """
-        Selects indices of prompts/completions for annotation.
+        Given information on the completions for a batch of prompts, selects 
+        the indices for the two completions per prompt that should be annotated
+        by the oracle.
 
         Args:
-            rewards (torch.Tensor): Rewards tensor with shape (n_prompts, n_completions)
-            uncertainty (torch.Tensor): Uncertainty tensor with shape (n_prompts, n_completions)
+            Blank, because it can vary across the child classes.
 
         Returns:
-            List[int]: List of indices of selected prompts/completions
+            list[list[int, int]]: The selected indices per prompt. 
+                The first index is the one that should be chosen, the second 
+                one is the one that should be rejected.
         """
         pass
 
-class RandomAcquisitionFunction(AcquisitionFunction):
+class RandomAcquisitionFunction(BaseAcquisitionFunction):
     """
-    Selects the two random completions per prompt.
-    Returns a list of (response_1_idx, response_2_idx) tuples chosen uniformly random. 
+    Randomly selects and returns two indices per prompt
     """
 
     def __init__(self):
         super().__init__()
 
-    def __call__(self, rewards: torch.Tensor, lower_bounds: torch.Tensor, upper_bounds: torch.Tensor) -> list:
+    def __call__(
+            self, 
+            n_prompts: int, 
+            n_completions_per_prompt: int,
+        ) -> list[list[int, int]]:
         """
-        rewards: List of lists (prompt x completions)
-        uncertainty: List of lists (same shape, not used here)
+        Args:
+            n_prompts: number of prompts
+            n_completions_per_prompt: number of completions per prompt
 
         Returns:
-            List of tuples (response_1_idx, response_2_idx)
+            list[list[int, int]]: The selected indices per prompt.
+                The first index is the one that should be chosen, the second 
+                one is the one that should be rejected.
         """
-        selected_indices = []
-
-        for reward_list in rewards:
-            if len(reward_list) < 2:
-                raise Exception("Need at least 2 completions for the aquisition function")
-
-            random_indices = random.sample(range(len(reward_list)), 2)
-
-            selected_indices.append((random_indices[0], random_indices[1]))
-
-        return selected_indices
+        return np.random.randint(
+            low=0,
+            high=n_completions_per_prompt,
+            size=(n_prompts, 2),
+        ).tolist()
     
     
-class DoubleThompsonSampling(AcquisitionFunction):
-    def __init__(self, beta=1, max_iterations=10):
+class DoubleThompsonSampling(BaseAcquisitionFunction):
+    def __init__(self, max_iterations: int = 10, beta: int = 1):
         super().__init__()
         self.max_iterations = max_iterations
         self.beta = beta
         
-    def __call__(self, rewards: torch.Tensor, lower_bounds: torch.Tensor, upper_bounds: torch.Tensor) -> list:
+    def __call__(
+        self, 
+        rewards: torch.Tensor, 
+        lower_bounds: torch.Tensor, 
+        upper_bounds: torch.Tensor,
+    ) -> list[list[int, int]]:
+        """
+        Args:
+            rewards: tensor of shape (n_prompts, n_completions_per_prompt)
+                containing the reward scores for each completion
+            lower_bounds: tensor of shape (n_prompts, n_completions_per_prompt)
+                containing the lower bounds for each completion
+            upper_bounds: tensor of shape (n_prompts, n_completions_per_prompt)
+                containing the upper bounds for each completion
+        Returns:
+            list[list[int, int]]: The selected indices per prompt.
+                The first index is the one that should be chosen, the second 
+                one is the one that should be rejected.
+        """
+
         selected_ids_batch = []
         for i in range(len(rewards)):
             #step 1 - selecting first response
@@ -78,10 +100,7 @@ class DoubleThompsonSampling(AcquisitionFunction):
             selected_ids_batch.append((response_1, response_2))
 
         return selected_ids_batch
-        
-    """
-        For beta=1, we uniformly sample the reward from the interval [lower_bound; upper_bound].
-    """
+
     def dts_optimize(self, reward_list, lower_bound_list, upper_bound_list):
         r_epistemic_index = []
         for j in range(len(reward_list)):
