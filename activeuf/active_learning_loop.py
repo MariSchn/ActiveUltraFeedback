@@ -25,7 +25,7 @@ The oracle is then used to determine which completion is chosen and which is rej
 Example run command:
     torchrun -m activeuf.active_learning_loop \
         --completions_dataset_path datasets/ultrafeedback_annotated \
-        --output_size 100
+        --output_size 40
 """
 
 def parse_args() -> argparse.Namespace:
@@ -40,11 +40,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--logs_path", type=str, help="Path to save the logs for this script.")
 
     parser.add_argument("--batch_size", type=int, default=3, help="Batch Size for uncertainty sampling.")
+    parser.add_argument("--max_length", type=int, default=1024, help="Max length for the tokenizer.")
     parser.add_argument("--seed", type=int, default=SEED, help="Random seed for reproducibility.")
     
     parser.add_argument("--acquisition_function_type", type=str, default="double_thompson_sampling", help="Acquistion function type", choices=["double_thompson_sampling", "random"])
-    parser.add_argument("--acquisition_config", type=str, default="activeuf/acquisition_function/acquisition_config.yaml", help="acquisition function configuration file path")
-    parser.add_argument("--replay_buffer_size", type=int, default=20, help="Size of the replay buffer for the ENN reward model training.")
+    parser.add_argument("--acquisition_config", type=str, default="activeuf/acquisition_function/configs.yaml", help="acquisition function configuration file path")
+    parser.add_argument("--replay_buffer_size", type=int, default=10, help="Size of the replay buffer for the ENN reward model training.")
     args = parser.parse_args()
 
     if not args.output_path:
@@ -64,7 +65,6 @@ def custom_collate_fn(batch):
         "completions": [x["completions"] for x in batch],
     }
 
-
 if __name__ == "__main__":
     args = parse_args()
     logger = get_logger(__name__, args.logs_path)
@@ -77,17 +77,8 @@ if __name__ == "__main__":
         set_seed(args.seed)
 
     logger.info("Parsing config")
-    try:
-        # Attempt to load the reward configuration file
-        with open(args.acquisition_config, "r") as f:
-            acquisition_config = yaml.safe_load(f)
-    except FileNotFoundError:
-        print(f"Error: The specified reward configuration file '{args.acquisition_config}' was not found.")
-    except yaml.YAMLError as e:
-        print(f"Error: Failed to parse the acquisition configuration file '{args.acquisition_config}'.")
-        print(f"Details: {e}")
-    except Exception as e:
-        print(f"An unexpected error occurred while loading the acquisition configuration file: {e}")
+    with open(args.acquisition_config, "r") as f:
+        acquisition_config = yaml.safe_load(f)
 
     logger.info(f"Loading completions from {args.completions_dataset_path}")
     dataset = load_from_disk(args.completions_dataset_path)
@@ -122,20 +113,23 @@ if __name__ == "__main__":
                 report_to="none"  # * TEMPORARY: Disable logging to wandb
             )
         )
-    # * If the acquisition function is random, there is no need to calculate uncertainties
+    model = uq_pipeline.model
+    model = model.to("cuda")
+    tokenizer = uq_pipeline.model.tokenizer
 
     logger.info(f"Starting data generation loop")
     replay_buffer = deque(maxlen=args.replay_buffer_size)
     output_dataset = []
 
-    tokenizer = uq_pipeline.model.tokenizer
     for i, batch in enumerate(dataloader):
         logger.info(f"Processing batch {i}")
 
         start = time.time()
-        n_samples = len(batch["prompt_id"])
-        # Prepare batch to be input into the model
-        all_messages = [
+        n_samples_in_batch = len(batch["prompt_id"])
+        n_completions_per_sample = len(batch["completions"][0])
+
+        # Prepare messages for model
+        messages = [
             [
                 {
                     "role": "user", 
@@ -146,72 +140,95 @@ if __name__ == "__main__":
                     "content": completion["response_text"],
                 } 
             ]
-            for sample_idx in range(n_samples)
+            for sample_idx in range(n_samples_in_batch)
             for completion in batch["completions"][sample_idx]
         ]
 
-        model_inputs = tokenizer.apply_chat_template(
-            all_messages,
-            tokenize=False,
-            add_generation_prompt=False,
+        messages_str = tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=False,
         )
-        model_inputs = tokenizer(
-            model_inputs, 
-            padding=True,
-            pad_to_multiple_of=8,
+        inputs = tokenizer(
+            messages_str, 
+            padding="max_length",
+            max_length=args.max_length,
+            truncation=True,
             return_tensors="pt",
-        ).to(uq_pipeline.model.device)
+        ).to(uq_pipeline.model.device)                                                       # inputs["input_ids]: (n_samples_in_batch * n_completions_per_sample, max_length)
         end = time.time()
         logger.info(f"- Preprocessing took {end - start:.2f}s")
 
         # Get reward and uncertainty (lower and upper bounds)
         start = time.time()
+        model.eval()
         with torch.no_grad():
-            outputs = uq_pipeline.model(**model_inputs)
+            outputs = uq_pipeline.model(**inputs)                                            # output["rewards"]: (n_samples_in_batch * n_completions_per_sample, 3)
         end = time.time()
         logger.info(f"- Uncertainty quantification took {end - start:.2f}s")
 
-        temp = outputs["rewards"].detach().view(n_samples, -1, 3)
-        rewards, lower_bounds, upper_bounds = temp[:,:,0], temp[:,:,1], temp[:,:,2]
-
         # Select the completions that should be used for the binarized sample
-        acquisition_idxs = acquisition_function(
-            rewards, lower_bounds, upper_bounds
+        start = time.time()
+        rewards = outputs["rewards"].detach().view(n_samples_in_batch, -1, 3)                # (n_samples_in_batch, n_completions_per_sample, 3)
+        b_acquired_idxs = torch.tensor(                                                      # (n_samples_in_batch, 2)
+            acquisition_function(*rewards.unbind(-1))
         )
+        end = time.time()
+        logger.info(f"- Acquisition function took {end - start:.2f}s")
+
+        temp = b_acquired_idxs.unsqueeze(-1).expand(-1, -1, args.max_length)                 # (n_samples_in_batch, 2, max_length)
+        input_ids = inputs["input_ids"].cpu()
+        b_acquired_input_ids = torch.take_along_dim(                                         # (n_samples_in_batch, 2, max_length)
+            input_ids.view(n_samples_in_batch, n_completions_per_sample, -1),                # (n_samples_in_batch, n_completions_per_sample, max_length)
+            temp, 
+            dim=1,
+        )
+        attention_masks = inputs["attention_mask"].cpu()
+        b_acquired_attention_mask = torch.take_along_dim(                                    # (n_samples_in_batch, 2, max_length)
+            attention_masks.view(n_samples_in_batch, n_completions_per_sample, -1),          # (n_samples_in_batch, n_completions_per_sample, max_length)
+            temp,
+            dim=1,
+        )
+
         acquired_batch = [
             {   
                 "prompt_id": batch["prompt_id"][i],
                 "source": batch["source"][i],
                 "prompt": batch["prompt"][i],
+
                 "response_text_1": batch["completions"][i][a]["response_text"],
                 "model_1": batch["completions"][i][a]["model"],
-                "overall_score_1": batch["completions"][i][a]["overall_score"],
+                "score_1": batch["completions"][i][a]["overall_score"],
+                "input_ids_1": b_acquired_input_ids[i, 0],                                   # (max_length,)
+                "attention_mask_1": b_acquired_attention_mask[i, 0],                         # (max_length,)
+
                 "response_text_2": batch["completions"][i][b]["response_text"],
                 "model_2": batch["completions"][i][b]["model"],
-                "overall_score_2": batch["completions"][i][b]["overall_score"],
+                "score_2": batch["completions"][i][b]["overall_score"],
+                "input_ids_2": b_acquired_input_ids[i, 1],                                   # (max_length,)
+                "attention_mask_2": b_acquired_attention_mask[i, 1],                         # (max_length,)
             }
-            for i, (a, b) in enumerate(acquisition_idxs)
+            for i, (a, b) in enumerate(b_acquired_idxs)
         ]
-        
+
         # Call oracle to determine which is chosen and which is rejected
         annotated_batch = oracle(acquired_batch)
 
-        # Add the batch to the replay buffer
-        output_dataset.extend(annotated_batch)
+        # Update dataset to be saved, then save to disk
+        output_dataset.extend([
+            {
+                k: v 
+                for k, v in x.items()
+                if not k.startswith("input_ids") and not k.startswith("attention_mask")
+            } for x in annotated_batch
+        ])
+        Dataset.from_list(output_dataset).save_to_disk(args.output_path)
+
+        # Update replay buffer
         replay_buffer.extend(annotated_batch)
 
-        logger.info(f"Saving output dataset to {args.output_path}")
+        # Train UQ model on replay buffer
         start = time.time()
-        os.makedirs(args.output_path, exist_ok=True)
-        temp = Dataset.from_list(output_dataset)
-        temp.save_to_disk(args.output_path)
-        end = time.time()
-        logger.info(f"- Saving took {end - start:.2f}s")
-
-        # Train the reward model with the new data
-        start = time.time()
-        train_dataset = Dataset.from_list(list(replay_buffer))
-        uq_pipeline.train(train_dataset)
+        model.train()
+        uq_pipeline.train(Dataset.from_list(annotated_batch))
         end = time.time()
         logger.info(f"- Training took {end - start:.2f}s")
         logger.info(f"Done with batch {i}\n")
