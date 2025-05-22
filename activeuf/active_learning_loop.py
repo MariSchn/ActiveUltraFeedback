@@ -26,7 +26,7 @@ Example run command:
     torchrun -m activeuf.active_learning_loop \
         --completions_dataset_path datasets/ultrafeedback_annotated \
         --previous_output_path datasets/ultrafeedback_annotated-active-20250521-170158 \
-        --previous_checkpoint_path trainer_output/20250521-170158/checkpoint-4 \
+        --previous_checkpoint_path trainer_output/20250521-170158/checkpoint-4
 """
 
 def parse_args() -> argparse.Namespace:
@@ -97,6 +97,9 @@ if __name__ == "__main__":
         done_prompt_ids = set(done_dataset["prompt_id"])
         logger.info(f"Filtering out {len(done_prompt_ids)} done samples from the dataset")
         dataset = dataset.filter(lambda x: x["prompt_id"] not in done_prompt_ids)
+        output_dataset = done_dataset.to_list()
+    else:
+        output_dataset = []
         
     dataloader = DataLoader(
         dataset, 
@@ -138,7 +141,6 @@ if __name__ == "__main__":
 
     logger.info(f"Starting data generation loop")
     replay_buffer = deque(maxlen=args.replay_buffer_size)
-    output_dataset = []
 
     for i, batch in enumerate(dataloader):
         logger.info(f"Processing batch {i}")
