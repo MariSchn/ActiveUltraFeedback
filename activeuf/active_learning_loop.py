@@ -25,6 +25,8 @@ The oracle is then used to determine which completion is chosen and which is rej
 Example run command:
     torchrun -m activeuf.active_learning_loop \
         --completions_dataset_path datasets/ultrafeedback_annotated \
+        --previous_output_path datasets/ultrafeedback_annotated-active-20250521-170158 \
+        --previous_checkpoint_path trainer_output/20250521-170158/checkpoint-4 \
 """
 
 def parse_args() -> argparse.Namespace:
@@ -33,10 +35,13 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument("--oracle_name", type=str, default="ultrafeedback", help="Type of oracle to use.", choices=["random", "ultrafeedback"])
 
-    parser.add_argument("--completions_dataset_path", type=str, required=True, help="Path to the completions dataset.")
-    parser.add_argument("--output_size", type=int, default=None, help="Desired output size of the dataset. If not provided, the entire input dataset will be used")
+    parser.add_argument("--completions_dataset_path", type=str, required=True, help="Path to the full completions dataset.")
+    parser.add_argument("--previous_output_path", type=str, help="Path to the dataset that is generated so far. These will be ignored in processing.")
+    parser.add_argument("--previous_checkpoint_path", type=str, help="Path to the reward model checkpoint.")
+
     parser.add_argument("--output_path", type=str, help="Path to save the annotated dataset.")
     parser.add_argument("--logs_path", type=str, help="Path to save the logs for this script.")
+    parser.add_argument("--args_path", type=str, help="Path to save the args for this script.")
 
     parser.add_argument("--batch_size", type=int, default=8, help="Batch Size for uncertainty sampling.")
     parser.add_argument("--max_length", type=int, default=1024, help="Max length for the tokenizer.")
@@ -47,12 +52,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--replay_buffer_size", type=int, default=32, help="Size of the replay buffer for the ENN reward model training.")
     args = parser.parse_args()
 
+    args.timestamp = get_timestamp()
+
     if not args.output_path:
-        args.output_path = f"{args.completions_dataset_path.rstrip('/')}-active-{get_timestamp()}"
+        args.output_path = f"{args.completions_dataset_path.rstrip('/')}-active-{args.timestamp}"
     assert not os.path.exists(args.output_path), f"Output path {args.output_path} already exists"
 
     if not args.logs_path:
-        args.logs_path = f"logs/{get_timestamp()}.log"
+        args.logs_path = f"logs/{args.timestamp}.log"
+
+    if not args.args_path:
+        args.args_path = f"logs/{args.timestamp}.args"
 
     return args
 
@@ -82,6 +92,12 @@ if __name__ == "__main__":
 
     logger.info(f"Loading completions from {args.completions_dataset_path}")
     dataset = load_from_disk(args.completions_dataset_path)
+    if args.previous_output_path:
+        done_dataset = load_from_disk(args.previous_output_path)
+        done_prompt_ids = set(done_dataset["prompt_id"])
+        logger.info(f"Filtering out {len(done_prompt_ids)} done samples from the dataset")
+        dataset = dataset.filter(lambda x: x["prompt_id"] not in done_prompt_ids)
+        
     dataloader = DataLoader(
         dataset, 
         batch_size=args.batch_size, 
@@ -106,11 +122,14 @@ if __name__ == "__main__":
     if args.acquisition_function_type == "double_thompson_sampling":
         uq_pipeline = ENNRewardModelPipeline(
             ENNRewardModelConfig(
-                base_model_name_or_path="meta-llama/Llama-3.2-1B-Instruct"
+                base_model_name_or_path=args.previous_checkpoint_path if args.previous_checkpoint_path else "meta-llama/Llama-3.2-1B-Instruct"
             ),
             ENNRewardModelTrainerConfig(
                 num_train_epochs=1,
-                report_to="none"  # * TEMPORARY: Disable logging to wandb
+                output_dir=f"trainer_output/{args.timestamp}",
+                save_strategy="epoch",
+                report_to="none",  # * TEMPORARY: Disable logging to wandb
+                disable_tqdm=True,
             )
         )
     model = uq_pipeline.model
@@ -232,11 +251,6 @@ if __name__ == "__main__":
         end = time.time()
         logger.info(f"- Training took {end - start:.2f}s")
         logger.info(f"Done with batch {i}\n")
-
-        # Check if we have reached the desired output size
-        if args.output_size and len(output_dataset) >= args.output_size:
-            logger.info(f"Reached desired output size of {args.output_size}. Stopping data generation.")
-            break
 
     args_path = os.path.join(args.output_path, "args.json")
     with open(args_path, "w") as f_out:
