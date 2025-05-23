@@ -1,7 +1,4 @@
-import random
 import torch
-import json
-import argparse
 import numpy as np
 from abc import ABC, abstractmethod
 
@@ -112,3 +109,22 @@ class DoubleThompsonSampling(BaseAcquisitionFunction):
             r_epistemic_index.append(r_x_y_epistemic_index)
         return np.argmax([idx.cpu() for idx in r_epistemic_index])
     
+def init_acquisition_function(
+        acquisition_type: str, 
+        **kwargs,
+    ) -> BaseAcquisitionFunction:
+    """
+    Initializes the acquisition function based on the specified type.
+
+    Args:
+        acquisition_type (str): The type of acquisition function to initialize.
+
+    Returns:
+        BaseAcquisitionFunction: An instance of the specified acquisition function.
+    """
+    if acquisition_type == "random":
+        return RandomAcquisitionFunction(**kwargs)
+    elif acquisition_type == "double_thompson_sampling":
+        return DoubleThompsonSampling(**kwargs)
+    else:
+        raise ValueError(f"Unknown acquisition function type: {acquisition_type}")
