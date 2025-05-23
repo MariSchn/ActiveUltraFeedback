@@ -9,7 +9,7 @@ import torch
 from torch.utils.data import DataLoader
 from datasets import load_from_disk, Dataset
 
-from rewarduq.models import ENNRewardModelPipeline, ENNRewardModelConfig, ENNRewardModelTrainerConfig
+from rewarduq.models import ENNRewardModel, ENNRewardModelPipeline, ENNRewardModelConfig, ENNRewardModelTrainerConfig
 
 from activeuf.acquisition_function.acquisition import RandomAcquisitionFunction, DoubleThompsonSampling
 from activeuf.oracle.oracles import init_oracle
@@ -77,6 +77,9 @@ def custom_collate_fn(batch):
 if __name__ == "__main__":
 
     args = parse_args()
+    with open(args.args_path, "w") as f_out:
+        json.dump(vars(args), f_out)
+
     logger = get_logger(__name__, args.logs_path)
 
     logger.info("Logging into HuggingFace")
@@ -95,7 +98,7 @@ if __name__ == "__main__":
     if args.previous_output_path:
         done_dataset = load_from_disk(args.previous_output_path)
         done_prompt_ids = set(done_dataset["prompt_id"])
-        logger.info(f"Filtering out {len(done_prompt_ids)} done samples from the dataset")
+        logger.info(f"Filtering out {len(done_prompt_ids)} done samples from the data to be processed")
         dataset = dataset.filter(lambda x: x["prompt_id"] not in done_prompt_ids)
         output_dataset = done_dataset.to_list()
     else:
@@ -125,7 +128,7 @@ if __name__ == "__main__":
     if args.acquisition_function_type == "double_thompson_sampling":
         uq_pipeline = ENNRewardModelPipeline(
             ENNRewardModelConfig(
-                base_model_name_or_path=args.previous_checkpoint_path if args.previous_checkpoint_path else "meta-llama/Llama-3.2-1B-Instruct"
+                base_model_name_or_path="meta-llama/Llama-3.2-1B-Instruct"
             ),
             ENNRewardModelTrainerConfig(
                 num_train_epochs=1,
@@ -135,6 +138,10 @@ if __name__ == "__main__":
                 disable_tqdm=True,
             )
         )
+    if args.previous_checkpoint_path:
+        logger.info(f"Loading checkpoint from {args.previous_checkpoint_path}")
+        uq_pipeline.model = ENNRewardModel.from_pretrained(args.previous_checkpoint_path)
+
     model = uq_pipeline.model
     model = model.to("cuda")
     tokenizer = uq_pipeline.model.tokenizer
@@ -253,7 +260,3 @@ if __name__ == "__main__":
         end = time.time()
         logger.info(f"- Training took {end - start:.2f}s")
         logger.info(f"Done with batch {i}\n")
-
-    args_path = os.path.join(args.output_path, "args.json")
-    with open(args_path, "w") as f_out:
-        json.dump(vars(args), f_out)
