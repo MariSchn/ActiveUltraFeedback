@@ -1,6 +1,7 @@
 from dotenv import load_dotenv
 import huggingface_hub
 import logging
+import wandb
 import os
 import time
 from typing import Union
@@ -30,7 +31,7 @@ def get_logger(name: str) -> logging.Logger:
         logger.addHandler(handler)
     return logger
 
-def setup(login_to_hf: bool = False) -> None:
+def setup(login_to_hf: bool = False, login_to_wandb: bool = False) -> None:
     # load env variables
     load_dotenv(PUBLIC_ENV_PATH)
 
@@ -38,6 +39,10 @@ def setup(login_to_hf: bool = False) -> None:
         load_dotenv(LOCAL_ENV_PATH)
         huggingface_hub.login(os.getenv("HF_TOKEN"))
 
+    if login_to_wandb:
+        load_dotenv(LOCAL_ENV_PATH)
+        wandb.login(key=os.getenv("WANDB_TOKEN"))
+        
 def set_seed(seed: int) -> None:
     random.seed(seed)
     np.random.seed(seed)
