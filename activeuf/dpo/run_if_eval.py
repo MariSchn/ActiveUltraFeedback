@@ -102,6 +102,10 @@ if __name__ == "__main__":
     # Run the evaluation
     logger.info("Running IFEval evaluation")
 
+    # Download the necessary NLTK data files
+    import nltk
+    nltk.download('punkt_tab')
+
     input_data = os.path.abspath(os.path.join(args.if_eval_dir, "data/input_data.jsonl"))
     input_response_data = os.path.abspath(os.path.join(args.output_dir, "responses.jsonl"))
     output_path = os.path.abspath(args.output_dir)
