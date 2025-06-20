@@ -65,21 +65,33 @@ def parse_annotation_from_response_text(response_text: str, aspect: str) -> dict
     matches = re.search(annotation_pattern, response_text, re.DOTALL | re.I)
     groups = matches.groups()
 
-    return Annotation(
-        aspect=aspect,
-        annotator_name=args.model_name,
+    if len(groups) == 2:
+        return Annotation(
+            aspect=aspect,
+            annotator_name=args.model_name,
 
-        type=groups[-4] if len(groups) == 4 else None,
-        type_rationale=groups[-3] if len(groups) == 4 else None,
-        rating=groups[-2],
-        rating_rationale=groups[-1],
-    ).model_dump()
+            type="",
+            type_rationale="",
+            rating=groups[0].strip(),
+            rating_rationale=groups[1].strip(),
+        ).model_dump()
+    elif len(groups) == 4:
+        return Annotation(
+            aspect=aspect,
+            annotator_name=args.model_name,
+
+            type=groups[0].strip(),
+            type_rationale=groups[1].strip(),
+            rating=groups[2].strip(),
+            rating_rationale=groups[3].strip(),
+        ).model_dump()
+
 
 def parse_critique_from_response_text(response_text: str) -> dict[str, str]:
     matches = re.search(FEEDBACK_ANNOTATION_PATTERN, response_text, re.DOTALL | re.I)
     groups = matches.groups()
 
-    return {"critique": groups[0], "overall_score": groups[1]}
+    return {"critique": groups[0].strip(), "overall_score": groups[1].strip()}
 
 def annotate_completion(
         completion: dict[str, str],
@@ -107,51 +119,47 @@ def annotate(
         sampling_params (SamplingParams | None): The sampling parameters for the model. If None is provided the default parameters are used
     """
     # prepare new column for the annotated completions
-    all_annotated_completions = dataset["completions"]
+    all_annotated_completions = dataset["completions"].copy()
 
-    # # ASPECT ANNOTATION # disabled for now
-    # logger.info("Annotating completions on aspects")
-    # aspects = list(ASPECT2ANNOTATION_PROMPT)
-    # for aspect in aspects:
-    #     aspect_annotation_prompt = ASPECT2ANNOTATION_PROMPT[aspect]
-    #     for sample, annotated_completions in tqdm(zip(dataset, all_annotated_completions)):
+    # ASPECT ANNOTATION
+    logger.info("Annotating completions on aspects")
+    aspects = list(ASPECT2ANNOTATION_PROMPT)
+    for aspect in aspects:
+        aspect_annotation_prompt = ASPECT2ANNOTATION_PROMPT[aspect]
+        for sample, annotated_completions in tqdm(zip(dataset, all_annotated_completions)):
             
-    #         # identify completions that need annotation for this aspect
-    #         idxs_needing_annotation = [
-    #             i for i, completion in enumerate(sample["completions"])
-    #             if aspect not in {_["aspect"] for _ in completion["annotations"]}
-    #         ]
+            # identify completions that need annotation for this aspect
+            idxs_needing_annotation = [
+                i for i, completion in enumerate(sample["completions"])
+                if aspect not in {_["aspect"] for _ in completion["annotations"]}
+            ]
 
-    #         # construct messages for annotation of each completion
-    #         all_messages = []
-    #         for i in idxs_needing_annotation:
-    #             completion = sample["completions"][i]
-    #             all_messages.append([
-    #                 Message(
-    #                     role="system", 
-    #                     content=PREFERENCE_ANNOTATION_SYSTEM_PROMPT,
-    #                 ).model_dump(),
-    #                 Message(
-    #                     role="user", 
-    #                     content=f"{aspect_annotation_prompt}\n\nInstruction: {sample['prompt']}\n\nText: {completion['response_text']}",
-    #                 ).model_dump(),
-    #             ])
+            # construct messages for annotation of each completion
+            all_messages = []
+            for i in idxs_needing_annotation:
+                completion = sample["completions"][i]
+                all_messages.append([
+                    Message(
+                        role="system", 
+                        content=PREFERENCE_ANNOTATION_SYSTEM_PROMPT,
+                    ).model_dump(),
+                    Message(
+                        role="user", 
+                        content=f"{aspect_annotation_prompt}\n\nInstruction: {sample['prompt']}\n\nText: {completion['response_text']}",
+                    ).model_dump(),
+                ])
             
-    #         # generate responses for all messages
-    #         response_texts = get_response_texts(model, tokenizer, all_messages, sampling_params, use_tqdm=False)
+            # generate responses for all messages
+            response_texts = get_response_texts(model, tokenizer, all_messages, sampling_params, use_tqdm=False)
 
-    #         # extract annotations from response texts (warn, but don't fail if parsing error)
-    #         for i, response_text in zip(idxs_needing_annotation, response_texts):
-    #             try:
-    #                 annotation = parse_annotation_from_response_text(response_text, aspect)
-    #                 annotated_completions[i]["annotations"].append(annotation)
-    #             except:
-    #                 logger.info(f"Failed to annotate a completion for prompt_id={sample['prompt_id']} on aspect={aspect}")
-    #                 logger.info(response_text)
-        
-    #     if args.debug:
-    #         logger.info("Debug mode: only annotating on one aspect")
-    #         break
+            # extract annotations from response texts (warn, but don't fail if parsing error)
+            for i, response_text in zip(idxs_needing_annotation, response_texts):
+                try:
+                    annotation = parse_annotation_from_response_text(response_text, aspect)
+                    annotated_completions[i]["annotations"].append(annotation)
+                except:
+                    logging.info(f"Failed to annotate a completion for prompt_id={sample['prompt_id']} on aspect={aspect}")
+                    logging.info(response_text)
 
     # CRITIQUE ANNOTATION
     logger.info("Critiquing completions")
