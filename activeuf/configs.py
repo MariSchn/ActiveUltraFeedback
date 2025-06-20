@@ -128,9 +128,9 @@ ASPECT2ANNOTATION_PROMPT = {
 
 # Regex patterns used to extract the ratings and rationales from the annotation model's response
 ASPECT2ANNOTATION_PATTERN = {
-    "instruction_following": r"Rating: (.+?)\nRationale: (.+)",
-    "honesty": r"Rating: (.+?)\nRationale: (.+)",
-    "truthfulness": r"Type: (.+?)\nType rationale: (.+?)\nRating: (.+?)\nRationale: (.+)",
-    "helpfulness": r"Type: (.+?)\nType rationale: (.+?)\nRating: (.+?)\nRationale: (.+)",
+    "instruction_following": r"Rating:(.+?)Rationale:(.+)",
+    "honesty": r"Rating:(.+?)Rationale:(.+)",
+    "truthfulness": r"Type:(.+?)Type rationale:(.+?)Rating:(.+?)Rationale:(.+)",
+    "helpfulness": r"Type:(.+?)Type rationale:(.+?)Rating:(.+?)Rationale:(.+)",
 }
-FEEDBACK_ANNOTATION_PATTERN = r"Feedback: (.+?)\nOverall score: (\d+)"
+FEEDBACK_ANNOTATION_PATTERN = r"Feedback:(.+?)Overall score:(.+)"
