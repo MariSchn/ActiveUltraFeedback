@@ -33,31 +33,45 @@ MODEL_APIS = {
 }
 
 COMPLETION_MODEL_NAMES = {
-    "google/gemma-3-1b-it",
+    # ===== DENSE MODELS =====
+    "Qwen/Qwen2.5-72B-Instruct",                     # 72B
 
-    "HuggingFaceTB/SmolLM2-135M-Instruct",
-    "HuggingFaceTB/SmolLM2-360M-Instruct",
-    "HuggingFaceTB/SmolLM2-1.7B-Instruct",
+    "Qwen/Qwen3-14B",                                # 14B
+    "Qwen/Qwen3-32B",                                # 32B
 
-    "Qwen/Qwen2.5-0.5B-Instruct",
-    "Qwen/Qwen2.5-1.5B-Instruct",
-    "Qwen/Qwen2.5-3B-Instruct",
-    "Qwen/Qwen2.5-7B-Instruct",
-    "Qwen/Qwen2.5-14B-Instruct",
-    "Qwen/Qwen2.5-32B-Instruct",
-    "Qwen/Qwen2.5-72B-Instruct",
+    "meta-llama/Llama-3.1-8B-Instruct",              # 08B
+    "meta-llama/Llama-3.3-70B-Instruct",             # 70B
 
-    "meta-llama/Llama-3.2-1B-Instruct",
-    "meta-llama/Llama-3.2-3B-Instruct",
-    "meta-llama/Llama-3.3-70B-Instruct",
+    "microsoft/phi-4",                               # 14B
 
-    "microsoft/phi-4",
-    "microsoft/Phi-4-mini-instruct",
+    "mistralai/Mistral-Large-Instruct-2411",         # 123B
+    "mistralai/Mistral-Small-24B-Instruct-2501",     # 23B
+
+    "google/gemma-3-12b-it",                         # 12B
+    "google/gemma-3-27b-it",                         # 27B
+
+    "nvidia/Llama-3_3-Nemotron-Super-49B-v1",        # 49B
+    "nvidia/Llama-3.1-Nemotron-70B-Instruct-HF",     # 70B
+
+    "CohereLabs/c4ai-command-a-03-2025",             # 111B
+
+    "allenai/OLMo-2-0325-32B-Instruct",              # 32B
+    "allenai/Llama-3.1-Tulu-3-70B",                  # 70B
+    "allenai/Llama-3.1-Tulu-3-405B",                 # 405B
+
+    # ===== MoE MODELS =====
+    "meta-llama/Llama-4-Scout-17B-16E-Instruct",     # 109B (17B Active)
+    "meta-llama/Llama-4-Maverick-17B-128E-Instruct", # 402B (17B Active)
+
+    "Qwen/Qwen3-30B-A3B",                            # 30B  (03B Active)
+    "Qwen/Qwen3-235B-A22B",                          # 235B (22B Active)
+
+    "deepseek-ai/DeepSeek-V3",                       # 671B (37B Active)
 }
 NUM_COMPLETION_MODELS = len(COMPLETION_MODEL_NAMES)
 
 # General parameters for the completions generation step
-COMPLETION_MAX_TOKENS = 1024
+COMPLETION_MAX_TOKENS = 2048
 COMPLETION_TEMPERATURE = 1.0
 COMPLETION_TOP_P = 1.0
 
