@@ -80,7 +80,6 @@ PRINCIPLES = [
     "helpfulness",
     "honesty",
     "truthfulness",
-    "verbalized_calibration"
 ]
 DEFAULT_PRINCIPLE = "helpfulness"
 
