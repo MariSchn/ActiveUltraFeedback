@@ -168,4 +168,4 @@ scripts/
 .vscode
 playground.ipynb
 playground.py
-start_session.sh
+start*session.sh
