@@ -277,9 +277,9 @@ def get_response_texts(
                 max_new_tokens=sampling_params.max_tokens, 
                 **generate_kwargs
             )
-            response_texts = [_[0]["generated_text"] for _ in batch_outputs]
 
-            response_texts.extend(response_texts)
+            batch_texts = [_[0]["generated_text"] for _ in batch_outputs]
+            response_texts.extend(batch_texts)
 
     else:
         raise ValueError(f"Was not able to resolve model to be used for generation. model: {model}")
