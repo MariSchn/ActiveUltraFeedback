@@ -3,7 +3,7 @@ import json
 import os
 import subprocess
 
-from vllm import SamplingParams
+import vllm
 
 from activeuf.utils import *
 from activeuf.configs import *
@@ -61,7 +61,7 @@ if __name__ == "__main__":
     # Load the model
     logger.info(f"Loading model {args.model_path}")
     model, tokenizer = load_model(args.model_path, model_class=args.model_class, max_num_gpus=args.max_num_gpus)
-    sampling_params = SamplingParams(
+    sampling_params = vllm.SamplingParams(
         max_tokens=args.max_tokens,
         temperature=args.temperature,
         top_p=args.top_p,

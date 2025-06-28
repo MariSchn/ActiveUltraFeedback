@@ -12,8 +12,7 @@ import random
 import torch
 
 import openai
-from vllm import LLM, SamplingParams
-from vllm.transformers_utils.tokenizer import AnyTokenizer
+import vllm
 from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer, Pipeline, PreTrainedModel
 
 from activeuf.configs import *
@@ -69,12 +68,12 @@ def load_model(
         model_name: str, 
         model_class: str = DEFAULT_MODEL_CLASS,
         max_num_gpus: int | None = None, 
-        **model_kwargs,
+        model_kwargs: dict = {},
     ) -> Union[
-        tuple[str, None],                           # model requires API calls (e.g. gpt-4)
-        tuple[AutoModelForCausalLM, AutoTokenizer], # model_class == "transformers"
-        tuple[Pipeline, None],                      # model_class == "pipeline"
-        tuple[LLM, AnyTokenizer],                   # model_class == "vllm"
+        tuple[str, None],                                                # model requires API calls (e.g. gpt-4)
+        tuple[AutoModelForCausalLM, AutoTokenizer],                      # model_class == "transformers"
+        tuple[Pipeline, None],                                           # model_class == "pipeline"
+        tuple[vllm.LLM, vllm.transformers_utils.tokenizer.AnyTokenizer], # model_class == "vllm"
     ]:
     """
     Loads a model given the name. 
@@ -87,7 +86,7 @@ def load_model(
         model_class (Optional[str]): The class of the model to load. This determines the type of the output. Must be one of ["transformers", "pipeline", "vllm"].
         model_kwargs (Optional[dict]): Additional keyword arguments to pass to the model when loading it. 
     Returns:
-        Union[Tuple[str, None], Tuple[AutoModelForCausalLM, AutoTokenizer], Tuple[Pipeline, None], Tuple[LLM, AnyTokenizer]]: The loaded model and tokenizer (if applicable).
+        Union[Tuple[str, None], Tuple[AutoModelForCausalLM, AutoTokenizer], Tuple[Pipeline, None], Tuple[LLM, vllm.transformers_utils.tokenizer.AnyTokenizer]]: The loaded model and tokenizer (if applicable).
     """
     if model_name in MODEL_APIS:
         return model_name, None
@@ -120,7 +119,7 @@ def load_model(
 
         while model is None and tps > 0:
             try:
-                model = LLM(
+                model = vllm.LLM(
                     model_name, 
                     gpu_memory_utilization=0.95, 
                     swap_space=1, 
@@ -162,13 +161,13 @@ def load_model(
     return model, tokenizer
 
 def get_response_texts(
-        model: str | PreTrainedModel | LLM | Pipeline,
+        model: str | PreTrainedModel | vllm.LLM | Pipeline,
         tokenizer: AutoTokenizer | None,
         all_messages: list[list[dict[str, str]]],
-        sampling_params: SamplingParams | None,
+        sampling_params: vllm.SamplingParams | None,
         batch_size: int = 64,
         max_api_retry: int = MAX_API_RETRY,
-        **generate_kwargs,
+        generate_kwargs: dict = {},
     ) -> list[str]:
     """
     This function generates responses for the given messages using the specified model.
@@ -176,13 +175,13 @@ def get_response_texts(
     It returns the generated responses.
 
     Args:
-        model (str | PreTrainedModel | LLM | Pipeline): The model to use for generation. This can be a string (e.g. gpt-4), a PreTrainedModel, an LLM, or a Pipeline.
+        model (str | PreTrainedModel | vllm.LLM | Pipeline): The model to use for generation. This can be a string (e.g. gpt-4), a PreTrainedModel, an LLM, or a Pipeline.
         tokenizer (AutoTokenizer | None): The tokenizer to use for the model. This is required if the model is a PreTrainedModel.
         all_messages (list[list[dict[str, str]]]): The messages to generate responses for. Each message is a list of dictionaries with "role" and "content" keys.
-        sampling_params (SamplingParams | None): The sampling parameters to use for generation. This includes temperature, max_tokens, and top_p.
+        sampling_params (vllm.SamplingParams | None): The sampling parameters to use for generation. This includes temperature, max_tokens, and top_p.
         batch_size (int): The batch size to use for generation. This is only used if the model is a locally loaded model.
         max_api_retry (int): The maximum number of retries for API calls in case of failure.
-        **generate_kwargs: Additional keyword arguments to pass to the model during generation.
+        generate_kwargs: Additional keyword arguments to pass to the model during generation.
     Returns:
         list[str]: The generated response text for each message.
     """
@@ -253,7 +252,7 @@ def get_response_texts(
 
             response_texts.extend(batch_texts)
 
-    elif isinstance(model, LLM):
+    elif isinstance(model, vllm.LLM):
         # * vLLM performs batching internally
         all_outputs = model.chat(
             all_messages, 

@@ -3,8 +3,8 @@ import json
 import re
 import os.path as path
 
+import vllm
 from datasets import Dataset, load_from_disk
-from vllm import LLM, SamplingParams
 from transformers import Pipeline, AutoTokenizer, PreTrainedModel
 
 from activeuf.configs import *
@@ -54,9 +54,9 @@ def parse_args() -> argparse.Namespace:
 
 def annotate(
         dataset: Dataset, 
-        model: str | LLM | Pipeline | PreTrainedModel, 
+        model: str | vllm.LLM | Pipeline | PreTrainedModel, 
         tokenizer: AutoTokenizer | None,
-        sampling_params: SamplingParams | None, 
+        sampling_params: vllm.SamplingParams | None, 
     ) -> Dataset:
     """
     Annotates a given dataset with completions under the aspects defined in configs.py.
@@ -65,9 +65,9 @@ def annotate(
 
     Args:
         dataset (Dataset): The dataset to be annotated
-        model (str | LLM | Pipeline | PreTrainedModel): The loaded model to be used for annotation (if using an API call, this should be None)
+        model (str | vllm.LLM | Pipeline | PreTrainedModel): The loaded model to be used for annotation (if using an API call, this should be None)
         tokenizer (AutoTokenizer | None): The tokenizer used for the model (if using an API call, this should be None)
-        sampling_params (SamplingParams | None): The sampling parameters for the model. If None is provided the default parameters are used
+        sampling_params (vllm.SamplingParams | None): The sampling parameters for the model. If None is provided the default parameters are used
     """
     # prepare new column for the annotated completions
     all_annotated_completions = dataset["completions"]
@@ -146,7 +146,7 @@ if __name__ == "__main__":
 
     logger.info(f"Using {args.model_name} for annotation")
     model, tokenizer = load_model(args.model_name, args.model_class, download_dir=args.download_dir)
-    sampling_params = SamplingParams(
+    sampling_params = vllm.SamplingParams(
         max_tokens = args.max_tokens,
         temperature = args.temperature,
         top_p = args.top_p,      

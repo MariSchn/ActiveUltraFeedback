@@ -2,8 +2,9 @@ import argparse
 import json
 import os.path as path
 
+import torch
+import vllm
 from datasets import load_from_disk
-from vllm import SamplingParams
 from transformers import pipeline
 
 from activeuf.schemas import Completion, PromptWithCompletions
@@ -87,7 +88,7 @@ if __name__ == "__main__":
     # Load generation model and tokenizer, and prepare sampling params
     logger.info(f"Using {args.model_name} for completion generation")
     model, tokenizer = load_model(args.model_name, args.model_class, args.max_num_gpus)
-    sampling_params = SamplingParams(
+    sampling_params = vllm.SamplingParams(
         max_tokens = args.max_tokens,
         temperature = args.temperature,
         top_p = args.top_p,
