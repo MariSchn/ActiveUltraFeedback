@@ -2,6 +2,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 import huggingface_hub
 import logging
+import wandb
 import os
 import time
 from typing import Union
@@ -34,7 +35,7 @@ def get_logger(name: str, logs_path: str = "app.log") -> logging.Logger:
         logger.addHandler(handler)
     return logger
 
-def setup(login_to_hf: bool = False) -> None:
+def setup(login_to_hf: bool = False, login_to_wandb: bool = False) -> None:
     # load env variables
     load_dotenv(PUBLIC_ENV_PATH)
 
@@ -42,6 +43,10 @@ def setup(login_to_hf: bool = False) -> None:
         load_dotenv(LOCAL_ENV_PATH)
         huggingface_hub.login(os.getenv("HF_TOKEN"))
 
+    if login_to_wandb:
+        load_dotenv(LOCAL_ENV_PATH)
+        wandb.login(key=os.getenv("WANDB_TOKEN"))
+        
 def set_seed(seed: int) -> None:
     random.seed(seed)
     np.random.seed(seed)
@@ -258,6 +263,7 @@ def get_response_texts(
             all_messages, 
             sampling_params=sampling_params, 
             chat_template=tokenizer.chat_template, # * Must be set for Gemma-3-1b-it as otherwise vLLM gets stuck in an infinite requests loop, fetching the same request over and over again
+            use_tqdm=False, # to avoid spamming the console with progress bars
             **generate_kwargs
         )
         response_texts = [_.outputs[0].text for _ in all_outputs]

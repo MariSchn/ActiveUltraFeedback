@@ -163,8 +163,11 @@ cython_debug/
 datasets/
 models/
 results/
+logs/
+scripts/
 .vscode
 playground.ipynb
 playground.py
+start_session.sh
 wandb/
 olmes/
