@@ -97,7 +97,7 @@ def annotate(
             ])
 
         # generate responses for all messages
-        response_texts = get_response_texts(model, tokenizer, all_messages, sampling_params)
+        response_texts = get_response_texts(model, tokenizer, all_messages, sampling_params, use_tqdm=False)
         
         # extract critiques from response texts (warn, but don't fail if parsing error)
         for i, response_text in zip(idxs_needing_annotation, response_texts):

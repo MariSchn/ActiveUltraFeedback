@@ -27,10 +27,15 @@ def train_reward_model(config, args):
 
     # Load tokenizer and model
     tokenizer = AutoTokenizer.from_pretrained(base_model)
+    if tokenizer.pad_token is None:
+        print("No pad_token present. Assigning tokenizer.pad_token = tokenizer.eos_token")
+        tokenizer.pad_token = tokenizer.eos_token
+
     model = AutoModelForSequenceClassification.from_pretrained(
         base_model,
         num_labels=1,
         torch_dtype=torch_dtype,
+        pad_token_id=tokenizer.pad_token_id,
     )
 
     if tokenizer.pad_token is None:
@@ -74,6 +79,7 @@ def train_reward_model(config, args):
         save_strategy=training_config.get("save_strategy", "no"),
         save_steps=training_config.get("save_steps", 500),
         max_steps=training_config.get("max_steps", -1),
+        lr_scheduler_type=training_config.get("lr_scheduler_type", "linear"),
     )
 
     trainer = RewardTrainer(
