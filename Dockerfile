@@ -1,4 +1,4 @@
-FROM nvcr.io/nvidia/pytorch:25.02-py3
+FROM nvcr.io/nvidia/pytorch:25.06-py3
 WORKDIR /workspace
 
 # Install venv for potential future use (e.g. LM harness) and update pip to the latest version
@@ -37,18 +37,18 @@ RUN pip install https://pypi.jetson-ai-lab.dev/sbsa/cu128/+f/4ac/c85cb769ef772/b
 
 # Install the rest of the dependencies
 RUN pip install \
-transformers==4.53.0 \
-tokenizers==0.21.1 \
-tiktoken==0.9.0 \
-datasets==3.4.1 \
-openai==1.70.0 \
-numpy==1.26.4 \
-pandas==2.2.3 \
-tqdm==4.67.1 \
-deepspeed==0.16.5 \
-accelerate==1.6.0 \
-dotenv==0.9.9 \
-flashinfer-python \
+transformers \
+tokenizers \
+tiktoken \
+datasets \
+openai \
+numpy \
+pandas \
+tqdm \
+deepspeed \
+accelerate \
+dotenv \
+# flashinfer-python \
 peft \
 nvitop \
 mmh3 \
