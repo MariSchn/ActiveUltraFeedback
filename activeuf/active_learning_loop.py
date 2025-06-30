@@ -5,6 +5,7 @@ import os
 import time
 import sys
 from collections import deque
+import math
 
 import torch
 from torch.utils.data import DataLoader
@@ -107,7 +108,15 @@ def parse_postprocess(args: argparse.Namespace) -> argparse.Namespace:
 
     if not args.output_path:
         args.output_path = f"{args.completions_dataset_path.rstrip('/')}-active-{args.timestamp}"
-    assert not os.path.exists(args.output_path), f"Output path {args.output_path} already exists"
+    base_output_path = args.output_path
+    suffix = 2
+    while os.path.exists(args.output_path):
+        if base_output_path.endswith('/'):
+            base_output_path = base_output_path.rstrip('/')
+        args.output_path = f"{base_output_path}_{suffix}"
+        suffix += 1
+    if suffix > 2:
+        print(f"Output path already exists, using {args.output_path} instead of {base_output_path}")
 
     if not args.logs_path:
         args.logs_path = f"logs/{args.timestamp}.log"
@@ -243,157 +252,146 @@ if __name__ == "__main__":
     total_processes = accelerator.num_processes
     current_process = accelerator.process_index
     for i, full_batch in enumerate(dataloader):
-        # batch_loader = DataLoader(Dataset.from_dict(full_batch), batch_size=len(full_batch["prompt_id"]))
-        # batch_loader = accelerator.prepare(batch_loader)
-        # for batch in batch_loader:
+        batch_loader = DataLoader(Dataset.from_dict(full_batch), 
+                                  batch_size=math.ceil(len(full_batch["prompt_id"])/total_processes))
+        batch_loader = accelerator.prepare(batch_loader)
         
-        # taking subset of the batch for each process, by i % total_processes == current_process 
-        indices = [i for i in range(len(full_batch["prompt_id"])) if i % total_processes == current_process]
-        batch = {
-            "prompt_id": [full_batch["prompt_id"][i] for i in indices],
-            "prompt": [full_batch["prompt"][i] for i in indices],
-            "source": [full_batch["source"][i] for i in indices],
-            "completions": [full_batch["completions"][i] for i in indices],
-        }
-        # batch = full_batch
-        
-        logger.info(f"Processing batch {i}")
+        for batch in batch_loader:
+            logger.info(f"Processing batch {i}")
 
-        start = time.time()
-        n_samples_in_batch = len(batch["prompt_id"])
-        n_completions_per_sample = len(batch["completions"][0])
+            start = time.time()
+            n_samples_in_batch = len(batch["prompt_id"])
+            n_completions_per_sample = len(batch["completions"])
 
-        # Prepare messages for model
-        messages = [
-            [
-                {
-                    "role": "user", 
-                    "content": batch["prompt"][sample_idx],
-                },
-                {
-                    "role": "system", 
-                    "content": completion["response_text"],
-                } 
-            ]
-            for sample_idx in range(n_samples_in_batch)
-            for completion in batch["completions"][sample_idx]
-        ]
+            # Prepare messages for model
+            messages = []
+            for sample_idx in range(n_samples_in_batch):
+                for completion in batch["completions"]:
+                    messages.append([
+                        {
+                            "role": "user", 
+                            "content": batch["prompt"][sample_idx],
+                        },
+                        {
+                            "role": "system", 
+                            "content": completion["response_text"][sample_idx],
+                        } 
+                    ])
 
-        messages_str = tokenizer.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=False,
-        )
-        inputs = tokenizer(
-            messages_str, 
-            padding="max_length",
-            max_length=args.max_length,
-            truncation=True,
-            return_tensors="pt",
-        ).to(model.device)   
-        
-
-        # inputs["input_ids]: (n_samples_in_batch * n_completions_per_sample, max_length)
-        end = time.time()
-        logger.info(f"- Preprocessing took {end - start:.2f}s")
-
-        # Get reward and uncertainty (lower and upper bounds)
-        start = time.time()
-        model.eval()
-        
-        #The input to the UQModel has to be partitioned, (upper limit is batch size of 256 + 80), if we input batch that is too big, we get CUDA_OUT_OF_MEMORY error.
-        microbatch_size = 8 * 16 + 8 * 10 #has to be adjusted according to the ENN model's memory requirements, and GPU capacity
-        
-        total = inputs["input_ids"].shape[0]
-        rewards_list = []
-        for mb_start in range(0, total, microbatch_size):
-            mb_end = min(mb_start + microbatch_size, total)
-            mb_inputs = {
-                "input_ids": inputs["input_ids"][mb_start:mb_end],
-                "attention_mask": inputs["attention_mask"][mb_start:mb_end]
-            }
-            with torch.no_grad():
-                mb_outputs = model(**mb_inputs)
-            rewards_list.append(mb_outputs["rewards"].cpu())
-                                    
-            del mb_inputs, mb_outputs
-        torch.cuda.empty_cache()
-                                                
-        outputs = {"rewards": torch.cat(rewards_list, dim=0)}
-        
-        logger.info(f"- Uncertainty quantification took {end - start:.2f}s")
-        
-        # Select the completions that should be used for the binarized sample
-        start = time.time()
-        rewards = outputs["rewards"].detach().view(n_samples_in_batch, -1, 3)                # (n_samples_in_batch, n_completions_per_sample, 3)
-        b_acquired_idxs = torch.tensor(                                                      # (n_samples_in_batch, 2)
-            acquisition_function(*rewards.unbind(-1))
-        )
-        end = time.time()
-        logger.info(f"- Acquisition function took {end - start:.2f}s")
-
-        temp = b_acquired_idxs.unsqueeze(-1).expand(-1, -1, args.max_length)                 # (n_samples_in_batch, 2, max_length)
-        input_ids = inputs["input_ids"].cpu()
-        b_acquired_input_ids = torch.take_along_dim(                                         # (n_samples_in_batch, 2, max_length)
-            input_ids.view(n_samples_in_batch, n_completions_per_sample, -1),                # (n_samples_in_batch, n_completions_per_sample, max_length)
-            temp, 
-            dim=1,
-        )
-        attention_masks = inputs["attention_mask"].cpu()
-        b_acquired_attention_mask = torch.take_along_dim(                                    # (n_samples_in_batch, 2, max_length)
-            attention_masks.view(n_samples_in_batch, n_completions_per_sample, -1),          # (n_samples_in_batch, n_completions_per_sample, max_length)
-            temp,
-            dim=1,
-        )
-        del inputs, total
-        torch.cuda.empty_cache()
-
-        acquired_batch = [
-            {   
-                "prompt_id": batch["prompt_id"][i],
-                "source": batch["source"][i],
-                "prompt": batch["prompt"][i],
-
-                "response_text_1": batch["completions"][i][a]["response_text"],
-                "model_1": batch["completions"][i][a]["model"],
-                "score_1": batch["completions"][i][a]["overall_score"],
-                "input_ids_1": b_acquired_input_ids[i, 0],                                   # (max_length,)
-                "attention_mask_1": b_acquired_attention_mask[i, 0],                         # (max_length,)
-
-                "response_text_2": batch["completions"][i][b]["response_text"],
-                "model_2": batch["completions"][i][b]["model"],
-                "score_2": batch["completions"][i][b]["overall_score"],
-                "input_ids_2": b_acquired_input_ids[i, 1],                                   # (max_length,)
-                "attention_mask_2": b_acquired_attention_mask[i, 1],                         # (max_length,)
-            }
-            for i, (a, b) in enumerate(b_acquired_idxs)
-        ]
-        
-        # Call oracle to determine which is chosen and which is rejected
-        annotated_batch_local = oracle(acquired_batch)
-
-        accelerator.wait_for_everyone()
-        annotated_batch = gather_object(annotated_batch_local)
-        
-        # Update dataset to be saved, then save to disk
-        if accelerator.is_main_process:
-            output_dataset.extend([
-                {
-                    k: v 
-                    for k, v in x.items()
-                    if not k.startswith("input_ids") and not k.startswith("attention_mask")
-                } for x in annotated_batch
-            ])
-        
-            Dataset.from_list(output_dataset).save_to_disk(args.output_path)
-            obj_list = [annotated_batch]
-        else:
-            obj_list = [None]
-        
-        broadcast_object_list(obj_list, from_process=0)
-        annotated_batch = obj_list[0]
+            messages_str = tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=False,
+            )
+            inputs = tokenizer(
+                messages_str, 
+                padding="max_length",
+                max_length=args.max_length,
+                truncation=True,
+                return_tensors="pt",
+            ).to(model.device)   
             
-        # Update replay buffer
-        replay_buffer.extend(annotated_batch)
 
+            # inputs["input_ids]: (n_samples_in_batch * n_completions_per_sample, max_length)
+            end = time.time()
+            logger.info(f"- Preprocessing took {end - start:.2f}s")
+
+            # Get reward and uncertainty (lower and upper bounds)
+            start = time.time()
+            model.eval()
+            
+            #The input to the UQModel has to be partitioned, (upper limit is batch size of 256 + 80), if we input batch that is too big, we get CUDA_OUT_OF_MEMORY error.
+            microbatch_size = 8 * 16 + 8 * 10 #has to be adjusted according to the ENN model's memory requirements, and GPU capacity
+            total = inputs["input_ids"].shape[0]
+
+            rewards_list = []
+            for mb_start in range(0, total, microbatch_size):
+                mb_end = min(mb_start + microbatch_size, total)
+                mb_inputs = {
+                    "input_ids": inputs["input_ids"][mb_start:mb_end],
+                    "attention_mask": inputs["attention_mask"][mb_start:mb_end]
+                }
+                with torch.no_grad():
+                    mb_outputs = model(**mb_inputs)
+                rewards_list.append(mb_outputs["rewards"].cpu()) #Maybe you can use .extend()?
+                                        
+                del mb_inputs, mb_outputs
+            torch.cuda.empty_cache()
+                                                    
+            outputs = {"rewards": torch.cat(rewards_list, dim=0)}
+            
+            logger.info(f"- Uncertainty quantification took {end - start:.2f}s")
+            
+            # Select the completions that should be used for the binarized sample
+            start = time.time()
+            rewards = outputs["rewards"].detach().view(n_samples_in_batch, -1, 3)                # (n_samples_in_batch, n_completions_per_sample, 3)
+
+            b_acquired_idxs = torch.tensor(                                                      # (n_samples_in_batch, 2)
+                acquisition_function(*rewards.unbind(-1))
+            )
+            
+            end = time.time()
+            logger.info(f"- Acquisition function took {end - start:.2f}s")
+            
+            temp = b_acquired_idxs.unsqueeze(-1).expand(-1, -1, args.max_length)                 # (n_samples_in_batch, 2, max_length)
+            
+            input_ids = inputs["input_ids"].cpu()
+            b_acquired_input_ids = torch.take_along_dim(                                         # (n_samples_in_batch, 2, max_length)
+                input_ids.view(n_samples_in_batch, n_completions_per_sample, -1),                # (n_samples_in_batch, n_completions_per_sample, max_length)
+                temp, 
+                dim=1,
+            )
+            attention_masks = inputs["attention_mask"].cpu()
+            b_acquired_attention_mask = torch.take_along_dim(                                    # (n_samples_in_batch, 2, max_length)
+                attention_masks.view(n_samples_in_batch, n_completions_per_sample, -1),          # (n_samples_in_batch, n_completions_per_sample, max_length)
+                temp,
+                dim=1,
+            )
+            del inputs, total
+            torch.cuda.empty_cache()
+            
+            acquired_batch = [
+                {   
+                    "prompt_id": batch["prompt_id"][j],
+                    "source": batch["source"][j],
+                    "prompt": batch["prompt"][j],
+
+                    "response_text_1": batch["completions"][a]["response_text"][j],
+                    "model_1": batch["completions"][a]["model"][j],
+                    "score_1": batch["completions"][a]["overall_score"][j],
+                    "input_ids_1": b_acquired_input_ids[j, 0],                                   # (max_length,)
+                    "attention_mask_1": b_acquired_attention_mask[j, 0],                         # (max_length,)
+
+                    "response_text_2": batch["completions"][b]["response_text"][j],
+                    "model_2": batch["completions"][b]["model"][j],
+                    "score_2": batch["completions"][b]["overall_score"][j],
+                    "input_ids_2": b_acquired_input_ids[j, 1],                                   # (max_length,)
+                    "attention_mask_2": b_acquired_attention_mask[j, 1],                         # (max_length,)
+                }
+                for j, (a, b) in enumerate(b_acquired_idxs)
+            ]
+            
+            # Call oracle to determine which is chosen and which is rejected
+            annotated_batch_local = oracle(acquired_batch)
+
+            accelerator.wait_for_everyone()
+            annotated_batch = gather_object(annotated_batch_local)            
+            
+            # Update dataset to be saved, then save to disk
+            if accelerator.is_main_process:
+                output_dataset.extend([
+                    {
+                        k: v 
+                        for k, v in x.items()
+                        if not k.startswith("input_ids") and not k.startswith("attention_mask")
+                    } for x in annotated_batch
+                ])
+            
+                Dataset.from_list(output_dataset).save_to_disk(args.output_path)
+
+        # Keep only unique prompt_id entries
+        annotated_batch = list({x["prompt_id"]: x for x in annotated_batch}.values())
+        # Update replay buffer
+        replay_buffer.extend(annotated_batch)        
+        
         start = time.time()
         model.train()
         #check if Dataset.from_list(replay_buffer) is on GPU or CPU

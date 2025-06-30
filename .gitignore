@@ -165,3 +165,6 @@ models/
 results/
 .vscode
 playground.ipynb
+playground.py
+wandb/
+olmes/
