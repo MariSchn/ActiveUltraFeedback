@@ -1,3 +1,6 @@
 [submodule "resources/lm-evaluation-harness"]
 	path = resources/lm-evaluation-harness
 	url = https://github.com/EleutherAI/lm-evaluation-harness
+[submodule "resources/rewarduq"]
+	path = resources/rewarduq
+	url = git@github.com:Florian-toll/rewarduq.git

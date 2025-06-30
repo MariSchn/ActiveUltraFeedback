@@ -169,3 +169,5 @@ scripts/
 playground.ipynb
 playground.py
 start_session.sh
+wandb/
+olmes/

@@ -3,6 +3,8 @@ from activeuf.prompts import *
 PUBLIC_ENV_PATH = ".env"
 LOCAL_ENV_PATH = ".env.local"
 
+LOGS_DIR = "logs"
+
 SEED = 123
 MAX_NUM_GPUS = 4
 MAX_API_RETRY = 10
