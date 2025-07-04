@@ -1,5 +1,4 @@
 from pydantic import BaseModel, Field, root_validator
-from typing import Optional
 
 from activeuf.configs import PROMPT_SOURCES
 
@@ -15,6 +14,16 @@ class Prompt(BaseModel):
             raise ValueError(f"Invalid source: {source}. Must be one of {PROMPT_SOURCES}.")
         return values
 
+class Annotation(BaseModel):
+    annotator_name: str
+    aspect: str
+
+    rating: str
+    rating_rationale: str
+    
+    type: str = ""
+    type_rationale: str = ""
+
 class Message(BaseModel):
     role: str
     content: str
@@ -26,6 +35,8 @@ class Completion(BaseModel):
     messages: list[Message]
     response_text: str
 
+    annotations: list[Annotation] = Field(default_factory=list)
+    critique: str = ""
     overall_score: str = ""
 
 class PromptWithCompletions(Prompt):
