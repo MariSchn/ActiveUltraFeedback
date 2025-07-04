@@ -7,7 +7,6 @@ LOGS_DIR = "logs"
 
 SEED = 123
 MAX_NUM_GPUS = 4
-MAX_API_RETRY = 10
 DEFAULT_MODEL_CLASS = "vllm"  # Which package to use for the model. ["transformers", "pipeline" "vllm"]
 
 # ====================================
@@ -34,7 +33,7 @@ MODEL_APIS = {
     "gpt-4",
 }
 
-COMPLETION_MODEL_NAMES = {
+COMPLETION_MODEL_PATHS = {
     "google/gemma-3-1b-it",
 
     "HuggingFaceTB/SmolLM2-135M-Instruct",
@@ -56,7 +55,9 @@ COMPLETION_MODEL_NAMES = {
     "microsoft/phi-4",
     "microsoft/Phi-4-mini-instruct",
 }
-NUM_COMPLETION_MODELS = len(COMPLETION_MODEL_NAMES)
+
+# ! When changing this from 4, the prompt template needs to be changed as well
+NUM_COMPLETION_MODELS = len(COMPLETION_MODEL_PATHS)
 
 # General parameters for the completions generation step
 COMPLETION_MAX_TOKENS = 1024
@@ -94,10 +95,42 @@ PROMPT_SOURCE2PRINCIPLES = {
 #             ANNOTATION
 # ====================================
 
-# Model to use for annotating completions
-ANNOTATION_MODEL_NAME = "meta-llama/Llama-3.3-70B-Instruct" 
+ANNOTATION_MODEL = "" 
 
 # General parameters for the annotation step
-ANNOTATION_MAX_TOKENS = 10
+NUM_SHUFFLES = 1
+
+ANNOTATION_MAX_TOKENS = 1024
 ANNOTATION_TEMPERATURE = 1.0
 ANNOTATION_TOP_P = 1.0
+
+# How often to retry calling the API for models that require API calls.
+MAX_API_RETRY = 10
+# How often to retry parsing the response from the annotating model. This might fail as the model is not always guaranteed to follow the expected format.
+# Keep in mind that trying to parse again requires to re-run the model again, which can be expensive (O(MAX_API_RETRY * MAX_PARSE_RETRY)).
+MAX_PARSE_RETRY = 10 
+
+# Aspects to be used to annotate the generated completions
+ASPECTS = [
+    "instruction_following",
+    "helpfulness",
+    "honesty",
+    "truthfulness"
+]
+
+# Map an aspect to the corresponding system prompt (template) that is used to annotate the generated completions
+ASPECT2ANNOTATION_PROMPT = {
+    "instruction_following": INSTRUCTION_FOLLOWING_ANNOTATION_SYSTEM_PROMPT,
+    "honesty": HONESTY_ANNOTATION_SYSTEM_PROMPT,
+    "truthfulness": TRUTHFULNESS_ANNOTATION_SYSTEM_PROMPT,
+    "helpfulness": HELPFULNESS_ANNOTATION_SYSTEM_PROMPT,
+}
+
+# Regex patterns used to extract the ratings and rationales from the annotation model's response
+ASPECT2ANNOTATION_PATTERN = {
+    "instruction_following": r"Rating:(.+?)Rationale:(.+)",
+    "honesty": r"Rating:(.+?)Rationale:(.+)",
+    "truthfulness": r"Type:(.+?)Type rationale:(.+?)Rating:(.+?)Rationale:(.+)",
+    "helpfulness": r"Type:(.+?)Type rationale:(.+?)Rating:(.+?)Rationale:(.+)",
+}
+FEEDBACK_ANNOTATION_PATTERN = r"Feedback:(.+?)Overall score:(.+)"
