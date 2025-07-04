@@ -19,9 +19,11 @@ This script is used to annotate the completions generated from the generate_comp
 It uses a LLM as a judge to rate the completions based on the aspects defined in the configs.py file and provides critique/feedback for each completion.
 
 Example run command:
-    python -m activeuf.annotate_completions 
-        --dataset_path datasets/completions/phi-4 
-        --model_name meta-llama/Llama-3.2-1B-Instruct 
+    python -m activeuf.annotate_completions \
+        --dataset_path datasets/merged_completions \
+        --model_name meta-llama/Llama-3.2-1B-Instruct \
+        --download_dir ./hf_cache \
+        --output_path datasets/annotated_completions/one \
         --debug
 """
 
@@ -42,11 +44,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--download_dir", type=str, help="The path to the Huggingface cache directory. If not set, the default Huggingface cache directory is used.")
     parser.add_argument("--output_path", type=str, help="Where to export the annotated dataset")
     parser.add_argument("--debug", action="store_true", help="If set, will only annotate the first 2 samples")
+    parser.add_argument("--part", type=int, help="If set, will only annotate the specified part of the dataset. Useful for debugging and testing purposes.")
     args = parser.parse_args()
 
     if not args.output_path:
-        output_name = path.basename(args.dataset_path)
-        args.output_path = f"datasets/annotated_completions/{output_name}"
+        args.output_path = f"datasets/annotated_completions"
     assert not path.exists(args.output_path), f"Output path {args.output_path} already exists"
 
     return args
@@ -161,7 +163,6 @@ def annotate(
                     annotated_completions[i]["annotations"].append(annotation)
                 except:
                     logging.info(f"Failed to annotate a completion for prompt_id={sample['prompt_id']} on aspect={aspect}")
-                    logging.info(response_text)
 
     # CRITIQUE ANNOTATION
     logger.info("Critiquing completions")
@@ -198,7 +199,6 @@ def annotate(
                 annotated_completions[i].update(critique)
             except:
                 logger.info(f"Failed to critique a completion for prompt_id={sample['prompt_id']} on overall")
-                logger.info(response_text)
 
     # replace existing completions with annotated completions
     dataset = dataset.remove_columns("completions")
@@ -218,11 +218,16 @@ if __name__ == "__main__":
     logger.info(f"Loading {args.dataset_path}")
     dataset = load_from_disk(args.dataset_path)
     if args.debug:
-        logger.info("Debug mode: only generating completions for the first 2 samples")
-        dataset = dataset.select(range(2))
+        logger.info("Debug mode: only generating completions for the first 10 samples")
+        dataset = dataset.select(range(10))
+    if args.part:
+        logger.info(f"Annotating just part {args.part} of the dataset")
+        k = int(args.part)
+        dataset = dataset.select(range(2*k, 2*(k+1)))
     dataset = dataset.map(
         lambda x: PromptWithCompletions(**x).model_dump()
     )
+    logger.info(f"{len(dataset)}")
 
     logger.info(f"Using {args.model_name} for annotation")
     if args.download_dir:
