@@ -1,9 +1,8 @@
 #!/bin/bash
-#SBATCH --account=a-a10
+#SBATCH --account=a-infra01-1
 #SBATCH --partition=debug
-#SBATCH --time=01:10:00
+#SBATCH --time=00:30:00
 #SBATCH --container-writable
-#SBATCH --job-name=annotation_generation_0
 #SBATCH --output=run_%j.out
 
 srun --environment=activeuf python -u run.py --part 0
