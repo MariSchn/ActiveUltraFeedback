@@ -119,14 +119,23 @@ def load_model(
 
         while model is None and tps > 0:
             try:
+                vllm_kwargs = {
+                    "gpu_memory_utilization": 0.9,
+                    "swap_space": 1,
+                    "tensor_parallel_size": tps,
+                    "trust_remote_code": True,
+                    "dtype": "auto",
+                    "download_dir": "/iopsstor/scratch/cscs/smarian/hf_cache",
+                    **model_kwargs
+                }
+
+                # Specify tokenizer mode for Mistral models
+                if "mistral" in model_name.lower():
+                    vllm_kwargs["tokenizer_mode"] = "mistral"
+
                 model = vllm.LLM(
                     model_name, 
-                    gpu_memory_utilization=0.95, 
-                    swap_space=1, 
-                    tensor_parallel_size=tps, 
-                    trust_remote_code=True, 
-                    dtype="auto",
-                    **model_kwargs
+                    **vllm_kwargs
                 )
             except Exception as e:
                 print(f"Failed to load model with tensor_parallel_size={tps}: {e}")
@@ -150,9 +159,9 @@ def load_model(
     
     # Check tokenizer and set padding token if needed
     if tokenizer is not None:
-        if tokenizer.chat_template is None:
+        if not 'mistral' in model_name.lower() and tokenizer.chat_template is None:
             raise ValueError("Tokenizer does not have a chat template. Please use a model that supports chat templates.")
-        if tokenizer.pad_token is None:
+        if not 'mistral' in model_name.lower() and tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
             
             if isinstance(model, PreTrainedModel):
@@ -258,8 +267,8 @@ def get_response_texts(
             all_outputs = model.chat(
                 all_messages, 
                 sampling_params=sampling_params, 
-                chat_template=tokenizer.chat_template, # * Must be set for Gemma-3-1b-it as otherwise vLLM gets stuck in an infinite requests loop, fetching the same request over and over again
-                use_tqdm=False, # to avoid spamming the console with progress bars
+                chat_template=tokenizer.chat_template,
+                # use_tqdm=False, # to avoid spamming the console with progress bars
                 **generate_kwargs
             )
         except Exception as e:
@@ -267,7 +276,7 @@ def get_response_texts(
             all_outputs = model.chat(
                 all_messages, 
                 sampling_params=sampling_params, 
-                use_tqdm=False, # to avoid spamming the console with progress bars
+                # use_tqdm=False, # to avoid spamming the console with progress bars
                 **generate_kwargs
             )
         response_texts = [_.outputs[0].text for _ in all_outputs]
