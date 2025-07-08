@@ -52,6 +52,7 @@ COMPLETION_MODEL_NAMES = {
 
     "nvidia/Llama-3_3-Nemotron-Super-49B-v1",        # 49B
     "nvidia/Llama-3.1-Nemotron-70B-Instruct-HF",     # 70B
+    "nvidia/Llama-3_1-Nemotron-Ultra-253B-v1",       # 253B
 
     "CohereLabs/c4ai-command-a-03-2025",             # 111B
 
