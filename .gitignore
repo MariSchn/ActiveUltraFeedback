@@ -164,7 +164,8 @@ datasets/
 models/
 results/
 logs/
-scripts/
+scripts/completions/
+scripts/generate_completions_script.py
 .vscode
 playground.ipynb
 playground.py

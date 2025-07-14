@@ -68,6 +68,7 @@ def load_model(
         model_name: str, 
         model_class: str = DEFAULT_MODEL_CLASS,
         max_num_gpus: int | None = None, 
+        num_nodes: int = 1,
         model_kwargs: dict = {},
     ) -> Union[
         tuple[str, None],                                                # model requires API calls (e.g. gpt-4)
@@ -82,8 +83,9 @@ def load_model(
 
     Args:
         model_name (str): The name of the model or API to load.
-        max_num_gpus (Optional[int]): The maximum number of GPUs to use for loading the model (only used for vLLM models).
         model_class (Optional[str]): The class of the model to load. This determines the type of the output. Must be one of ["transformers", "pipeline", "vllm"].
+        max_num_gpus (Optional[int]): The maximum number of GPUs to use for loading the model (only used for vLLM models).
+        num_nodes (int): The number of nodes to use for loading the model. This is only used for vLLM models.
         model_kwargs (Optional[dict]): Additional keyword arguments to pass to the model when loading it. 
     Returns:
         Union[Tuple[str, None], Tuple[AutoModelForCausalLM, AutoTokenizer], Tuple[Pipeline, None], Tuple[LLM, vllm.transformers_utils.tokenizer.AnyTokenizer]]: The loaded model and tokenizer (if applicable).
@@ -123,6 +125,7 @@ def load_model(
                     "gpu_memory_utilization": 0.9,
                     "swap_space": 1,
                     "tensor_parallel_size": tps,
+                    "pipeline_parallel_size": num_nodes,
                     "trust_remote_code": True,
                     "dtype": "auto",
                     "download_dir": "/iopsstor/scratch/cscs/smarian/hf_cache",
