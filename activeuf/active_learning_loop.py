@@ -109,7 +109,7 @@ class LoopArguments:
     acquisition_function_type: str = field(
         default="double_thompson_sampling",
         metadata={
-            "help": "Acquisition function type. Choices: ['double_thompson_sampling', 'random']"}
+            "help": "Acquisition function type. Choices: ['double_thompson_sampling', 'random', 'infomax']"}
     )
     acquisition_config: str = field(
         default="activeuf/acquisition_function/configs.yaml",
@@ -296,6 +296,8 @@ if __name__ == "__main__":
             beta=beta, max_iterations=max_iterations)
     elif args.acquisition_function_type == "random":
         acquisition_function = RandomAcquisitionFunction()
+    elif args.acquisition_function_type == "infomax":
+        acquisition_function = InfoMax()
     else:
         raise ValueError(
             f"Unknown acquisition function type: {args.acquisition_function_type}")
