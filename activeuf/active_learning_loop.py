@@ -109,7 +109,7 @@ class LoopArguments:
     acquisition_function_type: str = field(
         default="double_thompson_sampling",
         metadata={
-            "help": "Acquisition function type. Choices: ['double_thompson_sampling', 'random', 'infomax']"}
+            "help": "Acquisition function type. Choices: ['double_thompson_sampling', 'random', 'infomax', 'maxminlcb']"}
     )
     acquisition_config: str = field(
         default="activeuf/acquisition_function/configs.yaml",
@@ -298,6 +298,21 @@ if __name__ == "__main__":
         acquisition_function = RandomAcquisitionFunction()
     elif args.acquisition_function_type == "infomax":
         acquisition_function = InfoMax()
+    elif args.acquisition_function_type == "maxminlcb":
+        beta = acquisition_config.get("beta", 1.0)
+        argmax_tol = acquisition_config.get("argmax_tol", 1e-4)
+        decision_buffer = acquisition_config.get("decision_buffer", 0.0)
+        use_candidate_set = acquisition_config.get(
+            "use_candidate_set", False)
+        seed = acquisition_config.get("seed", 42)
+
+        acquisition_function = MaxMinLCB(
+            beta=beta,
+            argmax_tol=argmax_tol,
+            decision_buffer=decision_buffer,
+            use_candidate_set=use_candidate_set,
+            seed=seed
+        )
     else:
         raise ValueError(
             f"Unknown acquisition function type: {args.acquisition_function_type}")
@@ -306,7 +321,7 @@ if __name__ == "__main__":
     oracle = init_oracle(args.oracle_name)
 
     logger.info(f"Creating UQ model")
-    if args.acquisition_function_type == "double_thompson_sampling":
+    if args.acquisition_function_type in ["double_thompson_sampling", "infomax", "maxminlcb"]:
         uq_pipeline = ENNRewardModelPipeline(
             ENNRewardModelConfig(
                 # "meta-llama/Llama-3.2-1B-Instruct"
@@ -459,6 +474,8 @@ if __name__ == "__main__":
             b_acquired_idxs = torch.tensor(                                                      # (n_samples_in_batch, 2)
                 acquisition_function(*rewards.unbind(-1))
             )
+            if accelerator.is_main_process:
+                logger.info(f"Selected indices: {b_acquired_idxs.tolist()}")
 
             end = time.time()
             logger.info(f"- Acquisition function took {end - start:.2f}s")
