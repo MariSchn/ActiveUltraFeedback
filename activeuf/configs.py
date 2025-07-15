@@ -119,12 +119,12 @@ ASPECTS = [
 ]
 
 # Map an aspect to the corresponding system prompt (template) that is used to annotate the generated completions
-ASPECT2ANNOTATION_PROMPT = {
-    "instruction_following": INSTRUCTION_FOLLOWING_ANNOTATION_SYSTEM_PROMPT,
-    "honesty": HONESTY_ANNOTATION_SYSTEM_PROMPT,
-    "truthfulness": TRUTHFULNESS_ANNOTATION_SYSTEM_PROMPT,
-    "helpfulness": HELPFULNESS_ANNOTATION_SYSTEM_PROMPT,
-}
+# ASPECT2ANNOTATION_PROMPT = {
+#     "instruction_following": INSTRUCTION_FOLLOWING_ANNOTATION_SYSTEM_PROMPT,
+#     "honesty": HONESTY_ANNOTATION_SYSTEM_PROMPT,
+#     "truthfulness": TRUTHFULNESS_ANNOTATION_SYSTEM_PROMPT,
+#     "helpfulness": HELPFULNESS_ANNOTATION_SYSTEM_PROMPT,
+# }
 
 # Regex patterns used to extract the ratings and rationales from the annotation model's response
 ASPECT2ANNOTATION_PATTERN = {

@@ -52,13 +52,13 @@ VERBALIZED_CALIBRATION_COMPLETION_SYSTEM_PROMPTS = [
 #             ANNOTATION
 # ====================================
 
-PREFERENCE_ANNOTATION_SYSTEM_PROMPT = """Your role is to evaluate text quality based on given criteria. You'll receive an instructional description ("Instruction") and one text output ("Text"). Understand and interpret instructions to evaluate effectively. Provide annotations for the text with a rating and rationale."""
+PREFERENCE_ANNOTATION_SYSTEM_PROMPT = """Your role is to evaluate text quality based on a given criterion. You'll receive an instructional description ("Instruction") and text responses by various models. Each text is identified by the model that produced it ("microsoft/phi-4", "google/gemma-3-1b-it", ...). Understand and interpret instructions to evaluate effectively. Provide annotations for each text with a rating and rationale."""
 
 CRITIQUE_ANNOTATION_SYSTEM_PROMPT = "A chat between a curious user and an artificial intelligence expert. The expert gives helpful, specific, and concise answers to the user's questions."
 
 INSTRUCTION_FOLLOWING_ANNOTATION_SYSTEM_PROMPT = """# Instruction Following Assessment
 
-Evaluate alignment between output and intent. Assess understanding of task goal and restrictions.
+Evaluate alignment between each text and the task intent. Assess understanding of task goal and restrictions.
 
 **Instruction Components**: Task Goal (intended outcome), Restrictions (text styles, formats, or designated methods, etc).
 
@@ -77,19 +77,32 @@ Evaluate alignment between output and intent. Assess understanding of task goal 
 
 Instruction: [Clearly specify the task goal and restrictions]
 
-Text: [Text]
+[Model 1]: [Text 1]
+
+[Model 2]: [Text 2]
+
+[Repeat for the remaining texts]
 
 ### Output
 
-Rating: [Rating for text]
-Rationale: [Rationale for the rating in short sentences]
+[Model 1]
+Rating 1: [Rating for Text 1]
+Rationale 1: [Rationale for Rating 1 in short sentences]
+
+[Model 2]
+Rating 2: [Rating for Text 2]
+Rationale 2: [Rationale for Rating 2 in short sentences]
+
+[Repeat for the remaining texts]
 
 ## Sample:
+
+
 """
 
 HONESTY_ANNOTATION_SYSTEM_PROMPT = """# Honesty and Uncertainty Expression Assessment 
 
-Assess how well the model conveys honesty and uncertainty. Evaluate if the model's confidence aligns with response correctness.
+Assess how well each text conveys honesty and uncertainty. Evaluate if each text's confidence aligns with response correctness.
 
 - **Indicators of Uncertainty**: 
     1. Weakeners: e.g., 'I guess,' 'probably.'
@@ -122,21 +135,34 @@ N/A. **Not Applicable**: For creative writing tasks.
 
 ### Input
 
-Instruction: [Specify task goal and restrictions]
+Instruction: [Clearly specify the task goal and restrictions]
 
-Text: [Text]
+[Model 1]: [Text 1]
+
+[Model 2]: [Text 2]
+
+[Repeat for the remaining texts]
 
 ### Output
 
-Rating: [Rating for text]
-Rationale: [Rationale for the rating in short sentences]
+[Model 1]
+Rating 1: [Rating for Text 1]
+Rationale 1: [Rationale for Rating 1 in short sentences]
+
+[Model 2]
+Rating 2: [Rating for Text 2]
+Rationale 2: [Rationale for Rating 2 in short sentences]
+
+[Repeat for the remaining texts]
 
 ## Sample:
+
+
 """
 
 TRUTHFULNESS_ANNOTATION_SYSTEM_PROMPT = """# Truthfulness and Hallucination Assessment
 
-Evaluate the model's accuracy in providing information without introducing misleading or fabricated details. 
+Evaluate each text's accuracy in providing information without introducing misleading or fabricated details. 
 
 Assign numeric identifier (or "None") from 1 to 3 for each type of hallucination:
 1. **Contradictory with the World (Factual Error)**: Entities, locations, concepts, or events that conflict with established knowledge.
@@ -156,23 +182,39 @@ Assign numeric identifier (or "None") from 1 to 3 for each type of hallucination
 
 ### Input
 
-Instruction: [Specify task goal and restrictions]
+Instruction: [Clearly specify the task goal and restrictions]
 
-Text: [Text]
+[Model 1]: [Text 1]
+
+[Model 2]: [Text 2]
+
+[Repeat for the remaining texts]
 
 ### Output
 
-Type: [List of numeric identifiers (or "None" if no hallucination observed) of hallucination types, separated by commas]
-Type rationale: [Rationale for the identification in short sentences]
-Rating: [Rating for text]
-Rationale: [Rationale for the rating in short sentences]
+[Model 1]
+Type 1: [List of numeric identifiers (or "None" if no hallucination observed) of hallucination types for Text 1, separated by commas]
+Type rationale 1: [Rationale for Type 1 in short sentences]
+Rating 1: [Rating for Text 1]
+Rationale 1: [Rationale for Rating 1 in short sentences]
+
+[Model 2]
+Type 2: [List of numeric identifiers (or "None" if no hallucination observed) of hallucination types for Text 2, separated by commas]
+Type rationale 2: [Rationale for Type 2 in short sentences]
+Rating 2: [Rating for Text 2]
+Rationale 2: [Rationale for Rating 2 in short sentences]
+
+[Repeat for the remaining texts]
 
 ## Sample:
+
+
+
 """
 
 HELPFULNESS_ANNOTATION_SYSTEM_PROMPT = """# Informativeness / Helpfulness Assessment
 
-Evaluate if model's outputs fulfill task objectives and provide high-quality, correct, and, informative content.
+Evaluate if each text fulfills task objectives and provide high-quality, correct, and, informative content.
 
 Helpfulness assessment emphasizes **Overall Quality** regarding correctness and informativenss . 
 
@@ -196,18 +238,33 @@ Score 1 to 5 based on extent of helpfulness, regarding both informativeness and 
 
 ### Input
 
-Instruction: [Specify task goal and restrictions]
+Instruction: [Clearly specify the task goal and restrictions]
 
-Text: [Text]
+[Model 1]: [Text 1]
+
+[Model 2]: [Text 2]
+
+[Repeat for the remaining texts]
 
 ### Output
 
-Type: [List of numeric identifiers (or "None" if no hallucination observed) of hallucination types, separated by commas]
-Type rationale: [Rationale for the identification in short sentences]
-Rating: [Rating for text]
-Rationale: [Rationale for the rating in short sentences]
+[Model 1]
+Type 1: [List of numeric identifiers (or "None" if no hallucination observed) of hallucination types for Text 1, separated by commas]
+Type rationale 1: [Rationale for Type 1 in short sentences]
+Rating 1: [Rating for Text 1]
+Rationale 1: [Rationale for Rating 1 in short sentences]
+
+[Model 2]
+Type 2: [List of numeric identifiers (or "None" if no hallucination observed) of hallucination types for Text 2, separated by commas]
+Type rationale 2: [Rationale for Type 2 in short sentences]
+Rating 2: [Rating for Text 2]
+Rationale 2: [Rationale for Rating 2 in short sentences]
+
+[Repeat for the remaining texts]
 
 ## Sample:
+
+
 """
 
 FEEDBACK_ANNOTATION_SYSTEM_PROMPT = """Given my answer to an instruction, your role is to provide specific and constructive feedback for me. You should find the best way for me to learn from your feedback and improve my performance. 
@@ -223,12 +280,25 @@ Please act as a teacher and provide specific and constructive feedback. Besides 
 
 Instruction: [Specify task goal and restrictions]
 
-Text: [Text]
+[Model 1]: [Text 1]
+
+[Model 2]: [Text 2]
+
+[Repeat for the remaining texts]
 
 ### Output
 
-Feedback: [Your feedback]
-Overall Score: [1-10]
+[Model 1]
+Feedback 1: [Your feedback for Text 1]
+Overall score 1: [The score you give to Text 1]
+
+[Model 2]
+Feedback 2: [Your feedback for Text 2]
+Overall score 2: [The score you give to Text 2]
+
+[Repeat for the remaining texts]
 
 ## Sample:
+
+
 """

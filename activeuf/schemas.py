@@ -15,8 +15,9 @@ class Prompt(BaseModel):
         return values
 
 class Annotation(BaseModel):
-    annotator_name: str
     aspect: str
+
+    text: str
 
     rating: str
     rating_rationale: str

@@ -13,8 +13,8 @@ python -m activeuf.bulk_annotate \
     --inputs_path datasets/inputs_for_bulk_annotation \
     --model_name meta-llama/Llama-3.3-70B-Instruct \
     --download_dir ./hf_cache \
-    --part_size 30000 \
-    --part 0
+    --part_size 1000 \
+    --part 1
 """
 
 logger = get_logger(__name__)
@@ -63,8 +63,9 @@ if __name__ == "__main__":
     dataset = load_from_disk(args.inputs_path)
     if args.part is not None and args.part_size is not None:
         logger.info(f"Annotating just part {args.part} (size {args.part}) of the inputs given")
+        logger.info(f"Indices: {args.part_size*args.part} to {args.part_size*(args.part+1)}")
         dataset = dataset.select(
-            range(args.part_size*args.part, args.part_size*(args.part+1))
+            range(args.part_size*args.part, max(args.part_size*(args.part+1), len(dataset)))
         )
     if args.debug:
         logger.info("Debug mode: only annotating the first few inputs")
