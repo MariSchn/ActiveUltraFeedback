@@ -6,9 +6,9 @@ from datasets import Dataset, load_from_disk
 from vllm import SamplingParams
 
 from activeuf.configs import *
-from activeuf.prompts_v2 import *
 from activeuf.schemas import *
 from activeuf.utils import *
+from activeuf.prompts_v2 import *
 
 ASPECT2ANNOTATION_PROMPT = {
     "instruction_following": INSTRUCTION_FOLLOWING_ANNOTATION_SYSTEM_PROMPT,
