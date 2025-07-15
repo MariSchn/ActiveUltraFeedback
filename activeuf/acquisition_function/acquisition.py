@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 
 from activeuf.acquisition_function.random import RandomAcquisitionFunction
 from activeuf.acquisition_function.dts import DoubleThompsonSampling
+from activeuf.acquisition_function.infomax import InfoMax
 
 
 class BaseAcquisitionFunction(ABC):
@@ -45,6 +46,8 @@ def init_acquisition_function(
         return RandomAcquisitionFunction(**kwargs)
     elif acquisition_type == "double_thompson_sampling":
         return DoubleThompsonSampling(**kwargs)
+    elif acquisition_type == "infomax":
+        return InfoMax(**kwargs)
     else:
         raise ValueError(
             f"Unknown acquisition function type: {acquisition_type}")
