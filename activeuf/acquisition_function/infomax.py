@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from activeuf.acquisition_function.acquisition import BaseAcquisitionFunction
+from activeuf.acquisition_function.base import BaseAcquisitionFunction
 
 
 class InfoMax(BaseAcquisitionFunction):
