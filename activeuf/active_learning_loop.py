@@ -189,7 +189,7 @@ def acquisition_function_KPIs(rewards, chosen_idxs, rejected_idxs):
         rejected_idxs: Tensor of shape (n_samples, 1) - indices of the rejected completions
 
         list of KPIs to calculate:
-        - mean rewards, mean upper and lower uncertainty bounds, total uncertainty of:
+        - mean rewards and mean uncertainties of:
         --- all completions per sample
         --- chosen completions per sample
         --- rejected completions per sample
@@ -201,9 +201,6 @@ def acquisition_function_KPIs(rewards, chosen_idxs, rejected_idxs):
     """
     mean_rewards_per_sample = rewards.mean(dim=1)  # (n_samples, 3)
     mean_rewards_of_batch = mean_rewards_per_sample.mean(dim=0)  # (3,)
-    mean_total_uncertainty_per_sample = mean_rewards_per_sample[:,
-                                                                2] - mean_rewards_per_sample[:, 1]
-    mean_total_uncertainty_of_batch = mean_total_uncertainty_per_sample.mean()
 
     chosen_rewards = rewards.gather(
         1, chosen_idxs.unsqueeze(-1).expand(-1, -1, rewards.size(-1))).squeeze(1)
@@ -212,35 +209,23 @@ def acquisition_function_KPIs(rewards, chosen_idxs, rejected_idxs):
 
     mean_chosen_rewards = chosen_rewards.mean(dim=0)  # (3,)
     mean_rejected_rewards = rejected_rewards.mean(dim=0)  # (3,)
-    mean_chosen_total_uncertainty = (
-        chosen_rewards[:, 2] - chosen_rewards[:, 1]).mean()
-    mean_rejected_total_uncertainty = (
-        rejected_rewards[:, 2] - rejected_rewards[:, 1]).mean()
 
     # Add to KPIs
     kpis = {
         "mean_rewards_per_sample": mean_rewards_per_sample[:, 0].tolist(),
         "mean_rewards_per_batch": mean_rewards_of_batch[0].item(),
-        "mean_upper_bound_per_sample": mean_rewards_per_sample[:, 2].tolist(),
-        "mean_upper_bound_per_batch": mean_rewards_of_batch[2].item(),
-        "mean_lower_bound_per_sample": mean_rewards_per_sample[:, 1].tolist(),
-        "mean_lower_bound_per_batch": mean_rewards_of_batch[1].item(),
-        "mean_total_uncertainty_per_sample": mean_total_uncertainty_per_sample.tolist(),
-        "mean_total_uncertainty_per_batch": mean_total_uncertainty_of_batch.item(),
+        "mean_uncertainty_per_sample": mean_rewards_per_sample[:, 1].tolist(),
+        "mean_uncertainty_per_batch": mean_rewards_of_batch[1].item(),
+
         "mean_chosen_rewards_per_batch": mean_chosen_rewards[0].item(),
-        "mean_chosen_upper_bound_per_batch": mean_chosen_rewards[2].item(),
-        "mean_chosen_lower_bound_per_batch": mean_chosen_rewards[1].item(),
-        "mean_chosen_total_uncertainty_per_batch": mean_chosen_total_uncertainty.item(),
+        "mean_chosen_uncertainty_per_batch": mean_chosen_rewards[1].item(),
         "mean_rejected_rewards_per_batch": mean_rejected_rewards[0].item(),
-        "mean_rejected_upper_bound_per_batch": mean_rejected_rewards[2].item(),
-        "mean_rejected_lower_bound_per_batch": mean_rejected_rewards[1].item(),
-        "mean_rejected_total_uncertainty_per_batch": mean_rejected_total_uncertainty.item(),
+        "mean_rejected_uncertainty_per_batch": mean_rejected_rewards[1].item(),
+
         "chosen_rewards_per_sample": chosen_rewards[:, 0].tolist(),
-        "chosen_upper_bound_per_sample": chosen_rewards[:, 2].tolist(),
-        "chosen_lower_bound_per_sample": chosen_rewards[:, 1].tolist(),
+        "chosen_uncertainty_per_sample": chosen_rewards[:, 1].tolist(),
         "rejected_rewards_per_sample": rejected_rewards[:, 0].tolist(),
-        "rejected_upper_bound_per_sample": rejected_rewards[:, 2].tolist(),
-        "rejected_lower_bound_per_sample": rejected_rewards[:, 1].tolist(),
+        "rejected_uncertainty_per_sample": rejected_rewards[:, 1].tolist(),
     }
     return kpis
 
@@ -461,6 +446,13 @@ if __name__ == "__main__":
             # (n_samples_in_batch, n_completions_per_sample, 3)
             rewards = outputs["rewards"].detach().view(
                 n_samples_in_batch, -1, 3)
+            # Replace last two columns with standard deviation (upper_bound - lower_bound) / 2
+            # Shape: (n_samples_in_batch, n_completions_per_sample, 1)
+            rewards_mean = rewards[:, :, 0:1]
+            # Shape: (n_samples_in_batch, n_completions_per_sample, 1)
+            rewards_std = (rewards[:, :, 2:3] - rewards[:, :, 1:2]) / 2
+            # Shape: (n_samples_in_batch, n_completions_per_sample, 2)
+            rewards = torch.cat([rewards_mean, rewards_std], dim=-1)
 
             b_acquired_idxs = torch.tensor(                                                      # (n_samples_in_batch, 2)
                 acquisition_function(*rewards.unbind(-1))
