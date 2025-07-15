@@ -167,6 +167,5 @@ logs/
 scripts/completions/
 scripts/generate_completions_script.py
 .vscode
-playground.ipynb
-playground.py
+playground.*
 start*session.sh

@@ -13,7 +13,7 @@
 #SBATCH --output=./logs/ray/ray_test_%j.out
 
 echo -e "========================ray_test.sh============================="
-cat ./ray_test.sh
+cat ./scripts/start_ray_cluster.sh
 echo -e "\n==============================================================\n\n\n"
 
 
@@ -87,7 +87,29 @@ sleep 10
 ray status
 
 # Run the command you want to use Ray for here
-python -u playground.py
+vllm serve Qwen/Qwen3-235B-A22B \
+    --tensor-parallel-size 4 \
+    --pipeline-parallel-size 4 \
+    --gpu-memory-utilization 0.9 \
+    --swap-space 1 \
+    --trust-remote-code \
+    --dtype auto \ 
+    --download-dir /iopsstor/scratch/cscs/smarian/hf_cache \
+    --port 8000 &
+
+sleep 600
+
+curl http://localhost:8000/v1/chat/completions \
+    -H "Content-Type: application/json" \
+    -d '{
+        "model": "Qwen/Qwen3-235B-A22B",
+        "messages": [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": "Who won the world series in 2020?"}
+        ]
+    }'
+
+# python -u playground.py
 
 # An example script that uses Ray and vLLM
 # from activeuf.utils import *
