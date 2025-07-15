@@ -27,7 +27,8 @@ from rewarduq.models.enn_reward_model import (
     enn_compute_metrics,
 )
 
-from activeuf.acquisition_function.acquisition import RandomAcquisitionFunction, DoubleThompsonSampling
+from activeuf.acquisition_function.random import RandomAcquisitionFunction
+from activeuf.acquisition_function.dts import DoubleThompsonSampling
 from activeuf.oracle.oracles import init_oracle
 from activeuf.utils import get_logger, setup, set_seed, get_timestamp
 from activeuf.configs import *
