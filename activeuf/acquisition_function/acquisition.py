@@ -18,9 +18,9 @@ class BaseAcquisitionFunction(ABC):
             Blank, because it can vary across the child classes.
 
         Returns:
-            list[list[int, int]]: The selected indices per prompt. 
-                The first index is the one that should be chosen, the second 
-                one is the one that should be rejected.
+            list[list[int, int]]: The selected indices per prompt.
+                The order for these is arbitrary and needs to be determined
+                using an oracle.
         """
         pass
 
@@ -29,29 +29,26 @@ class RandomAcquisitionFunction(BaseAcquisitionFunction):
     """
     Randomly selects and returns two indices per prompt
     """
-
-    def __init__(self):
-        super().__init__()
-
     def __call__(
         self,
-        n_prompts: int,
-        n_completions_per_prompt: int,
+        rewards: torch.Tensor,
+        std_deviation: torch.Tensor,
     ) -> list[list[int, int]]:
         """
         Args:
-            n_prompts: number of prompts
-            n_completions_per_prompt: number of completions per prompt
-
+            rewards: tensor of shape (n_prompts, n_completions_per_prompt)
+                containing the reward scores for each completion
+            std_deviation: tensor of shape (n_prompts, n_completions_per_prompt)
+                containing the standard deviation of the reward for each completions
         Returns:
             list[list[int, int]]: The selected indices per prompt.
-                The first index is the one that should be chosen, the second 
-                one is the one that should be rejected.
+                The order for these is arbitrary and needs to be determined
+                using an oracle.
         """
         return np.random.randint(
             low=0,
-            high=n_completions_per_prompt,
-            size=(n_prompts, 2),
+            high=rewards.shape[1],
+            size=(rewards.shape[0], 2),
         ).tolist()
 
 
@@ -70,14 +67,12 @@ class DoubleThompsonSampling(BaseAcquisitionFunction):
         Args:
             rewards: tensor of shape (n_prompts, n_completions_per_prompt)
                 containing the reward scores for each completion
-            lower_bounds: tensor of shape (n_prompts, n_completions_per_prompt)
-                containing the lower bounds for each completion
-            upper_bounds: tensor of shape (n_prompts, n_completions_per_prompt)
-                containing the upper bounds for each completion
+            std_deviation: tensor of shape (n_prompts, n_completions_per_prompt)
+                containing the standard deviation of the reward for each completions
         Returns:
             list[list[int, int]]: The selected indices per prompt.
-                The first index is the one that should be chosen, the second 
-                one is the one that should be rejected.
+                The order for these is arbitrary and needs to be determined
+                using an oracle.
         """
 
         selected_ids_batch = []
