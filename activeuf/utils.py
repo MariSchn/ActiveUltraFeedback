@@ -272,6 +272,7 @@ def get_response_texts(
                 sampling_params=sampling_params, 
                 chat_template=tokenizer.chat_template,
                 # use_tqdm=False, # to avoid spamming the console with progress bars
+                chat_template_kwargs={"enable_thinking": False},  # disable thinking for now
                 **generate_kwargs
             )
         except Exception as e:
@@ -280,6 +281,7 @@ def get_response_texts(
                 all_messages, 
                 sampling_params=sampling_params, 
                 # use_tqdm=False, # to avoid spamming the console with progress bars
+                chat_template_kwargs={"enable_thinking": False},  # disable thinking for now
                 **generate_kwargs
             )
         response_texts = [_.outputs[0].text for _ in all_outputs]
