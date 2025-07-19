@@ -5,8 +5,13 @@ LOCAL_ENV_PATH = ".env.local"
 
 SEED = 123
 MAX_NUM_GPUS = 4
+MAX_NUM_NODES = 1
 MAX_API_RETRY = 10
-DEFAULT_MODEL_CLASS = "vllm"  # Which package to use for the model. ["transformers", "pipeline" "vllm"]
+DEFAULT_MODEL_CLASS = "vllm"  # Which package to use for the model. ["transformers", "pipeline" "vllm", "vllm_server"]
+
+VLLM_SERVER_BASE_URL = "http://localhost:8000"  # URL of the vLLM server
+PING_DELAY = 10        # Delay between pings to the server to check if it is already running
+MAX_PING_RETRIES = 30  # Number of retries to check if the server is running
 
 # ====================================
 #               DATASETS              

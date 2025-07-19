@@ -30,9 +30,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dataset_path", type=str, required=True, help="The path to the prompts dataset")
     parser.add_argument("--model_name", type=str, required=True, help="The Huggingface path or API of the model to use for completions (e.g. HuggingFaceTB/SmolLM2-135M-Instruct, gpt-4)")
     
-    parser.add_argument("--model_class", type=str, help="How the HuggingFace model for completions should be loaded", choices=["transformers", "pipeline", "vllm"], default=DEFAULT_MODEL_CLASS)
+    parser.add_argument("--model_class", type=str, help="How the HuggingFace model for completions should be loaded", choices=["transformers", "pipeline", "vllm", "vllm_server"], default=DEFAULT_MODEL_CLASS)
 
     parser.add_argument("--max_num_gpus", type=int, default=MAX_NUM_GPUS, help="The maximum number of GPUs to use")
+    parser.add_argument("--num_nodes", type=int, default=os.getenv("SLURM_NNODES", 1), help="The maximum number of nodes to use for distributed training (if applicable)")
     parser.add_argument("--max_tokens", type=int, default=COMPLETION_MAX_TOKENS, help="The maximum number of tokens to generate for each completion")
     parser.add_argument("--temperature", type=int, default=COMPLETION_TEMPERATURE, help="Temperature for generation")
     parser.add_argument("--top_p", type=int, default=COMPLETION_TOP_P, help="top_p value for generation")
@@ -87,7 +88,7 @@ if __name__ == "__main__":
 
     # Load generation model and tokenizer, and prepare sampling params
     logger.info(f"Using {args.model_name} for completion generation")
-    model, tokenizer = load_model(args.model_name, args.model_class, args.max_num_gpus)
+    model, tokenizer = load_model(args.model_name, args.model_class, args.max_num_gpus, args.num_nodes)
     sampling_params = vllm.SamplingParams(
         max_tokens = args.max_tokens,
         temperature = args.temperature,

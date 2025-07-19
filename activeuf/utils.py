@@ -18,6 +18,9 @@ from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer, Pipeline
 from activeuf.configs import *
 from activeuf.schemas import *
 
+import requests
+import httpx
+
 def get_logger(name: str) -> logging.Logger:
     logger = logging.getLogger(name)
     if not logger.handlers:
@@ -69,9 +72,11 @@ def load_model(
         model_class: str = DEFAULT_MODEL_CLASS,
         max_num_gpus: int | None = None, 
         num_nodes: int = 1,
+        ping_delay: int = PING_DELAY,
+        max_ping_retries: int = MAX_PING_RETRIES,
         model_kwargs: dict = {},
     ) -> Union[
-        tuple[str, None],                                                # model requires API calls (e.g. gpt-4)
+        tuple[str, None],                                                # model requires API calls (e.g. gpt-4) or model_class == "vllm_server"
         tuple[AutoModelForCausalLM, AutoTokenizer],                      # model_class == "transformers"
         tuple[Pipeline, None],                                           # model_class == "pipeline"
         tuple[vllm.LLM, vllm.transformers_utils.tokenizer.AnyTokenizer], # model_class == "vllm"
@@ -86,6 +91,8 @@ def load_model(
         model_class (Optional[str]): The class of the model to load. This determines the type of the output. Must be one of ["transformers", "pipeline", "vllm"].
         max_num_gpus (Optional[int]): The maximum number of GPUs to use for loading the model (only used for vLLM models).
         num_nodes (int): The number of nodes to use for loading the model. This is only used for vLLM models.
+        ping_delay (int): Delay between pings to the vLLM server to check if it is already running (only used for model_class == "vllm_server").
+        max_ping_retries (int): Number of retries to check if the vLLM server is running (only used for model_class == "vllm_server").
         model_kwargs (Optional[dict]): Additional keyword arguments to pass to the model when loading it. 
     Returns:
         Union[Tuple[str, None], Tuple[AutoModelForCausalLM, AutoTokenizer], Tuple[Pipeline, None], Tuple[LLM, vllm.transformers_utils.tokenizer.AnyTokenizer]]: The loaded model and tokenizer (if applicable).
@@ -148,6 +155,53 @@ def load_model(
             raise ValueError(f"Failed to load model {model_name} with any tensor_parallel_size.")
         
         tokenizer = model.get_tokenizer()
+    elif model_class == "vllm_server":
+        # Start the vLLM server for the model (logic is similar to the vllm class)
+        tps = tensor_parallel_size
+        model = None
+
+        while model is None and tps > 0:
+            try:
+                command =  f"vllm serve {model_name}"
+                command +=  " --gpu-memory-utilization 0.9"
+                command +=  " --swap-space 1"
+                command += f" --tensor-parallel-size {tps}"
+                command += f" --pipeline-parallel-size {num_nodes}"
+                command +=  " --trust-remote-code"
+                command +=  " --dtype auto"
+                command += f" --download-dir /iopsstor/scratch/cscs/smarian/hf_cache"
+                command += f" --port 8000"  # Default port
+                command +=  " --tokenizer-mode=mistral" if "mistral" in model_name.lower() else ""
+                command += f" > server_tps_{tps}.log 2>&1 &"
+
+                os.system(command)
+
+                server_ready = False
+                for attempt in range(max_ping_retries):
+                    try:
+                        response = requests.get("http://localhost:8000/ping")
+                        if response.status_code == 200:
+                            server_ready = True
+                            break
+                    except Exception as e:
+                        print(f"Ping attempt {attempt+1} failed: {e}")
+                    time.sleep(ping_delay)
+
+                if not server_ready:
+                    raise RuntimeError("vLLM server did not start after maximum retries.")
+                else:
+                    print("vLLM server is ready.")
+
+                model = "http://localhost:8000"  # Return the URL of the vLLM server
+                tokenizer = None                 # No tokenizer needed for vLLM server API calls
+                
+            except Exception as e:
+                print(f"Failed to load model with tensor_parallel_size={tps}: {e}")
+                print(f"Retrying with tensor_parallel_size={tps-1}...")
+                tps -= 1
+
+        if model is None:
+            raise ValueError(f"Failed to load model {model_name} with any tensor_parallel_size.")
     elif model_class == "pipeline":
         model = pipeline(
             "text-generation", 
@@ -211,6 +265,39 @@ def get_response_texts(
                             temperature=sampling_params.temperature,
                             max_tokens=sampling_params.max_tokens,
                             top_p=sampling_params.top_p,
+                            presence_penalty=sampling_params.presence_penalty,
+                            frequency_penalty=sampling_params.frequency_penalty,
+                            **generate_kwargs
+                        )
+                        response_text = response.choices[0].message.content
+                    except Exception as e:
+                        print(e)
+                        time.sleep(1)
+                    else:
+                        response_texts.append(response_text)
+                        break
+        else:
+            # Assuming the model is a vLLM server URL
+            response_texts = []
+            client = openai.OpenAI(
+                api_key="EMPTY",
+                base_url=f"{model}/v1",
+                http_client=httpx.Client(verify=False)
+            )
+
+            models = client.models.list()
+            model = models.data[0].id
+
+            # TODO: Refactor to use the Batch API
+            for messages in tqdm(all_messages, desc="Generating responses"):
+                for _ in range(max_api_retry):
+                    try:
+                        response = client.chat.completions.create(
+                            model=model,
+                            messages=messages,
+                            temperature=sampling_params.temperature,
+                            max_tokens=sampling_params.max_tokens,
+                            top_p=sampling_params.top_p,
                             presence_penalty=0,
                             frequency_penalty=0,
                             **generate_kwargs
@@ -222,8 +309,6 @@ def get_response_texts(
                     else:
                         response_texts.append(response_text)
                         break
-        else:
-            raise ValueError(f"Model API {model} is not supported. Supported models are: {MODEL_APIS}")
     
     elif isinstance(model, PreTrainedModel):
         if tokenizer is None:
