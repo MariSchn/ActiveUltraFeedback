@@ -73,11 +73,14 @@ COMPLETION_MODEL_NAMES = {
     "Qwen/Qwen3-235B-A22B",                          # 235B (22B Active)
 
     "deepseek-ai/DeepSeek-V3",                       # 671B (37B Active)
+
+    "moonshotai/Moonlight-16B-A3B-Instruct",         # 16B (03B Active)
+    "moonshotai/Kimi-K2-Instruct",                   # 1000B (32B Active)
 }
 NUM_COMPLETION_MODELS = len(COMPLETION_MODEL_NAMES)
 
 # General parameters for the completions generation step
-COMPLETION_MAX_TOKENS = 2048
+COMPLETION_MAX_TOKENS = 4096
 COMPLETION_TEMPERATURE = 1.0
 COMPLETION_TOP_P = 1.0
 
