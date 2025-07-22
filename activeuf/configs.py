@@ -1,4 +1,4 @@
-from activeuf.prompts import *
+# from activeuf.prompts import *
 
 PUBLIC_ENV_PATH = ".env"
 LOCAL_ENV_PATH = ".env.local"
@@ -7,10 +7,11 @@ LOGS_DIR = "logs"
 
 SEED = 123
 MAX_NUM_GPUS = 4
-DEFAULT_MODEL_CLASS = "vllm"  # Which package to use for the model. ["transformers", "pipeline" "vllm"]
+# Which package to use for the model. ["transformers", "pipeline" "vllm"]
+DEFAULT_MODEL_CLASS = "vllm"
 
 # ====================================
-#               DATASETS              
+#               DATASETS
 # ====================================
 
 PROMPT_SOURCES = {
@@ -25,7 +26,7 @@ PROMPT_SOURCES = {
 }
 
 # ====================================
-#         COMPLETION GENERATION       
+#         COMPLETION GENERATION
 # ====================================
 
 MODEL_APIS = {
@@ -74,12 +75,12 @@ PRINCIPLES = [
 DEFAULT_PRINCIPLE = "helpfulness"
 
 # System prompts to be used when generating completions
-PRINCIPLE2SYSTEM_PROMPTS = {
-    "helpfulness": HELPFULNESS_COMPLETION_SYSTEM_PROMPTS,
-    "honesty": HONESTY_COMPLETION_SYSTEM_PROMPTS,
-    "truthfulness": TRUTHFULNESS_COMPLETION_SYSTEM_PROMPTS,
-    "verbalized_calibration": VERBALIZED_CALIBRATION_COMPLETION_SYSTEM_PROMPTS,
-}
+# PRINCIPLE2SYSTEM_PROMPTS = {
+#     "helpfulness": HELPFULNESS_COMPLETION_SYSTEM_PROMPTS,
+#     "honesty": HONESTY_COMPLETION_SYSTEM_PROMPTS,
+#     "truthfulness": TRUTHFULNESS_COMPLETION_SYSTEM_PROMPTS,
+#     "verbalized_calibration": VERBALIZED_CALIBRATION_COMPLETION_SYSTEM_PROMPTS,
+# }
 
 # Define which principles are used for which datasets
 PROMPT_SOURCE2PRINCIPLES = {
@@ -95,7 +96,7 @@ PROMPT_SOURCE2PRINCIPLES = {
 #             ANNOTATION
 # ====================================
 
-ANNOTATION_MODEL = "" 
+ANNOTATION_MODEL = ""
 
 # General parameters for the annotation step
 NUM_SHUFFLES = 1
@@ -108,7 +109,7 @@ ANNOTATION_TOP_P = 1.0
 MAX_API_RETRY = 10
 # How often to retry parsing the response from the annotating model. This might fail as the model is not always guaranteed to follow the expected format.
 # Keep in mind that trying to parse again requires to re-run the model again, which can be expensive (O(MAX_API_RETRY * MAX_PARSE_RETRY)).
-MAX_PARSE_RETRY = 10 
+MAX_PARSE_RETRY = 10
 
 # Aspects to be used to annotate the generated completions
 ASPECTS = [
