@@ -3,9 +3,11 @@ import huggingface_hub
 import logging
 import wandb
 import os
+import asyncio
 import time
 from typing import Union
 from tqdm import tqdm
+from tqdm.asyncio import tqdm as async_tqdm
 
 import numpy as np
 import random
@@ -88,7 +90,7 @@ def load_model(
 
     Args:
         model_name (str): The name of the model or API to load.
-        model_class (Optional[str]): The class of the model to load. This determines the type of the output. Must be one of ["transformers", "pipeline", "vllm"].
+        model_class (Optional[str]): The class of the model to load. This determines the type of the output. Must be one of ["transformers", "pipeline", "vllm", "vllm_server"].
         max_num_gpus (Optional[int]): The maximum number of GPUs to use for loading the model (only used for vLLM models).
         num_nodes (int): The number of nodes to use for loading the model. This is only used for vLLM models.
         ping_delay (int): Delay between pings to the vLLM server to check if it is already running (only used for model_class == "vllm_server").
@@ -135,7 +137,7 @@ def load_model(
                     "pipeline_parallel_size": num_nodes,
                     "trust_remote_code": True,
                     "dtype": "auto",
-                    "download_dir": "/iopsstor/scratch/cscs/smarian/hf_cache",
+                    "download_dir": os.getenv("HF_CACHE", None),
                     **model_kwargs
                 }
 
@@ -169,10 +171,10 @@ def load_model(
                 command += f" --pipeline-parallel-size {num_nodes}"
                 command +=  " --trust-remote-code"
                 command +=  " --dtype auto"
-                command += f" --download-dir /iopsstor/scratch/cscs/smarian/hf_cache"
+                command += f" --download-dir {os.getenv('HF_CACHE', None)}" if os.getenv("HF_CACHE", None) else ""
                 command += f" --port 8000"  # Default port
                 command +=  " --tokenizer-mode=mistral" if "mistral" in model_name.lower() else ""
-                command += f" > server_tps_{tps}.log 2>&1 &"
+                command += f" > logs/server/{model_name.split('/')[-1]}_server_tps_{tps}.out 2>&1 &"
 
                 os.system(command)
 
@@ -226,6 +228,52 @@ def load_model(
     
     return model, tokenizer
 
+async def vllm_server_inference(url: str, all_messages: list[list[dict[str, str]]], sampling_params: vllm.SamplingParams, max_api_retry: int, generate_kwargs: dict) -> list[str]:
+    """
+    Helper function to perform asynchronous inference using a vLLM server.
+
+    Args:
+        url (str): The URL of the vLLM server.
+        all_messages (list[list[dict[str, str]]]): The messages to generate responses for
+        sampling_params (vllm.SamplingParams): The sampling parameters to use for generation.
+        max_api_retry (int): The maximum number of retries for API calls in case of failure.
+        generate_kwargs (dict): Additional keyword arguments to pass to the vLLM server during generation
+
+    Returns:
+        list[str]: The generated response text for each message.
+    """
+    client = openai.AsyncOpenAI(
+        api_key="EMPTY",
+        base_url=f"{url}/v1",
+        http_client=httpx.AsyncClient(verify=False)
+    )
+
+    models = await client.models.list()
+    model = models.data[0].id
+
+    # Define helper function that runs the API calls asynchronously
+    async def send_request(conversation):
+        for _ in range(max_api_retry):
+            try:
+                return await client.chat.completions.create(
+                    model=model,
+                    messages=conversation,
+                    temperature=sampling_params.temperature,
+                    max_tokens=sampling_params.max_tokens,
+                    top_p=sampling_params.top_p,
+                    presence_penalty=sampling_params.presence_penalty,
+                    frequency_penalty=sampling_params.frequency_penalty,
+                )
+            except Exception as e:
+                print(e)
+                time.sleep(1)
+
+    tasks = [send_request(chat) for chat in all_messages]
+    responses = await async_tqdm.gather(*tasks)
+    response_texts = [response.choices[0].message.content for response in responses]
+
+    return response_texts
+
 def get_response_texts(
         model: str | PreTrainedModel | vllm.LLM | Pipeline,
         tokenizer: AutoTokenizer | None,
@@ -277,38 +325,15 @@ def get_response_texts(
                         response_texts.append(response_text)
                         break
         else:
-            # Assuming the model is a vLLM server URL
-            response_texts = []
-            client = openai.OpenAI(
-                api_key="EMPTY",
-                base_url=f"{model}/v1",
-                http_client=httpx.Client(verify=False)
+            response_texts = asyncio.run(
+                vllm_server_inference(
+                    model, 
+                    all_messages, 
+                    sampling_params, 
+                    max_api_retry, 
+                    generate_kwargs
+                )
             )
-
-            models = client.models.list()
-            model = models.data[0].id
-
-            # TODO: Refactor to use the Batch API
-            for messages in tqdm(all_messages, desc="Generating responses"):
-                for _ in range(max_api_retry):
-                    try:
-                        response = client.chat.completions.create(
-                            model=model,
-                            messages=messages,
-                            temperature=sampling_params.temperature,
-                            max_tokens=sampling_params.max_tokens,
-                            top_p=sampling_params.top_p,
-                            presence_penalty=0,
-                            frequency_penalty=0,
-                            **generate_kwargs
-                        )
-                        response_text = response.choices[0].message.content
-                    except Exception as e:
-                        print(e)
-                        time.sleep(1)
-                    else:
-                        response_texts.append(response_text)
-                        break
     
     elif isinstance(model, PreTrainedModel):
         if tokenizer is None:
