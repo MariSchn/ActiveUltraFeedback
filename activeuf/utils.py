@@ -20,8 +20,10 @@ from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer, Pipeline
 from activeuf.configs import *
 from activeuf.schemas import *
 
+
 def get_timestamp() -> str:
     return datetime.now().strftime("%Y%m%d-%H%M%S")
+
 
 def get_logger(name: str, logs_path: str = "app.log") -> logging.Logger:
     logger = logging.getLogger(name)
@@ -35,6 +37,7 @@ def get_logger(name: str, logs_path: str = "app.log") -> logging.Logger:
         logger.addHandler(handler)
     return logger
 
+
 def setup(login_to_hf: bool = False, login_to_wandb: bool = False) -> None:
     # load env variables
     load_dotenv(PUBLIC_ENV_PATH)
@@ -46,7 +49,8 @@ def setup(login_to_hf: bool = False, login_to_wandb: bool = False) -> None:
     if login_to_wandb:
         load_dotenv(LOCAL_ENV_PATH)
         wandb.login(key=os.getenv("WANDB_TOKEN"))
-        
+
+
 def set_seed(seed: int) -> None:
     random.seed(seed)
     np.random.seed(seed)
@@ -55,6 +59,7 @@ def set_seed(seed: int) -> None:
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     os.environ["PYTHONHASHSEED"] = str(seed)
+
 
 def sample_principle(source: str) -> str:
     principle_pool = PROMPT_SOURCE2PRINCIPLES.get(source, [DEFAULT_PRINCIPLE])
@@ -66,23 +71,27 @@ def sample_principle(source: str) -> str:
 
     return principle
 
+
 def sample_system_prompt(principle: str) -> str:
     return random.choice(PRINCIPLE2SYSTEM_PROMPTS[principle])
 
+
 def load_model(
-        model_name: str, 
+        model_name: str,
         model_class: str = DEFAULT_MODEL_CLASS,
-        max_num_gpus: int | None = None, 
+        max_num_gpus: int | None = None,
         **model_kwargs,
     ) -> Union[
-        tuple[str, None],                           # model requires API calls (e.g. gpt-4)
-        tuple[AutoModelForCausalLM, AutoTokenizer], # model_class == "transformers"
+        # model requires API calls (e.g. gpt-4)
+        tuple[str, None],
+        # model_class == "transformers"
+        tuple[AutoModelForCausalLM, AutoTokenizer],
         tuple[Pipeline, None],                      # model_class == "pipeline"
         tuple[LLM, AnyTokenizer],                   # model_class == "vllm"
-    ]:
+]:
     """
     Loads a model given the name. 
-    
+
     If the specified model is among the supported APIs, no model is actually loaded and the model name is returned.
 
     Args:
@@ -104,12 +113,12 @@ def load_model(
     # load model and tokenizer
     if model_class == "transformers":
         model = AutoModelForCausalLM.from_pretrained(
-            model_name, 
+            model_name,
             device_map="auto",
             # TODO: Ideally set this to "auto" but it causes some models to throw errors during loading or inference, so just leave empty (float32) for now
-            # torch_dtype="auto", 
+            # torch_dtype="auto",
             # * Avoid sliding window attention warning (this warning only occurs for Qwen2.5 models. But the code on the model card also does not do this)
-            # attn_implementation="flash_attention_2",  
+            # attn_implementation="flash_attention_2",
             **model_kwargs
         )
         # padding_side should be "left" for text generation (https://huggingface.co/docs/transformers/llm_tutorial)
@@ -117,7 +126,7 @@ def load_model(
             model_name,
             padding_side="left"
         )
-    elif model_class == "vllm":      
+    elif model_class == "vllm":
         # Search over tensor_parallel_size, as number of attention heads needs to be divisible by it
         tps = tensor_parallel_size
         model = None
@@ -125,55 +134,60 @@ def load_model(
         while model is None and tps > 0:
             try:
                 model = LLM(
-                    model_name, 
-                    gpu_memory_utilization=0.95, 
-                    swap_space=1, 
-                    tensor_parallel_size=tps, 
-                    trust_remote_code=True, 
+                    model_name,
+                    gpu_memory_utilization=0.95,
+                    swap_space=1,
+                    tensor_parallel_size=tps,
+                    trust_remote_code=True,
                     dtype="auto",
                     **model_kwargs
                 )
             except Exception as e:
-                print(f"Failed to load model with tensor_parallel_size={tps}: {e}")
+                print(
+                    f"Failed to load model with tensor_parallel_size={tps}: {e}")
                 print(f"Retrying with tensor_parallel_size={tps-1}...")
                 tps -= 1
         if model is None:
-            raise ValueError(f"Failed to load model {model_name} with any tensor_parallel_size.")
-        
+            raise ValueError(
+                f"Failed to load model {model_name} with any tensor_parallel_size.")
+
         tokenizer = model.get_tokenizer()
     elif model_class == "pipeline":
         model = pipeline(
-            "text-generation", 
-            model=model_name, 
+            "text-generation",
+            model=model_name,
             torch_dtype="auto",
             device_map="auto",
             **model_kwargs
         )
         tokenizer = None
     else:
-        raise ValueError(f"Invalid model_class: {model_class}. Must be one of ['transformers', 'pipeline', 'vllm']")
-    
+        raise ValueError(
+            f"Invalid model_class: {model_class}. Must be one of ['transformers', 'pipeline', 'vllm']")
+
     # Check tokenizer and set padding token if needed
     if tokenizer is not None:
         if tokenizer.chat_template is None:
-            raise ValueError("Tokenizer does not have a chat template. Please use a model that supports chat templates.")
+            raise ValueError(
+                "Tokenizer does not have a chat template. Please use a model that supports chat templates.")
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
-            
+
             if isinstance(model, PreTrainedModel):
                 model.config.pad_token_id = tokenizer.pad_token_id
-    
+
     return model, tokenizer
 
+
 def get_response_texts(
-        model: str | PreTrainedModel | LLM | Pipeline,
-        tokenizer: AutoTokenizer | None,
-        all_messages: list[list[dict[str, str]]],
-        sampling_params: SamplingParams | None,
-        batch_size: int = 64,
-        max_api_retry: int = MAX_API_RETRY,
-        **generate_kwargs,
-    ) -> list[str]:
+    model: str | PreTrainedModel | LLM | Pipeline,
+    tokenizer: AutoTokenizer | None,
+    all_messages: list[list[dict[str, str]]],
+    sampling_params: SamplingParams | None,
+    batch_size: int = 64,
+    max_api_retry: int = MAX_API_RETRY,
+    **generate_kwargs,
+) -> list[str]:
     """
     This function generates responses for the given messages using the specified model.
     The model may be the name of a supported model API (e.g. gpt-4) or a locally loaded model.
@@ -216,17 +230,21 @@ def get_response_texts(
                         response_texts.append(response_text)
                         break
         else:
-            raise ValueError(f"Model API {model} is not supported. Supported models are: {MODEL_APIS}")
-    
+            raise ValueError(
+                f"Model API {model} is not supported. Supported models are: {MODEL_APIS}")
+
     elif isinstance(model, PreTrainedModel):
         if tokenizer is None:
-            raise ValueError("Tokenizer must be provided if model is an AutoModelForCausalLM (PreTrainedModel).")
+            raise ValueError(
+                "Tokenizer must be provided if model is an AutoModelForCausalLM (PreTrainedModel).")
 
         # ensure padding_side "left" (https://huggingface.co/docs/transformers/llm_tutorial)
         if tokenizer.padding_side != "left":
-            raise ValueError("Tokenizer padding side must be 'left' for text generation.")
+            raise ValueError(
+                "Tokenizer padding side must be 'left' for text generation.")
 
-        batches = [all_messages[i:i + batch_size] for i in range(0, len(all_messages), batch_size)]
+        batches = [all_messages[i:i + batch_size]
+                   for i in range(0, len(all_messages), batch_size)]
         response_texts = []
 
         for batch in tqdm(batches, desc="Generating responses", total=len(batches)):
@@ -236,7 +254,7 @@ def get_response_texts(
                 add_generation_prompt=True,
             )
             batch_inputs = tokenizer(
-                batch_messages_with_generation_prompt, 
+                batch_messages_with_generation_prompt,
                 padding=True,
                 pad_to_multiple_of=8,
                 return_tensors="pt",
@@ -244,7 +262,7 @@ def get_response_texts(
 
             batch_outputs = model.generate(
                 **batch_inputs,
-                do_sample=True, # required for temperature and top_p to work
+                do_sample=True,  # required for temperature and top_p to work
                 temperature=sampling_params.temperature,
                 max_new_tokens=sampling_params.max_tokens,
                 top_p=sampling_params.top_p,
@@ -253,33 +271,38 @@ def get_response_texts(
 
             # AutoModelForCausalLM does not allow to return only the generated text so manually remove the input
             batch_outputs = batch_outputs[:, batch_inputs.input_ids.shape[1]:]
-            batch_texts = tokenizer.batch_decode(batch_outputs, skip_special_tokens=True)
+            batch_texts = tokenizer.batch_decode(
+                batch_outputs, skip_special_tokens=True)
 
             response_texts.extend(batch_texts)
 
     elif isinstance(model, LLM):
         # * vLLM performs batching internally
         all_outputs = model.chat(
-            all_messages, 
-            sampling_params=sampling_params, 
-            chat_template=tokenizer.chat_template, # * Must be set for Gemma-3-1b-it as otherwise vLLM gets stuck in an infinite requests loop, fetching the same request over and over again
-            use_tqdm=False, # to avoid spamming the console with progress bars
+            all_messages,
+            sampling_params=sampling_params,
+            # * Must be set for Gemma-3-1b-it as otherwise vLLM gets stuck in an infinite requests loop, fetching the same request over and over again
+            chat_template=tokenizer.chat_template,
+            # use_tqdm=False,  # to avoid spamming the console with progress bars
             **generate_kwargs
         )
-        response_texts = [_.outputs[0].text for _ in all_outputs]
+        response_texts = [{"response_text": _.outputs[0].text,
+                           "logprobs": _.outputs[0].logprobs,
+                           "raw": _} for _ in all_outputs]
 
     elif isinstance(model, Pipeline):
-        batches = [all_messages[i:i + batch_size] for i in range(0, len(all_messages), batch_size)]
+        batches = [all_messages[i:i + batch_size]
+                   for i in range(0, len(all_messages), batch_size)]
         response_texts = []
 
         for batch in tqdm(batches, desc="Generating responses", total=len(batches)):
             batch_outputs = model(
                 batch,
                 return_full_text=False,
-                num_return_sequences=1, 
-                temperature=sampling_params.temperature, 
-                top_p=sampling_params.top_p, 
-                max_new_tokens=sampling_params.max_tokens, 
+                num_return_sequences=1,
+                temperature=sampling_params.temperature,
+                top_p=sampling_params.top_p,
+                max_new_tokens=sampling_params.max_tokens,
                 **generate_kwargs
             )
             response_texts = [_[0]["generated_text"] for _ in batch_outputs]
@@ -287,9 +310,11 @@ def get_response_texts(
             response_texts.extend(response_texts)
 
     else:
-        raise ValueError(f"Was not able to resolve model to be used for generation. model: {model}")
-    
+        raise ValueError(
+            f"Was not able to resolve model to be used for generation. model: {model}")
+
     return response_texts
+
 
 if __name__ == "__main__":
     setup(login_to_hf=True)
