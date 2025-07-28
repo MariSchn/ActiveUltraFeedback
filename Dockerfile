@@ -1,7 +1,7 @@
 # ===================================================
 #                       BASE
 # ===================================================
-FROM nvcr.io/nvidia/pytorch:25.02-py3 AS base
+FROM nvcr.io/nvidia/pytorch:25.06-py3 AS base
 
 WORKDIR /workspace
 
@@ -93,30 +93,34 @@ RUN --mount=type=bind,from=builder,source=/workspace/wheels,target=/workspace/wh
         pip install --no-deps --no-cache-dir --force-reinstall /workspace/wheels/${package}*.whl ;\
     done
 
+
 # Install the rest of the dependencies
 RUN pip install \
-transformers \
-tokenizers \
-tiktoken \
-datasets \
-openai \
-numpy \
-pandas \
-tqdm \
-wandb \
-deepspeed \
-accelerate \
-dotenv \
-peft \
-nvitop \
-mmh3 \
-tensordict \
-langdetect \
-nltk \
-immutabledict \
-omegaconf 
+# transformers==4.52.4 \
+# tokenizers==0.21.2 \
+# tiktoken==0.9.0 \
+# datasets==3.6.0 \
+# openai==1.93.0 \
+# numpy==1.26.4 \
+# pandas==2.2.3 \
+# tqdm==4.67.1 \
+wandb==0.21.0 \
+deepspeed==0.17.1 \
+# accelerate==1.8.1 \
+# dotenv==0.9.9 \
+# peft==0.16.0 \
+nvitop==1.5.1 \
+# mmh3==5.1.0 \
+tensordict==0.8.3 \
+langdetect==1.0.9 \
+nltk==3.9.1 \
+immutabledict==4.2.1 \
+# omegaconf==2.3.0 \
+blobfile==3.0.0
 
 # Install rewarduq
 COPY resources/rewarduq /workspace/rewarduq
 RUN pip install -e /workspace/rewarduq
 
+# Explicitly downgrade numpy to be compatible with torch and vLLM
+RUN pip install --force-reinstall numpy==1.26.4

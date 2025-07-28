@@ -93,10 +93,11 @@ vllm serve Qwen/Qwen3-235B-A22B \
     --gpu-memory-utilization 0.9 \
     --swap-space 1 \
     --trust-remote-code \
-    --dtype auto \ 
+    --dtype auto \
     --download-dir /iopsstor/scratch/cscs/smarian/hf_cache \
     --port 8000 &
 
+# Wait for the server to start (there is probably a better way to do this)
 sleep 600
 
 curl http://localhost:8000/v1/chat/completions \
@@ -108,62 +109,3 @@ curl http://localhost:8000/v1/chat/completions \
             {"role": "user", "content": "Who won the world series in 2020?"}
         ]
     }'
-
-# python -u playground.py
-
-# An example script that uses Ray and vLLM
-# from activeuf.utils import *
-# from activeuf.schemas import *
-
-# import ray
-# import os
-# import vllm
-
-
-# def main():
-#     setup(True)
-
-#     if not ray.is_initialized():
-#         print("Connecting to Ray...")
-#         ray.init(address='auto')
-
-#     print("Successfully connected to Ray.")
-
-#     print("Initializing vLLM engine...")
-#     model, tokenizer = load_model(
-#         model_name="Qwen/Qwen3-235B-A22B",
-#         model_class="vllm",
-#         max_num_gpus=4,
-#         num_nodes=4,
-#     )
-
-#     # Setup prompt
-#     prompt = "What is the capital of France?"
-#     all_messages = [
-#         [
-#             Message(role="system", content="You are a helpful assistant. That only responds in the style of a pirate.").model_dump(),
-#             Message(role="user", content=prompt).model_dump(),
-#         ]
-#     ]
-
-#     sampling_params = vllm.SamplingParams(
-#         max_tokens = 2048,
-#         temperature = 1.0,
-#         top_p = 1.0,
-#     )
-
-#     # Run inference
-#     with torch.inference_mode():
-#         response = get_response_texts(
-#             all_messages = all_messages, 
-#             model = model,
-#             tokenizer = tokenizer, 
-#             sampling_params = sampling_params,
-#         )
-
-#     # Print results
-#     print("Prompt:", prompt)
-#     print("Response:", response)
-
-# if __name__ == "__main__":
-#     main()

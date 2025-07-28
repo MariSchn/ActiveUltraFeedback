@@ -174,7 +174,7 @@ def load_model(
                 command += f" --download-dir {os.getenv('HF_CACHE', None)}" if os.getenv("HF_CACHE", None) else ""
                 command += f" --port 8000"  # Default port
                 command +=  " --tokenizer-mode=mistral" if "mistral" in model_name.lower() else ""
-                command += f" > logs/server/{model_name.split('/')[-1]}_server_tps_{tps}.out 2>&1 &"
+                command += f" > logs/server/{model_name.split('/')[-1]}_server_tps_{tps}_{os.getenv('SLURM_JOB_ID', '')}.out 2>&1 &"
 
                 os.system(command)
 
