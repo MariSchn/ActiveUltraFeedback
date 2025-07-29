@@ -1,3 +1,4 @@
+from datetime import datetime
 from dotenv import load_dotenv
 import huggingface_hub
 import logging
@@ -20,14 +21,14 @@ from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer, Pipeline
 from activeuf.configs import *
 from activeuf.schemas import *
 
-import requests
-import httpx
+def get_timestamp() -> str:
+    return datetime.now().strftime("%Y%m%d-%H%M%S")
 
-def get_logger(name: str) -> logging.Logger:
+def get_logger(name: str, logs_path: str = "app.log") -> logging.Logger:
     logger = logging.getLogger(name)
     if not logger.handlers:
         logger.setLevel(logging.INFO)
-        handler = logging.StreamHandler()
+        handler = logging.FileHandler(logs_path)
         formatter = logging.Formatter(
             "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
         )

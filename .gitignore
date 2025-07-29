@@ -169,3 +169,5 @@ scripts/generate_completions_script.py
 .vscode
 playground.*
 start*session.sh
+wandb/
+olmes/
