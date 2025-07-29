@@ -4,3 +4,6 @@
 [submodule "resources/rewarduq"]
 	path = resources/rewarduq
 	url = git@github.com:Florian-toll/rewarduq.git
+[submodule "resources/reward-bench"]
+	path = resources/reward-bench
+	url = https://github.com/allenai/reward-bench.git
