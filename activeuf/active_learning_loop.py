@@ -292,9 +292,11 @@ if __name__ == "__main__":
     # wandb init - only on main process
     if accelerator.is_main_process and args.report_to == "wandb":
         ENNTrainer_log_run = f"activeuf_enn_{args.timestamp}" + \
-            ("llama" if "llama" in args.completions_dataset_path else "qwen")
+            ("llama" if "llama" in args.completions_dataset_path else "qwen") + \
+            f"_{args.acquisition_function_type}"
         acquisition_KPI_run = f"activeuf_KPI_{args.timestamp}" + \
-            ("llama" if "llama" in args.completions_dataset_path else "qwen")
+            ("llama" if "llama" in args.completions_dataset_path else "qwen") + \
+            f"_{args.acquisition_function_type}"
 
     # GPU cleanup
     torch.cuda.empty_cache()
