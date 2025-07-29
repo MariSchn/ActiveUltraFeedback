@@ -5,7 +5,7 @@ import wandb
 import os
 import asyncio
 import time
-from typing import Union
+from typing import Union, Any, Tuple, List
 from tqdm import tqdm
 from tqdm.asyncio import tqdm as async_tqdm
 
@@ -281,9 +281,8 @@ async def vllm_server_inference(url: str, all_messages: list[list[dict[str, str]
 
     tasks = [send_request(chat) for chat in all_messages]
     responses = await async_tqdm.gather(*tasks)
-    response_texts = [response.choices[0].message.content for response in responses]
 
-    return response_texts
+    return [response.choices[0].message.content for response in responses], responses
 
 def get_response_texts(
         model: str | PreTrainedModel | vllm.LLM | Pipeline,
@@ -293,7 +292,7 @@ def get_response_texts(
         batch_size: int = 64,
         max_api_retry: int = MAX_API_RETRY,
         generate_kwargs: dict = {},
-    ) -> list[str]:
+    ) -> tuple[list[str], list[Any]]:
     """
     This function generates responses for the given messages using the specified model.
     The model may be the name of a supported model API (e.g. gpt-4) or a locally loaded model.
@@ -309,12 +308,13 @@ def get_response_texts(
         generate_kwargs: Additional keyword arguments to pass to the model during generation.
     Returns:
         list[str]: The generated response text for each message.
+        list[Any]: The raw responses from the model, which may include additional information such as token IDs or attention scores.
     """
 
     # generate via API
     if isinstance(model, str):
         if "gpt" in model:
-            response_texts = []
+            responses = []
             for messages in all_messages:
                 for _ in range(max_api_retry):
                     try:
@@ -328,15 +328,15 @@ def get_response_texts(
                             frequency_penalty=sampling_params.frequency_penalty,
                             **generate_kwargs
                         )
-                        response_text = response.choices[0].message.content
                     except Exception as e:
                         print(e)
                         time.sleep(1)
                     else:
-                        response_texts.append(response_text)
+                        responses.append(response)
                         break
+            response_texts = [response.choices[0].message.content for response in responses]
         else:
-            response_texts = asyncio.run(
+            response_texts, responses = asyncio.run(
                 vllm_server_inference(
                     model, 
                     all_messages, 
@@ -356,6 +356,7 @@ def get_response_texts(
 
         batches = [all_messages[i:i + batch_size] for i in range(0, len(all_messages), batch_size)]
         response_texts = []
+        responses = []
 
         for batch in tqdm(batches, desc="Generating responses", total=len(batches)):
             batch_messages_with_generation_prompt = tokenizer.apply_chat_template(
@@ -384,11 +385,12 @@ def get_response_texts(
             batch_texts = tokenizer.batch_decode(batch_outputs, skip_special_tokens=True)
 
             response_texts.extend(batch_texts)
+            responses.extend(batch_outputs)
 
     elif isinstance(model, vllm.LLM):
         # * vLLM performs batching internally
         try:
-            all_outputs = model.chat(
+            responses = model.chat(
                 all_messages, 
                 sampling_params=sampling_params, 
                 chat_template=tokenizer.chat_template,
@@ -398,18 +400,18 @@ def get_response_texts(
             )
         except Exception as e:
             print(f"Failed to generate responses with vLLM: {e}\nRetrying without fixed chat template...")
-            all_outputs = model.chat(
+            responses = model.chat(
                 all_messages, 
                 sampling_params=sampling_params, 
                 # use_tqdm=False, # to avoid spamming the console with progress bars
                 chat_template_kwargs={"enable_thinking": False},  # disable thinking for now
                 **generate_kwargs
             )
-        response_texts = [_.outputs[0].text for _ in all_outputs]
+        response_texts = [_.outputs[0].text for _ in responses]
 
     elif isinstance(model, Pipeline):
         batches = [all_messages[i:i + batch_size] for i in range(0, len(all_messages), batch_size)]
-        response_texts = []
+        responses = []
 
         for batch in tqdm(batches, desc="Generating responses", total=len(batches)):
             batch_outputs = model(
@@ -422,13 +424,12 @@ def get_response_texts(
                 **generate_kwargs
             )
 
-            batch_texts = [_[0]["generated_text"] for _ in batch_outputs]
-            response_texts.extend(batch_texts)
-
+            responses.extend(batch_outputs)
+        response_texts = [response[0]["generated_text"] for response in responses]
     else:
         raise ValueError(f"Was not able to resolve model to be used for generation. model: {model}")
     
-    return response_texts
+    return response_texts, responses
 
 if __name__ == "__main__":
     setup(login_to_hf=True)

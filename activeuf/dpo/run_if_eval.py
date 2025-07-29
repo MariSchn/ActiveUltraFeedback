@@ -80,7 +80,7 @@ if __name__ == "__main__":
 
     # Generate completions
     logger.info("Generating responses for each prompt")
-    responses = get_response_texts(
+    responses, _ = get_response_texts(
         model=model,
         tokenizer=tokenizer,
         all_messages=messages,

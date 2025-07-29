@@ -115,7 +115,7 @@ if __name__ == "__main__":
     # Generate responses
     logger.info("Generating responses (this may take a while)")
     with torch.inference_mode():
-        all_response_texts = get_response_texts(
+        all_response_texts, _ = get_response_texts(
             all_messages = all_messages, 
             model = model,
             tokenizer = tokenizer, 
