@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Usage:
-# TODO Add submodule to repo (once done skip step 1)
+# TODO Add submodule to repo (skip step 1 once submodule is added)
 # 1. git clone https://github.com/allenai/reward-bench.git resources/reward-bench
 # 2. chmod +x activeuf/reward_model/run_reward_bench_2.sh
 # 3. Run it with your model name: activeuf/reward_model/run_reward_bench_2.sh OpenAssistant/reward-model-deberta-v3-base
