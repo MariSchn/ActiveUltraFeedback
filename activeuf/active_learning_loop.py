@@ -48,7 +48,8 @@ accelerate launch \
     --logs_path=$SCRATCH/logs_final_test \
     --args_path=$SCRATCH/models_enn_test \
     --acquisition_config=$SCRATCH/ActiveUltraFeedback/activeuf/acquisition_function/configs.yaml \
-    --report_to="wandb"
+    --report_to="wandb" \
+    --acquisition_function_type="double_thompson_sampling"
     
 accelerate launch \
     --config_file=$SCRATCH/ActiveUltraFeedback/activeuf/reward_model/multi_gpu.yaml \
@@ -58,7 +59,8 @@ accelerate launch \
     --logs_path=$SCRATCH/logs_final_test \
     --args_path=$SCRATCH/models_enn_test \
     --acquisition_config=$SCRATCH/ActiveUltraFeedback/activeuf/acquisition_function/configs.yaml \
-    --report_to="wandb"
+    --report_to="wandb" \
+    --acquisition_function_type="double_thompson_sampling"
 
 """
 
@@ -179,6 +181,12 @@ def parse_postprocess(args: argparse.Namespace) -> argparse.Namespace:
     if not args.args_path:
         args.args_path = f"logs/{args.timestamp}.args"
 
+    if args.acquisition_function_type in ["random", "ultrafeedback"]:
+        if args.report_to == "wandb":
+            print(
+                "Warning: WandB reporting is not supported for random or ultrafeedback acquisition functions.")
+        args.report_to = None
+
     return args
 
 
@@ -194,7 +202,7 @@ def custom_collate_fn(batch):
 def acquisition_function_KPIs(rewards, chosen_idxs, rejected_idxs):
     """
         Function to calculate acquisition function KPIs.
-        rewards: Tensor of shape (n_samples, n_completions, 3) - rewards for each completion
+        rewards: Tensor of shape (n_samples, n_completions, 2) - rewards for each completion
         chosen_idxs: Tensor of shape (n_samples, 1) - indices of the chosen completions
         rejected_idxs: Tensor of shape (n_samples, 1) - indices of the rejected completions
 
@@ -207,18 +215,18 @@ def acquisition_function_KPIs(rewards, chosen_idxs, rejected_idxs):
 
         TODO:
         track these KPIs for each model from the model pool separately.
-        combnied statistics for both chosen and rejected completions.
+        combined statistics for both chosen and rejected completions.
     """
-    mean_rewards_per_sample = rewards.mean(dim=1)  # (n_samples, 3)
-    mean_rewards_of_batch = mean_rewards_per_sample.mean(dim=0)  # (3,)
+    mean_rewards_per_sample = rewards.mean(dim=1)  # (n_samples, 2)
+    mean_rewards_of_batch = mean_rewards_per_sample.mean(dim=0)  # (2,)
 
     chosen_rewards = rewards.gather(
         1, chosen_idxs.unsqueeze(-1).expand(-1, -1, rewards.size(-1))).squeeze(1)
     rejected_rewards = rewards.gather(
         1, rejected_idxs.unsqueeze(-1).expand(-1, -1, rewards.size(-1))).squeeze(1)
 
-    mean_chosen_rewards = chosen_rewards.mean(dim=0)  # (3,)
-    mean_rejected_rewards = rejected_rewards.mean(dim=0)  # (3,)
+    mean_chosen_rewards = chosen_rewards.mean(dim=0)  # (2,)
+    mean_rejected_rewards = rejected_rewards.mean(dim=0)  # (2,)
 
     # Add to KPIs
     kpis = {
@@ -238,6 +246,40 @@ def acquisition_function_KPIs(rewards, chosen_idxs, rejected_idxs):
         "rejected_uncertainty_per_sample": rejected_rewards[:, 1].tolist(),
     }
     return kpis
+
+
+def acquisition_function_handler(acquisition_function_type):
+    if acquisition_function_type == "double_thompson_sampling":
+        max_iterations = acquisition_config.get("max_iterations", 10)
+        beta = acquisition_config.get("beta", 1)
+        # will be changed later.
+        acquisition_function = DoubleThompsonSampling(
+            beta=beta, max_iterations=max_iterations)
+    elif acquisition_function_type == "random":
+        acquisition_function = RandomAcquisitionFunction()
+    elif acquisition_function_type == "infomax":
+        acquisition_function = InfoMax()
+    elif acquisition_function_type == "maxminlcb":
+        beta = acquisition_config.get("beta", 1.0)
+        argmax_tol = acquisition_config.get("argmax_tol", 1e-4)
+        decision_buffer = acquisition_config.get("decision_buffer", 0.0)
+        use_candidate_set = acquisition_config.get(
+            "use_candidate_set", False)
+        seed = acquisition_config.get("seed", 42)
+
+        acquisition_function = MaxMinLCB(
+            beta=beta,
+            argmax_tol=argmax_tol,
+            decision_buffer=decision_buffer,
+            use_candidate_set=use_candidate_set,
+            seed=seed
+        )
+    elif acquisition_function_type == "infogain":
+        acquisition_function = InfoGain()
+    else:
+        raise ValueError(
+            f"Unknown acquisition function type: {acquisition_function_type}")
+    return acquisition_function
 
 
 if __name__ == "__main__":
@@ -268,7 +310,7 @@ if __name__ == "__main__":
     logger.info(args)
 
     logger.info("Logging into HuggingFace")
-    setup(login_to_hf=True)
+    # setup(login_to_hf=True)
 
     if args.seed:
         logger.info(f"Setting random seed to {args.seed}")
@@ -300,87 +342,61 @@ if __name__ == "__main__":
 
     logger.info(
         f"Creating acquisition function {args.acquisition_function_type}")
-    if args.acquisition_function_type == "double_thompson_sampling":
-        max_iterations = acquisition_config.get("max_iterations", 10)
-        beta = acquisition_config.get("beta", 1)
-        # will be changed later.
-        acquisition_function = DoubleThompsonSampling(
-            beta=beta, max_iterations=max_iterations)
-    elif args.acquisition_function_type == "random":
-        acquisition_function = RandomAcquisitionFunction()
-    elif args.acquisition_function_type == "infomax":
-        acquisition_function = InfoMax()
-    elif args.acquisition_function_type == "maxminlcb":
-        beta = acquisition_config.get("beta", 1.0)
-        argmax_tol = acquisition_config.get("argmax_tol", 1e-4)
-        decision_buffer = acquisition_config.get("decision_buffer", 0.0)
-        use_candidate_set = acquisition_config.get(
-            "use_candidate_set", False)
-        seed = acquisition_config.get("seed", 42)
-
-        acquisition_function = MaxMinLCB(
-            beta=beta,
-            argmax_tol=argmax_tol,
-            decision_buffer=decision_buffer,
-            use_candidate_set=use_candidate_set,
-            seed=seed
-        )
-    else:
-        raise ValueError(
-            f"Unknown acquisition function type: {args.acquisition_function_type}")
+    acquisition_function = acquisition_function_handler(
+        args.acquisition_function_type)
 
     logger.info(f"Creating oracle {args.oracle_name}")
     oracle = init_oracle(args.oracle_name)
 
     logger.info(f"Creating UQ model")
-    if args.acquisition_function_type in ["double_thompson_sampling", "infomax", "maxminlcb"]:
-        uq_pipeline = ENNRewardModelPipeline(
-            ENNRewardModelConfig(
-                # "meta-llama/Llama-3.2-1B-Instruct"
-                base_model_name_or_path="unsloth/Qwen2.5-1.5B-Instruct"
-            ),
-            ENNRewardModelTrainerConfig(
-                num_train_epochs=1,
-                output_dir=f"trainer_output/{args.timestamp}",
-                save_strategy="no",
-                per_device_train_batch_size=math.ceil(
-                    args.batch_size / accelerator.num_processes),  # total will be exactly args.batch_size if: (B mod GPU_COUNT ≡ 0)
-                report_to=None,  # * TEMPORARY: Disable logging to wandb
-                disable_tqdm=True,
-                logging_strategy="steps",
-                logging_steps=1,
-                run_name=f"activeuf_{args.timestamp}",
-                lr_scheduler_type="constant",
-                learning_rate=5e-6,
-            )
+    # if args.acquisition_function_type in ["double_thompson_sampling", "infomax", "maxminlcb", "infogain"]:
+    uq_pipeline = ENNRewardModelPipeline(
+        ENNRewardModelConfig(
+            # "meta-llama/Llama-3.2-1B-Instruct"
+            base_model_name_or_path="unsloth/Qwen2.5-1.5B-Instruct"
+        ),
+        ENNRewardModelTrainerConfig(
+            num_train_epochs=1,
+            output_dir=f"trainer_output/{args.timestamp}",
+            save_strategy="no",
+            per_device_train_batch_size=math.ceil(
+                args.batch_size / accelerator.num_processes),  # total will be exactly args.batch_size if: (B mod GPU_COUNT ≡ 0)
+            report_to=None,  # * TEMPORARY: Disable logging to wandb
+            disable_tqdm=True,
+            logging_strategy="steps",
+            logging_steps=1,
+            run_name=f"activeuf_{args.timestamp}",
+            lr_scheduler_type="constant",
+            learning_rate=5e-6,
         )
-        # Initialize the trainer with an empty Dataset having the required keys. So we have access to the uq_pipeline.trainer before entering the loop.
-        dummy_data = [{
-            'prompt': '',
-            'prompt_id': '',
-            'chosen': '',
-            'chosen_model': '',
-            'chosen_score': 0,
-            'input_ids_chosen': [],
-            'attention_mask_chosen': [],
-            'rejected': '',
-            'rejected_model': '',
-            'rejected_score': 0,
-            'input_ids_rejected': [],
-            'attention_mask_rejected': []
-        } for _ in range(args.replay_buffer_size)]
+    )
+    # Initialize the trainer with an empty Dataset having the required keys. So we have access to the uq_pipeline.trainer before entering the loop.
+    dummy_data = [{
+        'prompt': '',
+        'prompt_id': '',
+        'chosen': '',
+        'chosen_model': '',
+        'chosen_score': 0,
+        'input_ids_chosen': [],
+        'attention_mask_chosen': [],
+        'rejected': '',
+        'rejected_model': '',
+        'rejected_score': 0,
+        'input_ids_rejected': [],
+        'attention_mask_rejected': []
+    } for _ in range(args.replay_buffer_size)]
 
-        uq_pipeline.trainer = ENNRewardModelTrainer(
-            args=uq_pipeline.trainer_config,
-            model=uq_pipeline.model,
-            processing_class=uq_pipeline.model.tokenizer,
-            compute_metrics=enn_compute_metrics,
-            train_dataset=Dataset.from_list(dummy_data)
+    uq_pipeline.trainer = ENNRewardModelTrainer(
+        args=uq_pipeline.trainer_config,
+        model=uq_pipeline.model,
+        processing_class=uq_pipeline.model.tokenizer,
+        compute_metrics=enn_compute_metrics,
+        train_dataset=Dataset.from_list(dummy_data)
+    )
+    if accelerator.is_main_process and args.report_to == "wandb":
+        uq_pipeline.trainer.add_callback(
+            WandbStepLoggerCallback(get_global_step_offset)
         )
-        if accelerator.is_main_process and args.report_to == "wandb":
-            uq_pipeline.trainer.add_callback(
-                WandbStepLoggerCallback(get_global_step_offset)
-            )
 
     if args.previous_checkpoint_path:
         logger.info(f"Loading checkpoint from {args.previous_checkpoint_path}")
@@ -477,11 +493,11 @@ if __name__ == "__main__":
                 n_samples_in_batch, -1, 3)
             # Replace last two columns with standard deviation (upper_bound - lower_bound) / 2
             # Shape: (n_samples_in_batch, n_completions_per_sample, 1)
-            rewards_mean = rewards[:, :, 0:1]
-            # Shape: (n_samples_in_batch, n_completions_per_sample, 1)
-            rewards_std = (rewards[:, :, 2:3] - rewards[:, :, 1:2]) / 2
-            # Shape: (n_samples_in_batch, n_completions_per_sample, 2)
-            rewards = torch.cat([rewards_mean, rewards_std], dim=-1)
+            # rewards_mean = rewards[:, :, 0:1]
+            # # Shape: (n_samples_in_batch, n_completions_per_sample, 1)
+            # rewards_std = (rewards[:, :, 2:3] - rewards[:, :, 1:2]) / 2
+            # # Shape: (n_samples_in_batch, n_completions_per_sample, 2)
+            # rewards = torch.cat([rewards_mean, rewards_std], dim=-1)
 
             b_acquired_idxs = torch.tensor(                                                      # (n_samples_in_batch, 2)
                 acquisition_function(*rewards.unbind(-1))
@@ -551,8 +567,14 @@ if __name__ == "__main__":
                     chosen_idxs.append(b_acquired_idxs[j, 1].item())
                     rejected_idxs.append(b_acquired_idxs[j, 0].item())
 
+            rewards_mean = rewards[:, :, 0:1]
+            # Shape: (n_samples_in_batch, n_completions_per_sample, 1)
+            rewards_std = (rewards[:, :, 2:3] - rewards[:, :, 1:2]) / 2
+            # Shape: (n_samples_in_batch, n_completions_per_sample, 2)
+            rewards_for_kpi = torch.cat([rewards_mean, rewards_std], dim=-1)
+
             acquisition_kpis = acquisition_function_KPIs(
-                rewards, torch.tensor(chosen_idxs)[:, None], torch.tensor(
+                rewards_for_kpi, torch.tensor(chosen_idxs)[:, None], torch.tensor(
                     rejected_idxs)[:, None]
             )
 
@@ -622,6 +644,8 @@ if __name__ == "__main__":
         # Update replay buffer
         replay_buffer.extend(annotated_batch)
 
+        if args.acquisition_function_type == "random":
+            continue
         start = time.time()
         if accelerator.is_main_process and args.report_to == "wandb":
             wandb.init(
@@ -632,6 +656,7 @@ if __name__ == "__main__":
                 config=vars(args),
                 allow_val_change=True,  # Allow changing the config values
             )
+
         model.train()
 
         uq_pipeline.trainer.train_dataset = Dataset.from_list(replay_buffer)

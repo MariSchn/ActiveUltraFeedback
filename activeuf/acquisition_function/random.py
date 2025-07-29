@@ -8,10 +8,12 @@ class RandomAcquisitionFunction(BaseAcquisitionFunction):
     """
     Randomly selects and returns two indices per prompt
     """
+
     def __call__(
         self,
         rewards: torch.Tensor,
-        std_deviation: torch.Tensor,
+        lower_bounds: torch.Tensor,
+        upper_bounds: torch.Tensor,
     ) -> list[list[int, int]]:
         """
         Args:

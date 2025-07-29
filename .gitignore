@@ -171,3 +171,5 @@ playground.py
 start_session.sh
 wandb/
 olmes/
+trainer_output/
+multinodeloop/

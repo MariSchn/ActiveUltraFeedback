@@ -8,10 +8,12 @@ class InfoMax(BaseAcquisitionFunction):
     """
     Randomly selects and returns two indices per prompt
     """
+
     def __call__(
         self,
         rewards: torch.Tensor,
-        std_deviation: torch.Tensor,
+        lower_bounds: torch.Tensor,
+        upper_bounds: torch.Tensor,
     ) -> list[list[int, int]]:
         """
         Args:
@@ -24,6 +26,8 @@ class InfoMax(BaseAcquisitionFunction):
                 The order for these is arbitrary and needs to be determined
                 using an oracle.
         """
+        std_deviation = (upper_bounds - lower_bounds) / 2
+
         sorted_stds = torch.argsort(std_deviation, descending=True, dim=-1)
 
-        return sorted_stds[:, :2].tolist() 
+        return sorted_stds[:, :2].tolist()

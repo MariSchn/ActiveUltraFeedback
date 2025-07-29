@@ -13,7 +13,8 @@ class DoubleThompsonSampling(BaseAcquisitionFunction):
     def __call__(
         self,
         rewards: torch.Tensor,
-        std_deviation: torch.Tensor,
+        lower_bounds: torch.Tensor,
+        upper_bounds: torch.Tensor,
     ) -> list[list[int, int]]:
         """
         Args:
@@ -26,6 +27,8 @@ class DoubleThompsonSampling(BaseAcquisitionFunction):
                 The order for these is arbitrary and needs to be determined
                 using an oracle.
         """
+        # even if upper and lower bounds are not symmetric, our current implementation is such, that we can assume they are symmetric.
+        std_deviation = (upper_bounds - lower_bounds) / 2
 
         selected_ids_batch = []
         for i in range(len(rewards)):

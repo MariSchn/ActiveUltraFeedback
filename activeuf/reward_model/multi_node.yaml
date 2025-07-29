@@ -5,4 +5,3 @@ distributed_type: MULTI_GPU
 rdzv_backend: static # or c10d
 # If the compute nodes are on the same network (cloud will more than likely be false)
 same_network: false
-main_process_port: 14080

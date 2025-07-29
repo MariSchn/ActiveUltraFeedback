@@ -1,7 +1,5 @@
 import numpy as np
 import torch
-import jax
-import jax.numpy as jnp
 
 from activeuf.acquisition_function.base import BaseAcquisitionFunction
 
@@ -10,6 +8,8 @@ class MaxMinLCB(BaseAcquisitionFunction):
     """
     Placeholder for MaxMinLCB acquisition function.
     This class is not implemented yet.
+
+    The functions defined in the class assume upper and lower bounds are symmetric.
     """
 
     def __init__(self, beta: float = 1.0, argmax_tol: float = 1e-4, decision_buffer: float = 0.0, use_candidate_set: bool = True, seed: int = 42):
@@ -20,13 +20,16 @@ class MaxMinLCB(BaseAcquisitionFunction):
         self.use_candidate_set = use_candidate_set
 
         if seed is None:
-            self.key = jax.random.PRNGKey(0)
+            self.generator = torch.Generator()
+            self.generator.manual_seed(0)
         else:
-            self.key = jax.random.PRNGKey(seed)
+            self.generator = torch.Generator()
+            self.generator.manual_seed(seed)
 
     def __call__(
         self, rewards: torch.Tensor,
-        std_deviation: torch.Tensor,
+        lower_bounds: torch.Tensor,
+        upper_bounds: torch.Tensor,
     ) -> list[list[int, int]]:
         """
         Args:
@@ -41,6 +44,7 @@ class MaxMinLCB(BaseAcquisitionFunction):
                 The first index is the one that should be chosen, the second
                 one is the one that should be rejected.
         """
+        std_deviation = (upper_bounds - lower_bounds) / 2
 
         selected_ids_batch = []
         for i in range(len(rewards)):
@@ -58,16 +62,16 @@ class MaxMinLCB(BaseAcquisitionFunction):
             uncertainty_matrix = std_i[:, None] + std_i[None, :]
 
             arm_i, arm_j = self._max_min_lcb(
-                jnp.array(reward_diff_matrix),
-                jnp.array(uncertainty_matrix),
+                torch.tensor(reward_diff_matrix, dtype=torch.float32),
+                torch.tensor(uncertainty_matrix, dtype=torch.float32),
             )
             selected_ids_batch.append((int(arm_i), int(arm_j)))
 
         return selected_ids_batch
 
     def _max_min_lcb(
-        self, posterior_mean: jnp.ndarray,
-            posterior_var: jnp.ndarray
+        self, posterior_mean: torch.Tensor,
+            posterior_var: torch.Tensor
     ) -> tuple[int, int]:
         """
         Computes the max-min LCB acquisition function.
@@ -89,47 +93,85 @@ class MaxMinLCB(BaseAcquisitionFunction):
         if self.use_candidate_set:
             ucb = posterior_mean + self.beta * \
                 posterior_var  # Shape: (n_arms, n_arms)
-            candidate_arms_mask = jnp.all(
-                jnp.logical_or(ucb > -self.decision_buffer,
-                               jnp.diag(jnp.full(n, True))),
-                axis=1,
+            candidate_arms_mask = torch.all(
+                torch.logical_or(ucb > -self.decision_buffer,
+                                 torch.diag(torch.full((n,), True, dtype=torch.bool))),
+                dim=1,
             )  # Shape: (n_arms,)
             # Make sure you do not consider the same arms at once, Shape: (n_arms, )
-            lcb = jnp.where(
+            lcb = torch.where(
                 candidate_arms_mask[:, None] * candidate_arms_mask[None, :],
                 lcb,
-                jnp.nan,
+                torch.tensor(float('nan')),
             )
-            lcb = jnp.where(jnp.eye(lcb.shape[0]), jnp.nan, lcb)
+            lcb = torch.where(
+                torch.eye(lcb.shape[0], dtype=torch.bool), torch.tensor(float('nan')), lcb)
         else:
-            candidate_arms_mask = jnp.ones(n, dtype=bool)
-            lcb = jnp.where(jnp.eye(n), 0, lcb)
+            candidate_arms_mask = torch.ones(n, dtype=torch.bool)
+            lcb = torch.where(torch.eye(n, dtype=torch.bool),
+                              torch.tensor(0.0), lcb)
 
-        min_j = jnp.nanmin(lcb, axis=1)  # Shape: (n_arms, )
-        # argmin_j = jnp.nanargmin(lcb, axis=1)  # Shape: (n_arms, )
-        argmin_j_set = jnp.where(
-            jnp.abs(lcb - min_j[:, None]) < self.argmax_tol,
-            jax.random.choice(self.key, n**2, shape=(n, n), replace=False),
-            -jnp.inf,
-        )
-        argmin_j = jnp.argmax(argmin_j_set, axis=1)
-        maxmin_lcb = jnp.nanmax(min_j)  # Shape: ()
+        # Manual implementation of nanmin for older PyTorch versions
+        def nanmin_1d(tensor):
+            """Compute min ignoring NaN values along the last dimension."""
+            mask = ~torch.isnan(tensor)
+            if not mask.any(dim=1).all():
+                # If any row has all NaNs, handle it
+                result = torch.full((tensor.shape[0],), float('inf'))
+                for i in range(tensor.shape[0]):
+                    if mask[i].any():
+                        result[i] = tensor[i][mask[i]].min()
+                return result
+            else:
+                return torch.stack([tensor[i][mask[i]].min() for i in range(tensor.shape[0])])
+
+        def nanmax_0d(tensor):
+            """Compute max ignoring NaN values for a 1D tensor."""
+            mask = ~torch.isnan(tensor)
+            if mask.any():
+                return tensor[mask].max()
+            else:
+                return torch.tensor(float('-inf'))
+
+        def nanargmax_0d(tensor):
+            """Compute argmax ignoring NaN values for a 1D tensor."""
+            mask = ~torch.isnan(tensor)
+            if mask.any():
+                valid_tensor = tensor.clone()
+                valid_tensor[~mask] = float('-inf')
+                return torch.argmax(valid_tensor)
+            else:
+                return torch.tensor(0)  # Default to 0 if all NaN
+
+        min_j = nanmin_1d(lcb)  # Shape: (n_arms, )
+
+        # Create argmin_j with random tie-breaking
+        lcb_diff = torch.abs(lcb - min_j[:, None])
+        tie_mask = lcb_diff < self.argmax_tol
+
+        # Create random values for tie-breaking
+        random_values = torch.randperm(
+            n**2, generator=self.generator, dtype=torch.float32).view(n, n)
+        argmin_j_set = torch.where(
+            tie_mask, random_values, torch.tensor(-float('inf')))
+        argmin_j = torch.argmax(argmin_j_set, dim=1)
+
+        maxmin_lcb = nanmax_0d(min_j)  # Shape: ()
 
         def choose_next_arms():
-            argmax_set = jnp.where(
-                jnp.abs(min_j - maxmin_lcb) < self.argmax_tol,
-                jax.random.choice(self.key, n, shape=(n,), replace=False),
-                jnp.nan,
-            )
-            next_arm_i = jnp.nanargmax(argmax_set)
+            # Create random values for tie-breaking in argmax
+            argmax_ties = torch.abs(min_j - maxmin_lcb) < self.argmax_tol
+            random_argmax = torch.randperm(
+                n, generator=self.generator, dtype=torch.float32)
+            argmax_set = torch.where(
+                argmax_ties, random_argmax, torch.tensor(float('nan')))
+            next_arm_i = nanargmax_0d(argmax_set)
             next_arm_j = argmin_j[next_arm_i]
             return next_arm_i, next_arm_j
 
-        return jax.lax.cond(
-            jnp.sum(candidate_arms_mask) == 1,
-            lambda: (
-                jnp.nanargmax(candidate_arms_mask),
-                jnp.nanargmax(candidate_arms_mask)
-            ),
-            choose_next_arms,
-        )
+        # Replace jax.lax.cond with regular conditional
+        if torch.sum(candidate_arms_mask) == 1:
+            single_candidate = torch.argmax(candidate_arms_mask.float())
+            return single_candidate, single_candidate
+        else:
+            return choose_next_arms()
