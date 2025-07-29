@@ -43,11 +43,21 @@ Example run command:
 accelerate launch \
     --config_file=$SCRATCH/ActiveUltraFeedback/activeuf/reward_model/multi_gpu.yaml \
     -m activeuf.active_learning_loop \
-    --completions_dataset_path ${SCRATCH}/datasets/ultrafeedback_annotated/ \
+    --completions_dataset_path ${SCRATCH}/datasets/combined_annotations_llama/ \
     --output_path=$SCRATCH/datasets/testssss/ \
     --logs_path=$SCRATCH/logs_final_test \
     --args_path=$SCRATCH/models_enn_test \
-    --acquisition_config=/iopsstor/scratch/cscs/dmelikidze/ActiveUltraFeedback/activeuf/acquisition_function/configs.yaml \
+    --acquisition_config=$SCRATCH/ActiveUltraFeedback/activeuf/acquisition_function/configs.yaml \
+    --report_to="wandb"
+    
+accelerate launch \
+    --config_file=$SCRATCH/ActiveUltraFeedback/activeuf/reward_model/multi_gpu.yaml \
+    -m activeuf.active_learning_loop \
+    --completions_dataset_path ${SCRATCH}/datasets/combined_annotations_qwen/ \
+    --output_path=$SCRATCH/datasets/testssss/ \
+    --logs_path=$SCRATCH/logs_final_test \
+    --args_path=$SCRATCH/models_enn_test \
+    --acquisition_config=$SCRATCH/ActiveUltraFeedback/activeuf/acquisition_function/configs.yaml \
     --report_to="wandb"
 
 """
@@ -109,7 +119,7 @@ class LoopArguments:
     acquisition_function_type: str = field(
         default="double_thompson_sampling",
         metadata={
-            "help": "Acquisition function type. Choices: ['double_thompson_sampling', 'random', 'infomax', 'maxminlcb']"}
+            "help": "Acquisition function type. Choices: ['double_thompson_sampling', 'random', 'infomax', 'maxminlcb', 'infogain']"}
     )
     acquisition_config: str = field(
         default="activeuf/acquisition_function/configs.yaml",
@@ -239,8 +249,10 @@ if __name__ == "__main__":
 
     # wandb init - only on main process
     if accelerator.is_main_process and args.report_to == "wandb":
-        ENNTrainer_log_run = f"activeuf_enn_{args.timestamp}"
-        acquisition_KPI_run = f"activeuf_KPI_{args.timestamp}"
+        ENNTrainer_log_run = f"activeuf_enn_{args.timestamp}" + \
+            ("llama" if "llama" in args.completions_dataset_path else "qwen")
+        acquisition_KPI_run = f"activeuf_KPI_{args.timestamp}" + \
+            ("llama" if "llama" in args.completions_dataset_path else "qwen")
 
     # GPU cleanup
     torch.cuda.empty_cache()
@@ -474,8 +486,6 @@ if __name__ == "__main__":
             b_acquired_idxs = torch.tensor(                                                      # (n_samples_in_batch, 2)
                 acquisition_function(*rewards.unbind(-1))
             )
-            if accelerator.is_main_process:
-                logger.info(f"Selected indices: {b_acquired_idxs.tolist()}")
 
             end = time.time()
             logger.info(f"- Acquisition function took {end - start:.2f}s")
