@@ -164,6 +164,9 @@ def load_model(
 
         while model is None and tps > 0:
             try:
+                out_file  = f"./logs/server/{model_name.split('/')[-1]}_server_tps_{tps}"
+                out_file += f"_{os.getenv('SLURM_JOB_ID', '')}.out" if os.getenv("SLURM_JOB_ID", None) else ".out"
+
                 command =  f"vllm serve {model_name}"
                 command +=  " --gpu-memory-utilization 0.9"
                 command +=  " --swap-space 1"
@@ -174,9 +177,11 @@ def load_model(
                 command += f" --download-dir {os.getenv('HF_CACHE', None)}" if os.getenv("HF_CACHE", None) else ""
                 command += f" --port 8000"  # Default port
                 command +=  " --tokenizer-mode=mistral" if "mistral" in model_name.lower() else ""
-                command += f" > logs/server/{model_name.split('/')[-1]}_server_tps_{tps}_{os.getenv('SLURM_JOB_ID', '')}.out 2>&1 &"
+                command += f" > {out_file} 2>&1"
+                command += " &"  # Run in background
 
                 os.system(command)
+                print(f"Logging server output to {out_file}")
 
                 server_ready = False
                 for attempt in range(max_ping_retries):
@@ -245,28 +250,34 @@ async def vllm_server_inference(url: str, all_messages: list[list[dict[str, str]
     client = openai.AsyncOpenAI(
         api_key="EMPTY",
         base_url=f"{url}/v1",
-        http_client=httpx.AsyncClient(verify=False)
+        http_client=httpx.AsyncClient(verify=False, timeout=httpx.Timeout(None))
     )
 
     models = await client.models.list()
     model = models.data[0].id
 
+    # Use a semaphore to limit the number of concurrent requests
+    concurrency_limit = 50 
+    semaphore = asyncio.Semaphore(concurrency_limit)
+
     # Define helper function that runs the API calls asynchronously
     async def send_request(conversation):
-        for _ in range(max_api_retry):
-            try:
-                return await client.chat.completions.create(
-                    model=model,
-                    messages=conversation,
-                    temperature=sampling_params.temperature,
-                    max_tokens=sampling_params.max_tokens,
-                    top_p=sampling_params.top_p,
-                    presence_penalty=sampling_params.presence_penalty,
-                    frequency_penalty=sampling_params.frequency_penalty,
-                )
-            except Exception as e:
-                print(e)
-                time.sleep(1)
+        async with semaphore:
+            for _ in range(max_api_retry):
+                try:
+                    return await client.chat.completions.create(
+                        model=model,
+                        messages=conversation,
+                        temperature=sampling_params.temperature,
+                        max_tokens=sampling_params.max_tokens,
+                        top_p=sampling_params.top_p,
+                        presence_penalty=sampling_params.presence_penalty,
+                        frequency_penalty=sampling_params.frequency_penalty,
+                    )
+                except Exception as e:
+                    print(f"An error occurred: {e}. Retrying...")
+                    await asyncio.sleep(1)
+            raise RuntimeError(f"Failed to get response after {max_api_retry} retries.")
 
     tasks = [send_request(chat) for chat in all_messages]
     responses = await async_tqdm.gather(*tasks)
