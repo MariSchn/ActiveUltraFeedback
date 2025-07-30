@@ -18,13 +18,13 @@ from accelerate.utils import gather_object, broadcast_object_list
 import wandb
 import logging
 
-from rewarduq.models.enn_reward_model import (
-    ENNRewardModel,
-    ENNRewardModelConfig,
-    ENNRewardModelTrainer,
-    ENNRewardModelTrainerConfig,
-    ENNRewardModelPipeline,
-    enn_compute_metrics,
+from rewarduq.models.reward_head_ensemble import (
+    RewardHeadEnsembleModel,
+    RewardHeadEnsembleModelConfig,
+    RewardHeadEnsembleTrainer,
+    RewardHeadEnsembleTrainerConfig,
+    RewardHeadEnsemblePipeline,
+    # enn_compute_metrics,
 )
 
 from activeuf.acquisition_function import *
@@ -62,6 +62,16 @@ accelerate launch \
     --report_to="wandb" \
     --acquisition_function_type="double_thompson_sampling"
 
+accelerate launch \
+    --config_file=$SCRATCH/ActiveUltraFeedback/activeuf/reward_model/multi_gpu.yaml \
+    -m activeuf.active_learning_loop \
+    --completions_dataset_path ${SCRATCH}/datasets/combined_annotations_llama/ \
+    --output_path=$SCRATCH/datasets/testssss/ \
+    --logs_path=$SCRATCH/logs_final_test \
+    --args_path=$SCRATCH/models_enn_test \
+    --acquisition_config=$SCRATCH/ActiveUltraFeedback/activeuf/acquisition_function/configs.yaml \
+    --acquisition_function_type="double_thompson_sampling"
+
 """
 
 # previous run stopped at 145 -th iteration.
@@ -72,6 +82,8 @@ os.environ["WANDB_SILENT"] = "true"
 
 # TODO:
 # Take some of the arguments in active_learning_loop_config.yaml file. (To pass in some arguments more efficiently)
+# TODO:
+# tune max_length parameter, check cases when prompt+completion is longer than max_length. see if their annotations are good or bad (if bad not too much problem)
 
 
 @dataclass
@@ -106,12 +118,16 @@ class LoopArguments:
         default=None,
         metadata={"help": "Path to save the args for this script."}
     )
-    batch_size: int = field(
+    outer_loop_batch_size: int = field(
         default=32,
         metadata={"help": "Batch Size for uncertainty sampling."}
     )
+    rm_training_batch_size: int = field(
+        default=32,
+        metadata={"help": "Batch Size for the ENN reward model training."}
+    )
     max_length: int = field(
-        default=1024,
+        default=1024,  # 4096,
         metadata={"help": "Max length for the tokenizer."}
     )
     seed: int = field(
@@ -136,6 +152,10 @@ class LoopArguments:
         default=None,
         metadata={
             "help": "Reporting tool to use. Choices: ['wandb', 'tensorboard', 'none']"}
+    )
+    active_learning_loop_config: str = field(
+        default="activeuf/active_learning_loop_config.yaml",
+        metadata={"help": "Active learning loop configuration file path."}
     )
 
 
@@ -186,6 +206,19 @@ def parse_postprocess(args: argparse.Namespace) -> argparse.Namespace:
             print(
                 "Warning: WandB reporting is not supported for random or ultrafeedback acquisition functions.")
         args.report_to = None
+        # to speed up unnecessary inference. (inference could be removed altogether, but for now I keep it because it requires )
+        args.max_length = 16
+
+    # TODO: finish this for more convenient parameter handling.
+    if args.active_learning_loop_config:
+        with open(args.active_learning_loop_config, "r") as f:
+            active_learning_loop_config = yaml.safe_load(f)
+        for key, value in active_learning_loop_config.items():
+            if hasattr(args, key):
+                current_val = getattr(args, key)
+                # Only set if current value is None and config value is not None
+                if current_val is None and value is not None:
+                    setattr(args, key, value)
 
     return args
 
@@ -337,7 +370,7 @@ if __name__ == "__main__":
 
     dataloader = DataLoader(
         dataset,
-        batch_size=args.batch_size,
+        batch_size=args.outer_loop_batch_size,
         collate_fn=custom_collate_fn,
         shuffle=True,
     )
@@ -352,17 +385,19 @@ if __name__ == "__main__":
 
     logger.info(f"Creating UQ model")
     # if args.acquisition_function_type in ["double_thompson_sampling", "infomax", "maxminlcb", "infogain"]:
-    uq_pipeline = ENNRewardModelPipeline(
-        ENNRewardModelConfig(
+    # TODO: Move this config to a separate file.
+    uq_pipeline = RewardHeadEnsemblePipeline(
+        RewardHeadEnsembleModelConfig(
             # "meta-llama/Llama-3.2-1B-Instruct"
-            base_model_name_or_path="unsloth/Qwen2.5-1.5B-Instruct"
+            # "allenai/OLMo-2-1124-7B-SFT"
+            base_model_name_or_path="meta-llama/Llama-3.2-1B-Instruct"
         ),
-        ENNRewardModelTrainerConfig(
+        RewardHeadEnsembleTrainerConfig(
             num_train_epochs=1,
             output_dir=f"trainer_output/{args.timestamp}",
             save_strategy="no",
             per_device_train_batch_size=math.ceil(
-                args.batch_size / accelerator.num_processes),  # total will be exactly args.batch_size if: (B mod GPU_COUNT ≡ 0)
+                args.rm_training_batch_size / accelerator.num_processes),  # total will be exactly args.batch_size if: (B mod GPU_COUNT ≡ 0)
             report_to=None,  # * TEMPORARY: Disable logging to wandb
             disable_tqdm=True,
             logging_strategy="steps",
@@ -372,6 +407,8 @@ if __name__ == "__main__":
             learning_rate=5e-6,
         )
     )
+    logger.info(
+        f"batch size per gpu is {uq_pipeline.trainer_config.per_device_train_batch_size}")
     # Initialize the trainer with an empty Dataset having the required keys. So we have access to the uq_pipeline.trainer before entering the loop.
     dummy_data = [{
         'prompt': '',
@@ -388,11 +425,11 @@ if __name__ == "__main__":
         'attention_mask_rejected': []
     } for _ in range(args.replay_buffer_size)]
 
-    uq_pipeline.trainer = ENNRewardModelTrainer(
+    uq_pipeline.trainer = RewardHeadEnsembleTrainer(
         args=uq_pipeline.trainer_config,
         model=uq_pipeline.model,
         processing_class=uq_pipeline.model.tokenizer,
-        compute_metrics=enn_compute_metrics,
+        # compute_metrics=enn_compute_metrics,
         train_dataset=Dataset.from_list(dummy_data)
     )
     if accelerator.is_main_process and args.report_to == "wandb":
@@ -402,7 +439,7 @@ if __name__ == "__main__":
 
     if args.previous_checkpoint_path:
         logger.info(f"Loading checkpoint from {args.previous_checkpoint_path}")
-        uq_pipeline.model = ENNRewardModel.from_pretrained(
+        uq_pipeline.model = RewardHeadEnsembleModel.from_pretrained(
             args.previous_checkpoint_path)
         # # TODO:
         # load trainer state
@@ -447,6 +484,7 @@ if __name__ == "__main__":
             messages_str = tokenizer.apply_chat_template(
                 messages, tokenize=False, add_generation_prompt=False,
             )
+            # TODO: WHAT IS THIS?! WHY MAX LENGTH SO SMALL! MOST OF THE COMPLETIONS WOULD BE CUT OFF! FURTHERMORE IF THE PROMPTS ARE BIG WE MAY ONLY GET TO SEE THE STUPID PROMPTS!
             inputs = tokenizer(
                 messages_str,
                 padding="max_length",
@@ -465,8 +503,13 @@ if __name__ == "__main__":
 
             # The input to the UQModel has to be partitioned, (upper limit is batch size of 256 + 80), if we input batch that is too big, we get CUDA_OUT_OF_MEMORY error.
             # has to be adjusted according to the ENN model's memory requirements, and GPU capacity
-            microbatch_size = 8 * 16 + 8 * 10
+            # partitioning makes sense, because we have 17 completions per prompt. so around 18 * Batch_size / GPU_COUNT number of samples to process.
+            # TODO: This parameter has to be tuned for each max_length parameter. Would be good to dynamically adjust, with a while true and try-except clause.
+            # I don't understand why 8 has the quickest finish time (matte rof 0.5 seconds but still), also why do I have to split the input to the inference model,
+            # why does it get memory issues if I don't split the data, makes no sense...
+            microbatch_size = 8  # 8 * 16 + 8 * 10
             total = inputs["input_ids"].shape[0]
+            print("HERE IS TOTAL: ", total)
 
             rewards_list = []
             for mb_start in range(0, total, microbatch_size):
@@ -485,6 +528,7 @@ if __name__ == "__main__":
 
             outputs = {"rewards": torch.cat(rewards_list, dim=0)}
 
+            end = time.time()
             logger.info(
                 f"- Uncertainty quantification took {end - start:.2f}s")
 
@@ -493,13 +537,6 @@ if __name__ == "__main__":
             # (n_samples_in_batch, n_completions_per_sample, 3)
             rewards = outputs["rewards"].detach().view(
                 n_samples_in_batch, -1, 3)
-            # Replace last two columns with standard deviation (upper_bound - lower_bound) / 2
-            # Shape: (n_samples_in_batch, n_completions_per_sample, 1)
-            # rewards_mean = rewards[:, :, 0:1]
-            # # Shape: (n_samples_in_batch, n_completions_per_sample, 1)
-            # rewards_std = (rewards[:, :, 2:3] - rewards[:, :, 1:2]) / 2
-            # # Shape: (n_samples_in_batch, n_completions_per_sample, 2)
-            # rewards = torch.cat([rewards_mean, rewards_std], dim=-1)
 
             b_acquired_idxs = torch.tensor(                                                      # (n_samples_in_batch, 2)
                 acquisition_function(*rewards.unbind(-1))
@@ -639,8 +676,10 @@ if __name__ == "__main__":
             for j, sample_kpis in enumerate(acquisition_kpis_sample):
                 sample_kpis_no_id = {
                     k: v for k, v in sample_kpis.items() if k != "prompt_id"}
-                wandb.log(sample_kpis_no_id, step=args.batch_size * i + j + 1)
-            wandb.log(acquisition_kpis_batch, step=(i+1) * args.batch_size)
+                wandb.log(sample_kpis_no_id,
+                          step=args.outer_loop_batch_size * i + j + 1)
+            wandb.log(acquisition_kpis_batch, step=(
+                i+1) * args.outer_loop_batch_size)
             wandb.finish()
 
         # Update replay buffer
@@ -658,6 +697,8 @@ if __name__ == "__main__":
                 config=vars(args),
                 allow_val_change=True,  # Allow changing the config values
             )
+        logger.info(
+            f"Starting Training of the UQ model on {len(replay_buffer)} samples")
 
         model.train()
 
