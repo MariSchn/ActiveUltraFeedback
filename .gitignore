@@ -173,3 +173,5 @@ wandb/
 olmes/
 trainer_output/
 multinodeloop/
+playground.sh
+loop/

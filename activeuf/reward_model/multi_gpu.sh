@@ -3,7 +3,7 @@
 # Define variables for paths
 CONFIG_FILE="$SCRATCH/ActiveUltraFeedback/activeuf/reward_model/multi_gpu.yaml"
 TRAINER_SCRIPT="$SCRATCH/ActiveUltraFeedback/activeuf/reward_model/reward_trainer.py"
-OUTPUT_DIR="$SCRATCH/ActiveUltraFeedback/activeuf/reward_model/trainedModels/firstTrainedModel"
+OUTPUT_DIR="$SCRATCH/reward_models/firstTrainedModel"
 REWARD_CONFIG="$SCRATCH/ActiveUltraFeedback/activeuf/reward_model/reward_config.yaml"
 
 # Run the training command

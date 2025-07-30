@@ -6,9 +6,14 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer, set_
 from datasets import load_dataset
 from trl import RewardTrainer, RewardConfig
 from peft import LoraConfig, get_peft_model
+import pprint
 
 
 def train_reward_model(config, args):
+    print("==== Training Arguments ====")
+    print(args)
+    print("==== YAML Configuration ====")
+    pprint.pprint(config)
     output_dir = args.output_dir
     general_config = config.get("general", {})
     training_config = config.get("training", {})
@@ -16,11 +21,14 @@ def train_reward_model(config, args):
     lr_scheduling_config = config.get("lr_scheduling", {})
     lora_config = config.get("lora", {})
 
-    base_model = general_config.get("base_model", "meta-llama/Llama-3.2-1B-Instruct")
-    dataset_name = general_config.get("dataset_name", "trl-lib/ultrafeedback_binarized")
+    base_model = general_config.get(
+        "base_model", "meta-llama/Llama-3.2-1B-Instruct")
+    dataset_name = general_config.get(
+        "dataset_name", "trl-lib/ultrafeedback_binarized")
     seed = general_config.get("seed", 42)
     set_seed(seed)
-    torch_dtype = torch.bfloat16 if general_config.get("torch_dtype", "bfloat16") == "bfloat16" else torch.float32
+    torch_dtype = torch.bfloat16 if general_config.get(
+        "torch_dtype", "bfloat16") == "bfloat16" else torch.float32
 
     # Load dataset
     dataset = load_dataset(dataset_name)
@@ -74,7 +82,8 @@ def train_reward_model(config, args):
         warmup_steps=lr_scheduling_config.get("num_warmup_steps", 10),
         logging_steps=training_config.get("logging_steps", 10),
         bf16=training_config.get("bf16", True),
-        remove_unused_columns=training_config.get("remove_unused_columns", False),
+        remove_unused_columns=training_config.get(
+            "remove_unused_columns", False),
         report_to=training_config.get("report_to", None),
         save_strategy=training_config.get("save_strategy", "no"),
         save_steps=training_config.get("save_steps", 500),
@@ -82,16 +91,18 @@ def train_reward_model(config, args):
         lr_scheduler_type=training_config.get("lr_scheduler_type", "linear"),
     )
 
+    print("==== Trainer Configuration ====")
+    pprint.pprint(trainer_config)
+
     trainer = RewardTrainer(
         model=model,
         processing_class=tokenizer,
         args=trainer_config,
         train_dataset=dataset["train"],
-        eval_dataset=dataset["test"], # Currenty not used
+        eval_dataset=dataset["test"],  # Currenty not used
     )
 
     trainer.train()
-
 
     # Save final model
     if trainer.is_world_process_zero():
@@ -101,11 +112,14 @@ def train_reward_model(config, args):
         print(f"Model and tokenizer saved to {output_dir}")
 
 
-#These utility functions could be moved to a separate file for better organization
+# These utility functions could be moved to a separate file for better organization
 def parse_arguments():
-    parser = argparse.ArgumentParser(description="Reward model training using RewardTrainer.")
-    parser.add_argument("--reward_config", required=True, help="Path to the YAML reward training config.")
-    parser.add_argument("--output_dir", required=True, help="Directory to save trained model.")
+    parser = argparse.ArgumentParser(
+        description="Reward model training using RewardTrainer.")
+    parser.add_argument("--reward_config", required=True,
+                        help="Path to the YAML reward training config.")
+    parser.add_argument("--output_dir", required=True,
+                        help="Directory to save trained model.")
     return parser.parse_args()
 
 
@@ -114,7 +128,8 @@ def load_config(config_path):
         with open(config_path, "r") as f:
             return yaml.safe_load(f)
     except Exception as e:
-        print(f"Failed to load config: {e}\nUsing default configuration for training.\n")
+        print(
+            f"Failed to load config: {e}\nUsing default configuration for training.\n")
         return {}
 
 

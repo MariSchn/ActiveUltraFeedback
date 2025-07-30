@@ -1,0 +1,15 @@
+oracle_name: ultrafeedback
+completions_dataset_path: null
+previous_output_path: null
+previous_checkpoint_path: null
+output_path: null
+logs_path: null
+args_path: null
+outer_loop_batch_size: 32
+rm_training_batch_size: 32
+max_length: 1024
+seed: 42
+acquisition_function_type: double_thompson_sampling
+acquisition_config: activeuf/acquisition_function/configs.yaml
+replay_buffer_size: 3200
+report_to: null
