@@ -476,7 +476,7 @@ if __name__ == "__main__":
                     "attention_mask": inputs["attention_mask"][mb_start:mb_end]
                 }
                 with torch.no_grad():
-                    mb_outputs = model(**mb_inputs)
+                    mb_outputs = model(**mb_inputs, output_hidden_states=True)
                 # Maybe you can use .extend()?
                 rewards_list.append(mb_outputs["rewards"].cpu())
 
