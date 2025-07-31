@@ -1,10 +1,10 @@
 #!/bin/bash
 
-#SBATCH --job-name=multinodeloop
+#SBATCH --job-name=multinode_dts
 #SBATCH -D .
 #SBATCH -A a-infra01-1
-#SBATCH --output=multinodeloop/O-%x.%j
-#SBATCH --error=multinodeloop/E-%x.%j
+#SBATCH --output=loop/llama/dts/O-%x.%j
+#SBATCH --error=loop/llama/dts/E-%x.%j
 #SBATCH --nodes=8                   # number of nodes
 #SBATCH --ntasks-per-node=1         # number of MP tasks
 #SBATCH --gres=gpu:4                # number of GPUs per node
@@ -39,9 +39,9 @@ export ACCELERATE_DIR="${ACCELERATE_DIR:-/accelerate}"
 export PYTHON_FILE="activeuf.active_learning_loop"
 export SCRIPT_ARGS=" \
    --completions_dataset_path ${SCRATCH}/datasets/combined_annotations_llama/ \
-   --output_path=$SCRATCH/datasets/active_preference_dataset/ \
-   --logs_path=$SCRATCH/logs_final/ \
-   --args_path=$SCRATCH/models_enn \
+   --output_path=$SCRATCH/datasets/preference_dts_llama/ \
+   --logs_path=$SCRATCH/logs_dts_llama/ \
+   --args_path=$SCRATCH/models_dts_llama \
    --acquisition_config=$SCRATCH/ActiveUltraFeedback/activeuf/acquisition_function/configs.yaml \
     --report_to=wandb \
     --acquisition_function_type=double_thompson_sampling \
@@ -59,6 +59,8 @@ START=$(date +%s)
 cd $SCRATCH/ActiveUltraFeedback/
 export PYTHONPATH="$SCRATCH/ActiveUltraFeedback:$PYTHONPATH"
 # pip install --user git+https://github.com/Florian-toll/rewarduq.git
+pip uninstall rewarduq -y
+pip install --user git+https://github.com/Florian-toll/rewarduq.git
 
 srun --chdir=$SCRATCH/ActiveUltraFeedback $CMD
 

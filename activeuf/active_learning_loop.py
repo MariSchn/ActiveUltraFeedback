@@ -61,6 +61,16 @@ accelerate launch \
     --acquisition_config=$SCRATCH/ActiveUltraFeedback/activeuf/acquisition_function/configs.yaml \
     --report_to="wandb" \
     --acquisition_function_type="double_thompson_sampling"
+    
+accelerate launch \
+    --config_file=$SCRATCH/ActiveUltraFeedback/activeuf/reward_model/multi_gpu.yaml \
+    -m activeuf.active_learning_loop \
+    --completions_dataset_path ${SCRATCH}/datasets/combined_annotations_llama/ \
+    --output_path=$SCRATCH/datasets/acquisition_function_dts/ \
+    --logs_path=$SCRATCH/logs_dts_llama \
+    --args_path=$SCRATCH/models_enn_dts_llama \
+    --acquisition_config=$SCRATCH/ActiveUltraFeedback/activeuf/acquisition_function/configs.yaml \
+    --acquisition_function_type="double_thompson_sampling"
 
 """
 
@@ -107,15 +117,15 @@ class LoopArguments:
         metadata={"help": "Path to save the args for this script."}
     )
     outer_loop_batch_size: int = field(
-        default=32,
+        default=128,
         metadata={"help": "Batch Size for uncertainty sampling."}
     )
     rm_training_batch_size: int = field(
-        default=32,
+        default=32, #Must be equal to the total number of GPUs, otherwise OOM ERRORS! Change it to 4 when running on a single node.
         metadata={"help": "Batch Size for the ENN reward model training."}
     )
     max_length: int = field(
-        default=1024,
+        default=1024 * 4,
         metadata={"help": "Max length for the tokenizer."}
     )
     seed: int = field(
@@ -164,7 +174,8 @@ class WandbStepLoggerCallback(TrainerCallback):
 
 
 def parse_postprocess(args: argparse.Namespace) -> argparse.Namespace:
-    args.timestamp = get_timestamp()
+    # Acquisition function type + annotator model + timestamp
+    args.timestamp = args.acquisition_function_type + ("llama" if "llama" in args.completions_dataset_path else "qwen") + get_timestamp()
 
     if not args.output_path:
         args.output_path = f"{args.completions_dataset_path.rstrip('/')}-active-{args.timestamp}"
@@ -190,6 +201,7 @@ def parse_postprocess(args: argparse.Namespace) -> argparse.Namespace:
             print(
                 "Warning: WandB reporting is not supported for random or ultrafeedback acquisition functions.")
         args.report_to = None
+        args.max_length = 2
 
     return args
 
@@ -280,6 +292,8 @@ def acquisition_function_handler(acquisition_function_type):
         )
     elif acquisition_function_type == "infogain":
         acquisition_function = InfoGain()
+    elif acquisition_function_type == "ultrafeedback":
+        acquisition_function = UltraFeedback()
     else:
         raise ValueError(
             f"Unknown acquisition function type: {acquisition_function_type}")
@@ -295,12 +309,8 @@ if __name__ == "__main__":
 
     # wandb init - only on main process
     if accelerator.is_main_process and args.report_to == "wandb":
-        ENNTrainer_log_run = f"activeuf_enn_{args.timestamp}" + \
-            ("llama" if "llama" in args.completions_dataset_path else "qwen") + \
-            f"_{args.acquisition_function_type}"
-        acquisition_KPI_run = f"activeuf_KPI_{args.timestamp}" + \
-            ("llama" if "llama" in args.completions_dataset_path else "qwen") + \
-            f"_{args.acquisition_function_type}"
+        ENNTrainer_log_run = f"activeuf_enn_{args.timestamp}"
+        acquisition_KPI_run = f"activeuf_KPI_{args.timestamp}"
 
     # GPU cleanup
     torch.cuda.empty_cache()
@@ -374,6 +384,7 @@ if __name__ == "__main__":
             run_name=f"activeuf_{args.timestamp}",
             lr_scheduler_type="constant",
             learning_rate=5e-6,
+            max_steps=25,
         )
     )
     logger.info(
@@ -422,7 +433,8 @@ if __name__ == "__main__":
     # model, tokenizer = accelerator.prepare(model, tokenizer)
 
     total_processes = accelerator.num_processes
-
+    logger.info(f"Total processes: {total_processes}")
+    
     for i, full_batch in enumerate(dataloader):
         batch_loader = DataLoader(Dataset.from_dict(full_batch),
                                   batch_size=math.ceil(len(full_batch["prompt_id"])/total_processes))
@@ -502,8 +514,29 @@ if __name__ == "__main__":
             # Select the completions that should be used for the binarized sample
             start = time.time()
             # (n_samples_in_batch, n_completions_per_sample, 3)
-            rewards = outputs["rewards"].detach().view(
-                n_samples_in_batch, -1, 3)
+            if args.acquisition_function_type == "ultrafeedback":
+                # Extract overall_score for each completion in the batch
+                # batch["completions"] is a list of dicts, each with a "overall_score" key (shape: [n_completions_per_sample][n_samples_in_batch])
+                # We want rewards[i, j, 0] = batch["completions"][j]["overall_score"][i]
+                n_samples_in_batch = len(batch["prompt_id"])
+                n_completions_per_sample = len(batch["completions"])
+                rewards = torch.zeros((n_samples_in_batch, n_completions_per_sample, 3), dtype=torch.float32)
+                for j in range(n_completions_per_sample):
+                    # batch["completions"][j]["overall_score"] is a list of length n_samples_in_batch
+                    rewards[:, j, 0] = torch.tensor(batch["completions"][j]["overall_score"], dtype=torch.float32)
+                # print("Shape of the rewards: ", rewards.shape)
+                # print("First row of rewards:", rewards[0])
+                # # print("Full rewards tensor:", rewards)
+                # print("batch['completions'] overall_scores:")
+                # print("len(batch['completions']):", len(batch["completions"]))
+                # print("n_samples_in_batch:", n_samples_in_batch)
+                # for j, completion in enumerate(batch["completions"][:2]):
+                #     print(f"Completion {j} overall_score:", completion["overall_score"])
+                    
+                # The last two columns are already zero
+            else:
+                rewards = outputs["rewards"].detach().view(
+                    n_samples_in_batch, -1, 3)
             # Replace last two columns with standard deviation (upper_bound - lower_bound) / 2
             # Shape: (n_samples_in_batch, n_completions_per_sample, 1)
             # rewards_mean = rewards[:, :, 0:1]
@@ -659,7 +692,7 @@ if __name__ == "__main__":
         # Update replay buffer
         replay_buffer.extend(annotated_batch)
 
-        if args.acquisition_function_type == "random":
+        if args.acquisition_function_type in ["random", "ultrafeedback"]:
             continue
         del batch_loader
         torch.cuda.empty_cache()
