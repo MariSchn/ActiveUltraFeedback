@@ -101,6 +101,7 @@ class RandomOracle(BaseOracle):
             out.append({
                 "prompt": x["prompt"],
                 "prompt_id": x["prompt_id"],
+                "row_id": x["row_id"],
                 "chosen": x[f"response_text_{chosen_int}"],
                 "chosen_model": x[f"model_{chosen_int}"],
                 "chosen_score": x[f"overall_score_{chosen_int}"],
@@ -184,6 +185,7 @@ class UltraFeedbackOracle(BaseOracle):
             out.append({
                 "prompt": x["prompt"],
                 "prompt_id": x["prompt_id"],
+                "row_id": x["row_id"],
                 "chosen": x[f"response_text_{chosen_int}"],
                 "chosen_model": x[f"model_{chosen_int}"],
                 "chosen_score": x[f"score_{chosen_int}"],
