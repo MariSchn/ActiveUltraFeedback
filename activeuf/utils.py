@@ -5,6 +5,8 @@ import logging
 import wandb
 import os
 import asyncio
+import requests
+import httpx
 import time
 from typing import Union, Any, Tuple, List
 from tqdm import tqdm
