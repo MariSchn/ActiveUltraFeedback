@@ -32,7 +32,6 @@ from activeuf.oracle.oracles import init_oracle
 from activeuf.utils import get_logger, setup, set_seed, get_timestamp
 from activeuf.configs import *
 from activeuf.schemas import *
-from activeuf.profiler import TorchTimeProfiler, TorchMemoryProfiler
 
 """
 This script takes a dataset with completions as input and generate a binary preference dataset, determining the best completion (chosen/rejected) pair,

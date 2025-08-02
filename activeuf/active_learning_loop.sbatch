@@ -3,8 +3,8 @@
 #SBATCH --job-name=multinode_dts
 #SBATCH -D .
 #SBATCH -A a-infra01-1
-#SBATCH --output=loop/llama/dts/O-%x.%j
-#SBATCH --error=loop/llama/dts/E-%x.%j
+#SBATCH --output=/iopsstor/scratch/cscs/dmelikidze/ActiveUltraFeedback/loop/llama/dts/O-%x.%j
+#SBATCH --error=/iopsstor/scratch/cscs/dmelikidze/ActiveUltraFeedback/loop/llama/dts/E-%x.%j
 #SBATCH --nodes=8                   # number of nodes
 #SBATCH --ntasks-per-node=1         # number of MP tasks
 #SBATCH --gres=gpu:4                # number of GPUs per node
@@ -59,8 +59,6 @@ START=$(date +%s)
 cd $SCRATCH/ActiveUltraFeedback/
 export PYTHONPATH="$SCRATCH/ActiveUltraFeedback:$PYTHONPATH"
 # pip install --user git+https://github.com/Florian-toll/rewarduq.git
-pip uninstall rewarduq -y
-pip install --user git+https://github.com/Florian-toll/rewarduq.git
 
 srun --chdir=$SCRATCH/ActiveUltraFeedback $CMD
 
