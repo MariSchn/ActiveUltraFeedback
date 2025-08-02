@@ -34,6 +34,7 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument("--max_num_gpus", type=int, default=MAX_NUM_GPUS, help="The maximum number of GPUs to use")
     parser.add_argument("--num_nodes", type=int, default=os.getenv("SLURM_NNODES", 1), help="The maximum number of nodes to use for distributed training (if applicable)")
+    parser.add_argument("--data_parallel_size", type=int, default=DATA_PARALLEL_SIZE, help="The size of the data parallel group (only applicable for vllm_server model class)")
     parser.add_argument("--max_tokens", type=int, default=COMPLETION_MAX_TOKENS, help="The maximum number of tokens to generate for each completion")
     parser.add_argument("--temperature", type=int, default=COMPLETION_TEMPERATURE, help="Temperature for generation")
     parser.add_argument("--top_p", type=int, default=COMPLETION_TOP_P, help="top_p value for generation")
@@ -88,7 +89,7 @@ if __name__ == "__main__":
 
     # Load generation model and tokenizer, and prepare sampling params
     logger.info(f"Using {args.model_name} for completion generation")
-    model, tokenizer = load_model(args.model_name, args.model_class, args.max_num_gpus, args.num_nodes)
+    model, tokenizer = load_model(args.model_name, args.model_class, args.max_num_gpus, args.num_nodes, args.data_parallel_size)
     sampling_params = vllm.SamplingParams(
         max_tokens = args.max_tokens,
         temperature = args.temperature,

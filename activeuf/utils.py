@@ -77,6 +77,7 @@ def load_model(
         model_class: str = DEFAULT_MODEL_CLASS,
         max_num_gpus: int | None = None, 
         num_nodes: int = 1,
+        data_parallel_size: int = 1,
         ping_delay: int = PING_DELAY,
         max_ping_retries: int = MAX_PING_RETRIES,
         model_kwargs: dict = {},
@@ -96,6 +97,7 @@ def load_model(
         model_class (Optional[str]): The class of the model to load. This determines the type of the output. Must be one of ["transformers", "pipeline", "vllm", "vllm_server"].
         max_num_gpus (Optional[int]): The maximum number of GPUs to use for loading the model (only used for vLLM models).
         num_nodes (int): The number of nodes to use for loading the model. This is only used for vLLM models.
+        data_parallel_size (Optional[int]): The size of the data parallel group (only applicable for vllm_server model class).
         ping_delay (int): Delay between pings to the vLLM server to check if it is already running (only used for model_class == "vllm_server").
         max_ping_retries (int): Number of retries to check if the vLLM server is running (only used for model_class == "vllm_server").
         model_kwargs (Optional[dict]): Additional keyword arguments to pass to the model when loading it. 
@@ -175,6 +177,7 @@ def load_model(
                 command +=  " --swap-space 1"
                 command += f" --tensor-parallel-size {tps}"
                 command += f" --pipeline-parallel-size {num_nodes}"
+                command += f" --data-parallel-size {data_parallel_size}"
                 command +=  " --trust-remote-code"
                 command +=  " --dtype auto"
                 command += f" --download-dir {os.getenv('HF_CACHE', None)}" if os.getenv("HF_CACHE", None) else ""
@@ -184,6 +187,7 @@ def load_model(
                 command += " &"  # Run in background
 
                 os.system(command)
+                print(f"Starting vLLM server with command: {command}")
                 print(f"Logging server output to {out_file}")
 
                 server_ready = False
@@ -259,16 +263,18 @@ async def vllm_server_inference(url: str, all_messages: list[list[dict[str, str]
     models = await client.models.list()
     model = models.data[0].id
 
-    # Use a semaphore to limit the number of concurrent requests
-    concurrency_limit = 50 
+    concurrency_limit = int(os.getenv("VLLM_SERVER_CONCURRENCY_LIMIT", 50))
     semaphore = asyncio.Semaphore(concurrency_limit)
+
+    print(f"Using vLLM server at {url} with model {model}. Concurrency limit: {concurrency_limit}")
 
     # Define helper function that runs the API calls asynchronously
     async def send_request(conversation):
         async with semaphore:
             for _ in range(max_api_retry):
                 try:
-                    return await client.chat.completions.create(
+                    start = time.time()
+                    response = await client.chat.completions.create(
                         model=model,
                         messages=conversation,
                         temperature=sampling_params.temperature,
@@ -277,6 +283,9 @@ async def vllm_server_inference(url: str, all_messages: list[list[dict[str, str]
                         presence_penalty=sampling_params.presence_penalty,
                         frequency_penalty=sampling_params.frequency_penalty,
                     )
+                    end = time.time()
+                    print(f"Completion successfuly generated in {end - start:.2f} seconds.")
+                    return response
                 except Exception as e:
                     print(f"An error occurred: {e}. Retrying...")
                     await asyncio.sleep(1)
