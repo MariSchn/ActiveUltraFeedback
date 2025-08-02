@@ -413,7 +413,7 @@ if __name__ == "__main__":
             run_name=f"activeuf_{args.timestamp}",
             lr_scheduler_type=enn_config.get("lr_scheduler_type", "constant"),
             learning_rate=float(enn_config.get("learning_rate", 5e-6)),
-            max_length=args.max_length,
+            max_length=None,  # args.max_length,
             bf16=True,
             # precompute_base_model_features=True,
             # precomputed_base_model_features_path="temp/",
@@ -515,7 +515,7 @@ if __name__ == "__main__":
                 )
                 inputs = tokenizer(
                     messages_str,
-                    padding="max_length",
+                    padding="longest",
                     max_length=args.max_length,
                     truncation=True,
                     return_tensors="pt",
@@ -589,7 +589,7 @@ if __name__ == "__main__":
 
             # (n_samples_in_batch, 2, max_length)
             temp = b_acquired_idxs.unsqueeze(-1).expand(-1, -
-                                                        1, args.max_length)
+                                                        1, inputs["input_ids"].shape[-1])
 
             input_ids = inputs["input_ids"].cpu()
             b_acquired_input_ids = torch.take_along_dim(                                         # (n_samples_in_batch, 2, max_length)
