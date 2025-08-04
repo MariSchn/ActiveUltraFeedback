@@ -7,3 +7,6 @@
 [submodule "resources/reward-bench"]
 	path = resources/reward-bench
 	url = https://github.com/allenai/reward-bench.git
+[submodule "resources/olmes"]
+	path = resources/olmes
+	url = https://github.com/allenai/olmes.git
