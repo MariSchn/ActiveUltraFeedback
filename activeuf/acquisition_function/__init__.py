@@ -11,5 +11,7 @@ __all__ = [
     "RandomAcquisitionFunction",
     "MaxMinLCB",
     "InfoGain",
+    "InformationDirectedSampling",
+    "RelativeUpperConfidenceBound",
     "UltraFeedback"
 ]
