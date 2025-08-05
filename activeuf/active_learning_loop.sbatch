@@ -9,8 +9,8 @@ sbatch <<EOF
 #SBATCH --job-name=multinode_${acquisition_function}_${annotator_model}_loop
 #SBATCH -D .
 #SBATCH -A a-infra01-1
-#SBATCH --output=/iopsstor/scratch/cscs/dmelikidze/ActiveUltraFeedback/loop/${annotator_model}/${acquisition_function}/O-%x.%j
-#SBATCH --error=/iopsstor/scratch/cscs/dmelikidze/ActiveUltraFeedback/loop/${annotator_model}/${acquisition_function}/E-%x.%j
+#SBATCH --output=${SCRATCH}/loop/${annotator_model}/${acquisition_function}/O-%x.%j
+#SBATCH --error==${SCRATCH}/loop/${annotator_model}/${acquisition_function}/E-%x.%j
 #SBATCH --nodes=8                   # number of nodes
 #SBATCH --ntasks-per-node=1         # number of MP tasks
 #SBATCH --gres=gpu:4                # number of GPUs per node
