@@ -1,7 +1,7 @@
 #!/bin/bash
 
-acquisition_function="double_thompson_sampling"
-annotator_model="qwen"
+acquisition_function="dts"
+annotator_model="llama"
 
 sbatch <<EOF
 #!/bin/bash
@@ -9,8 +9,8 @@ sbatch <<EOF
 #SBATCH --job-name=multinode_${acquisition_function}_${annotator_model}_loop
 #SBATCH -D .
 #SBATCH -A a-infra01-1
-#SBATCH --output=${SCRATCH}/loop/${annotator_model}/${acquisition_function}/O-%x.%j
-#SBATCH --error==${SCRATCH}/loop/${annotator_model}/${acquisition_function}/E-%x.%j
+#SBATCH --output=${SCRATCH}/ActiveUltraFeedback/loop/${annotator_model}/${acquisition_function}/O-%x.%j
+#SBATCH --error=${SCRATCH}/ActiveUltraFeedback/loop/${annotator_model}/${acquisition_function}/E-%x.%j
 #SBATCH --nodes=8                   # number of nodes
 #SBATCH --ntasks-per-node=1         # number of MP tasks
 #SBATCH --gres=gpu:4                # number of GPUs per node
@@ -48,7 +48,6 @@ export SCRIPT_ARGS=" \
    --output_path=\$SCRATCH/datasets/preference_${acquisition_function}_${annotator_model}/ \
    --logs_path=\$SCRATCH/logs_${acquisition_function}_${annotator_model}/ \
    --args_path=\$SCRATCH/models_${acquisition_function}_${annotator_model} \
-   --acquisition_config=\$SCRATCH/ActiveUltraFeedback/activeuf/acquisition_function/configs.yaml \
     --report_to=wandb \
     --acquisition_function_type=${acquisition_function} \
    "

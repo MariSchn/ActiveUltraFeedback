@@ -805,7 +805,7 @@ if __name__ == "__main__":
             )
 
         updated_lambda_regularizer = initial_lambda_regularizer * \
-            args.outer_loop_batch_size / len(output_dataset)
+            args.outer_loop_batch_size / ((i + 1) * args.outer_loop_batch_size)
         uq_pipeline.trainer.args.regularization_towards_initial_weights = updated_lambda_regularizer
 
         logger.info(
