@@ -113,6 +113,10 @@ class LoopArguments:
         default=None,
         metadata={"help": "Max length for the tokenizer."}
     )
+    acquisition_config: Optional[str] = field(
+        default=None,
+        metadata={"help": "Path to the acquisition config YAML file."}
+    )
     seed: int = field(
         default=None,
         metadata={"help": "Random seed for reproducibility."}
