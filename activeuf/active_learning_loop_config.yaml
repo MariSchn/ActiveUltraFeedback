@@ -1,21 +1,22 @@
-# loop:
-#   oracle_name: ultrafeedback
-#   completions_dataset_path: null
-#   previous_output_path: null
-#   previous_checkpoint_path: null
-#   output_path: null
-#   logs_path: null
-#   args_path: null
-#   outer_loop_batch_size: 128
-#   rm_training_batch_size: 32
-#   max_length: 4096
-#   seed: 42
-#   replay_buffer_size: 3200
-#   report_to: null
+loop:
+  oracle_name: ultrafeedback
+  completions_dataset_path: /iopsstor/scratch/cscs/dmelikidze/datasets/combined_annotations_llama
+  previous_output_path: null
+  previous_checkpoint_path: null
+  output_path: null
+  logs_path: null
+  args_path: null
+  outer_loop_batch_size: 128
+  rm_training_batch_size: 32
+  max_length: 4096
+  seed: 42
+  replay_buffer_size: 3200
+  report_to: wandb
+  wandb_project: null
 
-# acquisition:
-#   acquisition_function_type: double_thompson_sampling
-#   acquisition_config: activeuf/acquisition_function/configs.yaml
+acquisition:
+  acquisition_function_type: dts
+  acquisition_config: activeuf/acquisition_function/configs.yaml
 
 enn:
   # "meta-llama/Llama-3.2-1B-Instruct", "unsloth/Qwen2.5-1.5B-Instruct", "allenai/OLMo-2-1124-7B-SFT"
@@ -30,3 +31,5 @@ enn:
   logging_steps: 1
   lr_scheduler_type: "constant"
   learning_rate: 5e-6
+  regularization_towards_initial_weights: 100
+  max_training_steps: 10

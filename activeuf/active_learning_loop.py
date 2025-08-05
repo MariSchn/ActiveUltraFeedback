@@ -17,6 +17,7 @@ from accelerate import Accelerator
 from accelerate.utils import gather_object, broadcast_object_list
 import wandb
 import logging
+import random
 
 from rewarduq.models.reward_head_ensemble import (
     RewardHeadEnsembleModel as ENNRewardModel,
@@ -45,22 +46,16 @@ accelerate launch \
     -m activeuf.active_learning_loop \
     --completions_dataset_path ${SCRATCH}/datasets/combined_annotations_llama/ \
     --output_path=$SCRATCH/datasets/testssss/ \
-    --logs_path=$SCRATCH/logs_final_test \
-    --args_path=$SCRATCH/models_enn_test \
-    --acquisition_config=$SCRATCH/ActiveUltraFeedback/activeuf/acquisition_function/configs.yaml \
     --report_to="wandb" \
-    --acquisition_function_type="double_thompson_sampling"
+    --acquisition_function_type="dts"
 
 accelerate launch \
     --config_file=$SCRATCH/ActiveUltraFeedback/activeuf/reward_model/multi_gpu.yaml \
     -m activeuf.active_learning_loop \
     --completions_dataset_path ${SCRATCH}/datasets/combined_annotations_qwen/ \
     --output_path=$SCRATCH/datasets/testssss/ \
-    --logs_path=$SCRATCH/logs_final_test \
-    --args_path=$SCRATCH/models_enn_test \
-    --acquisition_config=$SCRATCH/ActiveUltraFeedback/activeuf/acquisition_function/configs.yaml \
     --report_to="wandb" \
-    --acquisition_function_type="double_thompson_sampling"
+    --acquisition_function_type="dts"
 """
 
 # previous run stopped at 145 -th iteration.
@@ -106,33 +101,29 @@ class LoopArguments:
         metadata={"help": "Path to save the args for this script."}
     )
     outer_loop_batch_size: int = field(
-        default=128,
+        default=None,
         metadata={"help": "Batch Size for uncertainty sampling."}
     )
     rm_training_batch_size: int = field(
         # Must be equal to the total number of GPUs, otherwise OOM ERRORS! Change it to 4 when running on a single node.
-        default=32,
+        default=None,
         metadata={"help": "Batch Size for the ENN reward model training."}
     )
     max_length: int = field(
-        default=1024 * 4,
+        default=None,
         metadata={"help": "Max length for the tokenizer."}
     )
     seed: int = field(
-        default=42,
+        default=None,
         metadata={"help": "Random seed for reproducibility."}
     )
     acquisition_function_type: str = field(
-        default="double_thompson_sampling",
+        default=None,
         metadata={
-            "help": "Acquisition function type. Choices: ['double_thompson_sampling', 'random', 'infomax', 'maxminlcb', 'infogain']"}
-    )
-    acquisition_config: str = field(
-        default="activeuf/acquisition_function/configs.yaml",
-        metadata={"help": "Acquisition function configuration file path."}
+            "help": "Acquisition function type. Choices: ['dts', 'random', 'infomax', 'maxminlcb', 'infogain']"}
     )
     replay_buffer_size: int = field(
-        default=3200,
+        default=None,
         metadata={
             "help": "Size of the replay buffer for the ENN reward model training."}
     )
@@ -148,6 +139,10 @@ class LoopArguments:
     debug: bool = field(
         default=False,
         metadata={"help": "Enable debugging mode."}
+    )
+    wandb_project: Optional[str] = field(
+        default=None,
+        metadata={"help": "WandB project name for logging."}
     )
 
 
@@ -172,13 +167,31 @@ class WandbStepLoggerCallback(TrainerCallback):
 
 
 def parse_postprocess(args: argparse.Namespace) -> argparse.Namespace:
+    # Load the main config YAML
+    with open(args.loop_config, "r") as f:
+        config = yaml.safe_load(f)
+
+    loop = config.get("loop", {})
+    acquisition = config.get("acquisition", {})
+    enn = config.get("enn", {})
+
+    for key, value in loop.items():
+        if hasattr(args, key):
+            if getattr(args, key) is None:
+                setattr(args, key, value)
+
+    if args.acquisition_function_type is None:
+        setattr(args, "acquisition_function_type",
+                acquisition["acquisition_function_type"])
+
     # Acquisition function type + annotator model + timestamp
     args.timestamp = args.acquisition_function_type + "_" + \
         ("llama" if "llama" in args.completions_dataset_path else "qwen") + \
         "_" + get_timestamp()
 
     if not args.output_path:
-        args.output_path = f"{args.completions_dataset_path.rstrip('/')}-active-{args.timestamp}"
+        args.output_path = f"{args.completions_dataset_path.rstrip('/')}_active_{args.timestamp}"
+
     base_output_path = args.output_path
     suffix = 2
     while os.path.exists(args.output_path):
@@ -196,6 +209,9 @@ def parse_postprocess(args: argparse.Namespace) -> argparse.Namespace:
     if not args.args_path:
         args.args_path = f"logs/{args.timestamp}.args"
 
+    if not args.wandb_project:
+        args.wandb_project = args.acquisition_function_type
+
     if args.acquisition_function_type in ["random", "ultrafeedback"]:
         if args.report_to == "wandb":
             print(
@@ -203,13 +219,10 @@ def parse_postprocess(args: argparse.Namespace) -> argparse.Namespace:
         args.report_to = None
         args.max_length = 1
         args.outer_loop_batch_size = 8192
-
-    # Load the main config YAML
-    with open(args.loop_config, "r") as f:
-        config = yaml.safe_load(f)
+        enn["base_model_name_or_path"] = "unsloth/Qwen2.5-1.5B-Instruct"
 
     # Load acquisition config file and add as a dict
-    acq_config_path = args.acquisition_config
+    acq_config_path = acquisition["acquisition_config"]
     if acq_config_path:
         with open(acq_config_path, "r") as f:
             args.acquisition_config = yaml.safe_load(f)
@@ -282,7 +295,7 @@ def acquisition_function_KPIs(rewards, chosen_idxs, rejected_idxs):
 
 
 def acquisition_function_handler(acquisition_function_type, acquisition_config):
-    if acquisition_function_type == "double_thompson_sampling":
+    if acquisition_function_type == "dts":
         max_iterations = acquisition_config.get("max_iterations", 30)
         beta = acquisition_config.get("beta", 1)
         # will be changed later.
@@ -331,6 +344,11 @@ if __name__ == "__main__":
     acquisition_config = args.acquisition_config
     enn_config = args.enn_config
 
+    if accelerator.is_main_process:
+        print("args: ", args)
+        print("acquisition_config: ", acquisition_config)
+        print("enn_config: ", enn_config)
+
     # wandb init - only on main process
     if accelerator.is_main_process and args.report_to == "wandb":
         ENNTrainer_log_run = f"loop_enn_{args.timestamp}"
@@ -368,6 +386,10 @@ if __name__ == "__main__":
     # dataset = dataset.select(range(args.outer_loop_batch_size))
     # Unfortunately the set of prompts have duplicate prompt_ids, so we can not filter by prompt_ids.
     # we have to make an assumption that the processed rows in the done dataset happened in the same order as would have happened on the original dataset. (Therefore we should not shuffle the dataset)
+    # TODO: The loader below doesn't work.
+    # - initial dataset was shuffled, so I have no order information
+    # - I can not filter by prompt_id, because there are duplicates.
+    # This is doable, but requires a bit of processing.
     if args.previous_output_path:
         done_dataset = load_from_disk(args.previous_output_path)
         done_prompt_count = len(done_dataset)
@@ -380,7 +402,7 @@ if __name__ == "__main__":
         dataset,
         batch_size=args.outer_loop_batch_size,
         collate_fn=custom_collate_fn,
-        # shuffle=True,
+        shuffle=True,
     )
 
     logger.info(f"Total number of samples in the dataset: {len(dataset)}")
@@ -397,7 +419,7 @@ if __name__ == "__main__":
     logger.info("oracle class: %s", oracle.__class__.__name__)
 
     logger.info(f"Creating UQ model")
-    # if args.acquisition_function_type in ["double_thompson_sampling", "infomax", "maxminlcb", "infogain"]:
+    # if args.acquisition_function_type in ["dts", "infomax", "maxminlcb", "infogain"]:
     uq_pipeline = ENNRewardModelPipeline(
         ENNRewardModelConfig(
             base_model_name_or_path=enn_config.get(
@@ -423,6 +445,8 @@ if __name__ == "__main__":
             learning_rate=float(enn_config.get("learning_rate", 5e-6)),
             max_length=None,  # args.max_length,
             bf16=True,
+            regularization_towards_initial_weights=enn_config.get(
+                "regularization_towards_initial_weights", 10),
             # precompute_base_model_features=True,
             # precomputed_base_model_features_path="temp/",
             # eval_on_start=False,
@@ -471,7 +495,8 @@ if __name__ == "__main__":
     logger.info("UQ model tokenizer: %s",
                 uq_pipeline.model.tokenizer.__class__.__name__)
     logger.info("UQ trainer class: %s", uq_pipeline.trainer.__class__.__name__)
-    logger.info("UQ trainer config: %s", uq_pipeline.trainer_config)
+    logger.info("UQ pipeline trainer config: %s", uq_pipeline.trainer_config)
+    logger.info("UQ trainer args: %s", uq_pipeline.trainer.args)
 
     model = uq_pipeline.model
     tokenizer = model.tokenizer
@@ -481,6 +506,14 @@ if __name__ == "__main__":
 
     total_processes = accelerator.num_processes
     logger.info(f"Total processes: {total_processes}")
+
+    if accelerator.is_main_process:
+        os.makedirs(args.output_path, exist_ok=True)
+        with open(os.path.join(args.output_path, "args.json"), "w") as f:
+            json.dump(vars(args), f, indent=4)
+
+    initial_lambda_regularizer = float(
+        uq_pipeline.trainer.args.regularization_towards_initial_weights)
 
     for i, full_batch in enumerate(dataloader):
         batch_loader = DataLoader(Dataset.from_dict(full_batch),
@@ -630,6 +663,7 @@ if __name__ == "__main__":
                     "source": batch["source"][j],
                     "prompt": batch["prompt"][j],
                     "row_id": batch["row_id"][j],
+                    "batch_id": i,
 
                     "response_text_1": batch["completions"][a]["response_text"][j],
                     "model_1": batch["completions"][a]["model"][j],
@@ -704,9 +738,6 @@ if __name__ == "__main__":
         acquisition_kpis_sample = list(
             {str(x["prompt_id"])+"_"+str(x["row_id"].item()): x for x in acquisition_kpis_sample}.values())
 
-        for x in annotated_batch:
-            if "row_id" in x:
-                del x["row_id"]
         for x in acquisition_kpis_sample:
             if "row_id" in x:
                 del x["row_id"]
@@ -721,6 +752,8 @@ if __name__ == "__main__":
                 } for x in annotated_batch
             ])
 
+            print(
+                f"Saving {len(output_dataset)} samples to {args.output_path}")
             Dataset.from_list(output_dataset).save_to_disk(
                 args.output_path)
 
@@ -736,7 +769,7 @@ if __name__ == "__main__":
 
         if accelerator.is_main_process and args.report_to == "wandb":
             wandb.init(
-                project="huggingface",
+                project=args.wandb_project,
                 name=acquisition_KPI_run,
                 id=acquisition_KPI_run,
                 resume=(i > 0),
@@ -763,23 +796,39 @@ if __name__ == "__main__":
         start = time.time()
         if accelerator.is_main_process and args.report_to == "wandb":
             wandb.init(
-                project="huggingface",  # <-- replace with your wandb project
+                project=args.wandb_project,
                 name=ENNTrainer_log_run,
                 id=ENNTrainer_log_run,
                 resume=(get_global_step_offset() > 0),
                 config=vars(args),
                 allow_val_change=True,  # Allow changing the config values
             )
-        logger.info(
-            f"Starting Training of the UQ model on {len(replay_buffer)} samples")
 
+        updated_lambda_regularizer = initial_lambda_regularizer * \
+            args.outer_loop_batch_size / len(replay_buffer)
+        uq_pipeline.trainer.args.regularization_towards_initial_weights = updated_lambda_regularizer
+
+        logger.info(
+            f"Updated lambda regularizer: {updated_lambda_regularizer}")
+
+        # Training
         model.train()
+        # I need to perform max_training_steps steps.
+        # I have rm_training_batch_size samples per step.
+        # So I will have to sample max_training_steps * rm_training_batch_size samples.
+        subset_size = min(
+            len(replay_buffer), args.rm_training_batch_size * enn_config.get("max_training_steps", 10))
+        random_subset = random.sample(
+            replay_buffer, subset_size)
 
         uq_pipeline.trainer.train_dataset = Dataset.from_list(
-            replay_buffer)
+            random_subset)
+
         if hasattr(uq_pipeline.trainer, "train_dataloader"):
             uq_pipeline.trainer.train_dataloader = None  # Force dataloader rebuild
 
+        logger.info(
+            f"Starting Training of the UQ model on {len(random_subset)} samples from the replay buffer")
         uq_pipeline.trainer.train()
 
         global_step_offset += uq_pipeline.trainer.state.global_step
@@ -790,17 +839,3 @@ if __name__ == "__main__":
         torch.cuda.empty_cache()
         if accelerator.is_main_process and args.report_to == "wandb":
             wandb.finish()
-        if i == 0:
-            with open(args.output_path + "/args.json", "w") as f:
-                json.dump(vars(args), f, indent=4)
-        #     model.save_pretrained(
-        #         args.output_path + "/model",
-        #         safe_serialization=True,
-        #     )
-        #     tokenizer.save_pretrained(args.output_path + "/model")
-        # if i == 1:
-        #     model.save_pretrained(
-        #         args.output_path + "/model_2",
-        #         safe_serialization=True,
-        #     )
-        #     tokenizer.save_pretrained(args.output_path + "/model_2")
