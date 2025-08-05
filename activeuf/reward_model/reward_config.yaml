@@ -1,6 +1,5 @@
 general:
   base_model: allenai/Llama-3.1-Tulu-3-8B-SFT
-  dataset_name: trl-lib/ultrafeedback_binarized
   seed: 42
   torch_dtype: bfloat16
 
@@ -13,16 +12,16 @@ lora:
   target_module_patterns: ["query", "key", "value"]
 
 training:
-  train_batch_size: 4
-  eval_batch_size: 4
+  train_batch_size: 32
+  eval_batch_size: 32
   epochs: 2
   grad_acc_steps: 2
   logging_steps: 10
   save_strategy: "no"
   save_steps: 500
   remove_unused_columns: false
-  max_length: 1024
-  report_to: null
+  max_length: 4096
+  report_to: "wandb"
   max_steps: -1
   bf16: true
   lr_scheduler_type: constant

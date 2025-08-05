@@ -209,8 +209,7 @@ def parse_postprocess(args: argparse.Namespace) -> argparse.Namespace:
         config = yaml.safe_load(f)
 
     # Load acquisition config file and add as a dict
-    acquisition_cfg = config.get("acquisition", {})
-    acq_config_path = acquisition_cfg.get("acquisition_config")
+    acq_config_path = args.acquisition_config
     if acq_config_path:
         with open(acq_config_path, "r") as f:
             args.acquisition_config = yaml.safe_load(f)
@@ -344,7 +343,9 @@ if __name__ == "__main__":
     logger = get_logger(__name__, args.logs_path)
 
     logger.info("--- ARGUMENTS ---")
-    logger.info(args)
+    logger.info("args = %s", args)
+    logger.info("acquisition_config = %s", acquisition_config)
+    logger.info("enn_config = %s", enn_config)
 
     logger.info("Logging into HuggingFace")
     # setup(login_to_hf=True)
@@ -384,9 +385,12 @@ if __name__ == "__main__":
         f"Creating acquisition function {args.acquisition_function_type}")
     acquisition_function = acquisition_function_handler(
         args.acquisition_function_type, acquisition_config)
+    logger.info("acquisition function class: %s",
+                acquisition_function.__class__.__name__)
 
     logger.info(f"Creating oracle {args.oracle_name}")
     oracle = init_oracle(args.oracle_name)
+    logger.info("oracle class: %s", oracle.__class__.__name__)
 
     logger.info(f"Creating UQ model")
     # if args.acquisition_function_type in ["double_thompson_sampling", "infomax", "maxminlcb", "infogain"]:
@@ -406,7 +410,7 @@ if __name__ == "__main__":
             save_strategy=enn_config.get("save_strategy", "no"),
             per_device_train_batch_size=math.ceil(
                 args.rm_training_batch_size / accelerator.num_processes),  # total will be exactly args.batch_size if: (B mod GPU_COUNT ≡ 0)
-            report_to=enn_config.get("report_to", None),
+            report_to=enn_config.get("report_to", "none"),
             disable_tqdm=enn_config.get("disable_tqdm", True),
             logging_strategy=enn_config.get("logging_strategy", "steps"),
             logging_steps=enn_config.get("logging_steps", 1),
@@ -458,6 +462,12 @@ if __name__ == "__main__":
             args.previous_checkpoint_path)
         # # TODO:
         # load trainer state
+    logger.info("UQ model class: %s", uq_pipeline.model.__class__.__name__)
+    logger.info("UQ model config: %s", uq_pipeline.model_config)
+    logger.info("UQ model tokenizer: %s",
+                uq_pipeline.model.tokenizer.__class__.__name__)
+    logger.info("UQ trainer class: %s", uq_pipeline.trainer.__class__.__name__)
+    logger.info("UQ trainer config: %s", uq_pipeline.trainer_config)
 
     model = uq_pipeline.model
     tokenizer = model.tokenizer

@@ -3,13 +3,19 @@ import argparse
 import yaml
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer, set_seed
-from datasets import load_dataset
+from datasets import load_dataset, load_from_disk
 from trl import RewardTrainer, RewardConfig
 from peft import LoraConfig, get_peft_model
 import pprint
+import math
+from accelerate import Accelerator
 
 
 def train_reward_model(config, args):
+    accelerator = Accelerator()
+    torch.cuda.empty_cache()
+    torch.cuda.reset_peak_memory_stats()
+
     print("==== Training Arguments ====")
     print(args)
     print("==== YAML Configuration ====")
@@ -23,15 +29,21 @@ def train_reward_model(config, args):
 
     base_model = general_config.get(
         "base_model", "meta-llama/Llama-3.2-1B-Instruct")
-    dataset_name = general_config.get(
-        "dataset_name", "trl-lib/ultrafeedback_binarized")
+    dataset_path = args.dataset_path
     seed = general_config.get("seed", 42)
     set_seed(seed)
     torch_dtype = torch.bfloat16 if general_config.get(
         "torch_dtype", "bfloat16") == "bfloat16" else torch.float32
 
     # Load dataset
-    dataset = load_dataset(dataset_name)
+    try:
+        dataset = load_dataset(dataset_path)
+    except Exception as e:
+        try:
+            dataset = load_from_disk(dataset_path)
+        except Exception as e:
+            print(f"Failed to load remote or local datasets: {e}")
+            return
 
     # Load tokenizer and model
     tokenizer = AutoTokenizer.from_pretrained(base_model)
@@ -73,18 +85,20 @@ def train_reward_model(config, args):
 
     trainer_config = RewardConfig(
         output_dir=output_dir,
-        per_device_train_batch_size=training_config.get("train_batch_size", 8),
-        per_device_eval_batch_size=training_config.get("eval_batch_size", 8),
+        per_device_train_batch_size=math.ceil(training_config.get(
+            "train_batch_size", 32) / accelerator.num_processes),
+        per_device_eval_batch_size=math.ceil(training_config.get(
+            "eval_batch_size", 32) / accelerator.num_processes),
         gradient_accumulation_steps=training_config.get("grad_acc_steps", 2),
         num_train_epochs=training_config.get("epochs", 1),
         learning_rate=float(optimization_config.get("lr", 2e-5)),
-        max_length=training_config.get("max_length", 1024),
+        max_length=training_config.get("max_length", 4096),
         warmup_steps=lr_scheduling_config.get("num_warmup_steps", 10),
         logging_steps=training_config.get("logging_steps", 10),
         bf16=training_config.get("bf16", True),
         remove_unused_columns=training_config.get(
             "remove_unused_columns", False),
-        report_to=training_config.get("report_to", None),
+        report_to=training_config.get("report_to", "none"),
         save_strategy=training_config.get("save_strategy", "no"),
         save_steps=training_config.get("save_steps", 500),
         max_steps=training_config.get("max_steps", -1),
@@ -94,12 +108,20 @@ def train_reward_model(config, args):
     print("==== Trainer Configuration ====")
     pprint.pprint(trainer_config)
 
+    # Determine splits
+    if isinstance(dataset, dict) and "train" in dataset:
+        train_dataset = dataset["train"]
+        eval_dataset = dataset["test"] if "test" in dataset else None
+    else:
+        train_dataset = dataset
+        eval_dataset = None
+
     trainer = RewardTrainer(
         model=model,
         processing_class=tokenizer,
         args=trainer_config,
-        train_dataset=dataset["train"],
-        eval_dataset=dataset["test"],  # Currenty not used
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
     )
 
     trainer.train()
@@ -120,6 +142,8 @@ def parse_arguments():
                         help="Path to the YAML reward training config.")
     parser.add_argument("--output_dir", required=True,
                         help="Directory to save trained model.")
+    parser.add_argument("--dataset_path", required=True,
+                        help="Path to the dataset for training.")
     return parser.parse_args()
 
 
