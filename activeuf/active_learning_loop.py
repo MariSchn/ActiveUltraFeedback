@@ -309,6 +309,10 @@ def acquisition_function_handler(acquisition_function_type, acquisition_config):
         )
     elif acquisition_function_type == "infogain":
         acquisition_function = InfoGain()
+    elif acquisition_function_type == "relative_upper_confidence_bound":
+        acquisition_function = RelativeUpperConfidenceBound()
+    elif acquisition_function_type == "information_directed_sampling":
+        acquisition_function = InformationDirectedSampling()
     elif acquisition_function_type == "ultrafeedback":
         acquisition_function = UltraFeedback()
     else:
