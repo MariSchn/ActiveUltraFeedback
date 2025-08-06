@@ -10,8 +10,8 @@
 #SBATCH --output=active_loop_m_l/O-%x.%j
 #SBATCH --error=active_loop_m_l/E-%x.%j
 
-# Activate container environment
-export HF_TOKEN=<HF_TOKEN>
+# Activate container environment (Make sure HF_TOKEN variable is set to the Hugging Face token)
+export HF_TOKEN=$HF_TOKEN
 export HF_HOME=$SCRATCH/huggingface
 
 cd $SCRATCH/ActiveUltraFeedback/

@@ -3,8 +3,8 @@
 #SBATCH --job-name=multinode
 #SBATCH -D .
 #SBATCH -A a-infra01-1
-#SBATCH --output=/iopsstor/scratch/cscs/dmelikidze/models/reward_models/multinode/O-%x.%j
-#SBATCH --error=/iopsstor/scratch/cscs/dmelikidze/models/reward_models/multinode/E-%x.%j
+#SBATCH --output=./models/reward_models/multinode/O-%x.%j
+#SBATCH --error=./models/reward_models/multinode/E-%x.%j
 #SBATCH --nodes=8                   # number of nodes
 #SBATCH --ntasks-per-node=1         # number of MP tasks
 #SBATCH --gres=gpu:4                # number of GPUs per node
@@ -14,7 +14,7 @@
 
 export GPUS_PER_NODE=4
 export HF_HOME=$SCRATCH/huggingface
-export HF_TOKEN=<HF_TOKEN>
+export HF_TOKEN=$HF_TOKEN
 ######################
 
 echo $ACCELERATE_DIR
@@ -37,9 +37,9 @@ export LAUNCHER="accelerate launch \
 export ACCELERATE_DIR="${ACCELERATE_DIR:-/accelerate}"
 export PYTHON_FILE="${SCRATCH}/ActiveUltraFeedback/activeuf/reward_model/reward_trainer.py"
 export SCRIPT_ARGS=" \
-    --output_dir ${SCRATCH}/models/reward_models/preference_dts_qwen \
+    --output_dir ${SCRATCH}/models/reward_models/preference_dts_llama_2 \
     --reward_config ${SCRATCH}/ActiveUltraFeedback/activeuf/reward_model/reward_config.yaml \
-    --dataset_path ${SCRATCH}/datasets/preference_double_thompson_sampling_qwen/ \
+    --dataset_path ${SCRATCH}/datasets/preference_dts_llama_9/ \
     "
         
 # This step is necessary because accelerate launch does not handle multiline arguments properly
