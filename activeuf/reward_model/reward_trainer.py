@@ -10,16 +10,20 @@ import pprint
 import math
 from accelerate import Accelerator
 
+os.environ["WANDB_PROJECT"] = "RM-Training"
+
 
 def train_reward_model(config, args):
     accelerator = Accelerator()
     torch.cuda.empty_cache()
     torch.cuda.reset_peak_memory_stats()
 
-    print("==== Training Arguments ====")
-    print(args)
-    print("==== YAML Configuration ====")
-    pprint.pprint(config)
+    if accelerator.is_main_process:
+        print("==== Training Arguments ====")
+        print(args)
+        print("==== YAML Configuration ====")
+        pprint.pprint(config)
+
     output_dir = args.output_dir
     general_config = config.get("general", {})
     training_config = config.get("training", {})
@@ -38,19 +42,6 @@ def train_reward_model(config, args):
     # Load dataset
     try:
         dataset = load_dataset(dataset_path)
-
-        # Map chosen/rejected to row["chosen"][1]["content"] and row["rejected"][1]["content"]
-        def extract_content(row):
-            row["chosen"] = row["chosen"][1]["content"]
-            row["rejected"] = row["rejected"][1]["content"]
-            return row
-
-        if isinstance(dataset, dict) and "train_prefs" in dataset:
-            dataset["train_prefs"] = dataset["train_prefs"].map(
-                extract_content)
-        else:
-            dataset = dataset.map(extract_content)
-
     except Exception as e:
         try:
             dataset = load_from_disk(dataset_path)
@@ -71,11 +62,6 @@ def train_reward_model(config, args):
         pad_token_id=tokenizer.pad_token_id,
     )
 
-    if tokenizer.pad_token is None:
-        print("No pad_token present. Assigning tokenizer.pad_token = tokenizer.eos_token")
-        tokenizer.pad_token = tokenizer.eos_token
-        model.config.pad_token_id = tokenizer.pad_token_id
-
     peft_config = LoraConfig(
         r=lora_config.get("r", 16),
         lora_alpha=lora_config.get("lora_alpha", 32),
@@ -84,6 +70,7 @@ def train_reward_model(config, args):
         task_type=lora_config.get("task_type", "SEQ_CLS"),
     )
 
+    # Adjustments for PEFT model
     try:
         model = get_peft_model(model, peft_config)
     except Exception as e:
@@ -116,25 +103,64 @@ def train_reward_model(config, args):
         save_steps=training_config.get("save_steps", 500),
         max_steps=training_config.get("max_steps", -1),
         lr_scheduler_type=training_config.get("lr_scheduler_type", "linear"),
+        run_name=os.path.basename(os.path.normpath(output_dir)),
     )
 
-    print("==== Trainer Configuration ====")
-    pprint.pprint(trainer_config)
+    if accelerator.is_main_process:
+        print("==== Trainer Configuration ====")
+        pprint.pprint(trainer_config)
 
-    # Determine splits
-    if isinstance(dataset, dict) and "train_prefs" in dataset:
-        train_dataset = dataset["train_prefs"]
-        eval_dataset = None
+    # Dataset processing (Determining splits, restructuring (chosen/rejected columns))
+    if isinstance(dataset, dict):
+        if "train_prefs" in dataset:
+            train_dataset = dataset["train_prefs"]
+        elif "train" in dataset:
+            train_dataset = dataset["train"]
+        else:
+            # TODO: More general way of handling dataset splits (They should come as arguments, for example).
+            raise Exception(
+                "Unknown dataset format. Expected 'train' or 'train_prefs' split.")
     else:
         train_dataset = dataset
-        eval_dataset = None
+
+    if isinstance(train_dataset[0]["chosen"], str):
+        train_dataset = train_dataset.map(
+            lambda x:
+                {
+                    "chosen": [
+                        {'content': x["prompt"], 'role': 'user'},
+                        {'content': x["chosen"], 'role': 'assistant'}
+                    ],
+                    "rejected": [
+                        {'content': x["prompt"], 'role': 'user'},
+                        {'content': x["rejected"], 'role': 'assistant'}
+                    ],
+                }
+        )
+
+    # remove all columns except 'chosen' and 'rejected'
+    train_dataset = train_dataset.remove_columns(
+        [col for col in train_dataset.column_names if col not in ["chosen", "rejected"]]
+    )
+
+    if accelerator.is_main_process:
+        print("==== Dataset Columns ====")
+        print(train_dataset.column_names)
+        print("==== Dataset ====")
+        print(train_dataset)
+        print("==== Dataset Sample ====")
+        print(train_dataset[0]["chosen"])
+        print(train_dataset[0]["rejected"])
+
+    if args.debug:
+        train_dataset = train_dataset.select(range(100))
 
     trainer = RewardTrainer(
         model=model,
         processing_class=tokenizer,
         args=trainer_config,
         train_dataset=train_dataset,
-        eval_dataset=eval_dataset,
+        # eval_dataset=eval_dataset, Ignored for now.
     )
 
     trainer.train()
@@ -157,6 +183,8 @@ def parse_arguments():
                         help="Directory to save trained model.")
     parser.add_argument("--dataset_path", required=True,
                         help="Path to the dataset for training.")
+    parser.add_argument("--debug", action="store_true",
+                        help="Run in debug mode with a smaller dataset for testing.")
     return parser.parse_args()
 
 
