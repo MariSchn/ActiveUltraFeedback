@@ -38,6 +38,19 @@ def train_reward_model(config, args):
     # Load dataset
     try:
         dataset = load_dataset(dataset_path)
+
+        # Map chosen/rejected to row["chosen"][1]["content"] and row["rejected"][1]["content"]
+        def extract_content(row):
+            row["chosen"] = row["chosen"][1]["content"]
+            row["rejected"] = row["rejected"][1]["content"]
+            return row
+
+        if isinstance(dataset, dict) and "train_prefs" in dataset:
+            dataset["train_prefs"] = dataset["train_prefs"].map(
+                extract_content)
+        else:
+            dataset = dataset.map(extract_content)
+
     except Exception as e:
         try:
             dataset = load_from_disk(dataset_path)
@@ -109,9 +122,9 @@ def train_reward_model(config, args):
     pprint.pprint(trainer_config)
 
     # Determine splits
-    if isinstance(dataset, dict) and "train" in dataset:
-        train_dataset = dataset["train"]
-        eval_dataset = dataset["test"] if "test" in dataset else None
+    if isinstance(dataset, dict) and "train_prefs" in dataset:
+        train_dataset = dataset["train_prefs"]
+        eval_dataset = None
     else:
         train_dataset = dataset
         eval_dataset = None
