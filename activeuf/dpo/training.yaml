@@ -1,0 +1,34 @@
+general:
+  train_path: datasets/preference_random_llama
+  base_model: allenai/OLMo-2-0425-1B-SFT
+  output_dir: models/dpo
+  report_to: wandb
+  seed: 42
+  torch_dtype: bfloat16
+
+lora:
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  bias: none
+  task_type: CAUSAL_LM
+  target_module_patterns: ["query", "key", "value"]
+
+training:
+  epochs: 1
+  train_batch_size: 32
+  grad_acc_steps: 2
+  logging_steps: 10
+  max_length: 4096
+  max_steps: 100
+  bf16: true
+  save_strategy: no
+  save_steps: 500
+  remove_unused_columns: false
+
+optimization:
+  learning_rate: 5e-6
+
+lr_scheduling:
+  lr_scheduler_type: cosine
+  num_warmup_steps: 5
