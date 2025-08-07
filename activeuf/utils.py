@@ -7,6 +7,7 @@ import os
 import time
 from typing import Union
 from tqdm import tqdm
+import yaml
 
 import numpy as np
 import random
@@ -21,7 +22,7 @@ from activeuf.configs import *
 from activeuf.schemas import *
 
 def get_timestamp() -> str:
-    return datetime.now().strftime("%Y%m%d-%H%M%S")
+    return datetime.now().strftime("%Y%m%d_%H%M%S")
 
 def get_logger(name: str, logs_path: str = "app.log") -> logging.Logger:
     logger = logging.getLogger(name)
@@ -55,6 +56,15 @@ def set_seed(seed: int) -> None:
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     os.environ["PYTHONHASHSEED"] = str(seed)
+
+def load_config(config_path: str) -> dict:
+    try:
+        with open(config_path, "r") as f:
+            return yaml.safe_load(f)
+    except Exception as e:
+        print(
+            f"Failed to load config: {e}\nUsing default configuration for training.\n")
+        return {}
 
 def sample_principle(source: str) -> str:
     principle_pool = PROMPT_SOURCE2PRINCIPLES.get(source, [DEFAULT_PRINCIPLE])
