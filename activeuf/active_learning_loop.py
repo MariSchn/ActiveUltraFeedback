@@ -18,6 +18,7 @@ from accelerate.utils import gather_object, broadcast_object_list
 import wandb
 import logging
 import random
+import copy
 
 from rewarduq.models.reward_head_ensemble import (
     RewardHeadEnsembleModel as ENNRewardModel,
@@ -334,6 +335,22 @@ def acquisition_function_handler(acquisition_function_type, acquisition_config):
     return acquisition_function
 
 
+# Possible problems
+# If I don't pass input_ids_chosen, input_ids_rejected manually to the trainer, then it may process
+# the same [{"chosen":[], "rejected": []}] dataset in a different way, that is, it may add a system prompt,
+# that could be different from what I use for inference. So they should exactly match.
+# Maybe I should just observe the 2 datasets and compare, shortly?
+# Just also realized, the chosen and rejected should be chat template applied objects in normal case.
+# okay, including "chosen"/ "rejected" doesn't matter when you have input_ids_chosen, etc.
+# now, try without including all the ids, and see what's gonna be the case.
+# So, according to my experiments, these two cases (letting trainer tokenize my chosen, rejected)
+# and just feeding it myself. basically their outputs matched.
+# I don't know whether I should include a system prompt.
+# I will talk about it tomorrow.
+# now let's run 2 experiments, one using these tokens, the other not using them.
+# unfortunately, If I don't tokenize annd use 8 nodes, nothing ppens and uncertainties and rewards are just flat.
+# as if something, trainer or ENNs don't match each other, input-wise.
+# As I remember I didn't observe this for qwen... Maybe because it had a default system prompt?
 if __name__ == "__main__":
     accelerator = Accelerator()
 
@@ -343,6 +360,10 @@ if __name__ == "__main__":
     args = parse_postprocess(args)
     acquisition_config = args.acquisition_config
     enn_config = args.enn_config
+
+    if accelerator.is_main_process and args.report_to == "wandb":
+        os.environ.setdefault(
+            "WANDB_DIR", f"/iopsstor/scratch/cscs/dmelikidze/ActiveUltraFeedback/wandb/job_{args.timestamp}")
 
     if accelerator.is_main_process:
         print("args: ", args)
@@ -423,12 +444,15 @@ if __name__ == "__main__":
     uq_pipeline = ENNRewardModelPipeline(
         ENNRewardModelConfig(
             base_model_name_or_path=enn_config.get(
-                "base_model_name_or_path", "unsloth/Qwen2.5-1.5B-Instruct"),
+                "base_model_name_or_path", "allenai/OLMo-2-1124-7B-SFT"),
+            # enn_config.get("freeze_base_model", True),
             freeze_base_model=enn_config.get("freeze_base_model", True),
             feature_extraction_layer=enn_config.get(
                 "feature_extraction_layer", "last_hidden_state"),
             # feature_extraction_selection_strategy="last",
             # fp16=True,
+            initialization_xavier_gain=enn_config.get(
+                "initialization_xavier_gain", 1.0)
         ),
         ENNRewardModelTrainerConfig(
             num_train_epochs=enn_config.get("num_train_epochs", 1),
@@ -443,7 +467,7 @@ if __name__ == "__main__":
             run_name=f"activeuf_{args.timestamp}",
             lr_scheduler_type=enn_config.get("lr_scheduler_type", "constant"),
             learning_rate=float(enn_config.get("learning_rate", 5e-6)),
-            max_length=None,  # args.max_length,
+            max_length=args.max_length,
             bf16=True,
             regularization_towards_initial_weights=enn_config.get(
                 "regularization_towards_initial_weights", 10),
@@ -457,17 +481,10 @@ if __name__ == "__main__":
         f"batch size per gpu is {uq_pipeline.trainer_config.per_device_train_batch_size}")
     # Initialize the trainer with an empty Dataset having the required keys. So we have access to the uq_pipeline.trainer before entering the loop.
     dummy_data = [{
-        'prompt': '',
-        'prompt_id': '',
-        'row_id': -1,
-        'chosen': '',
-        'chosen_model': '',
-        'chosen_score': 0,
+        "chosen": "",
         'input_ids_chosen': [],
         'attention_mask_chosen': [],
-        'rejected': '',
-        'rejected_model': '',
-        'rejected_score': 0,
+        "rejected": "",
         'input_ids_rejected': [],
         'attention_mask_rejected': []
     } for _ in range(args.replay_buffer_size)]
@@ -482,6 +499,9 @@ if __name__ == "__main__":
         uq_pipeline.trainer.add_callback(
             WandbStepLoggerCallback(get_global_step_offset)
         )
+
+    # wait for everyone to load the models
+    accelerator.wait_for_everyone()
 
     if args.previous_checkpoint_path:
         logger.info(
@@ -527,38 +547,28 @@ if __name__ == "__main__":
         logger.info(f"Processing batch {i}")
 
         for batch in batch_loader:
-
             start = time.time()
             n_samples_in_batch = len(batch["prompt_id"])
             n_completions_per_sample = len(batch["completions"])
 
             # Prepare messages for model
-            messages = []
-            for sample_idx in range(n_samples_in_batch):
-                for completion in batch["completions"]:
-                    messages.append([
-                        {
-                            "role": "user",
-                            "content": batch["prompt"][sample_idx],
-                        },
-                        {
-                            "role": "system",
-                            "content": completion["response_text"][sample_idx],
-                        }
-                    ])
+            if args.acquisition_function_type not in ["random", "ultrafeedback"]:
+                messages = []
+                for sample_idx in range(n_samples_in_batch):
+                    for completion in batch["completions"]:  # LOOK HERE!
+                        messages.append([
+                            {
+                                "role": "user",
+                                "content": batch["prompt"][sample_idx],
+                            },
+                            {
+                                "role": "assistant",
+                                "content": completion["response_text"][sample_idx],
+                            }
+                        ])
 
-            if args.acquisition_function_type in ["random", "ultrafeedback"]:
-                # Dummy values
-                dummy_shape = (n_samples_in_batch *
-                               n_completions_per_sample, args.max_length)
-                device = model.device if 'model' in locals() else torch.device("cpu")
-                inputs = {
-                    "input_ids": torch.zeros(dummy_shape, dtype=torch.long, device=device),
-                    "attention_mask": torch.zeros(dummy_shape, dtype=torch.long, device=device),
-                }
-            else:
                 messages_str = tokenizer.apply_chat_template(
-                    messages, tokenize=False, add_generation_prompt=False,
+                    messages, tokenize=False
                 )
                 inputs = tokenizer(
                     messages_str,
@@ -583,6 +593,10 @@ if __name__ == "__main__":
                 # TODO: This parameter has to be tuned for each max_length parameter. Would be good to dynamically adjust, with a while true and try-except clause.
                 # I don't understand why 8 has the quickest finish time (matte rof 0.5 seconds but still), also why do I have to split the input to the inference model,
                 # why does it get memory issues if I don't split the data, makes no sense...
+                # PROBLEM: some of the batches have unnecessary padding added to them, because we tokenized all the message strings together, but we pass parts of them right here.
+                # Also it matters how we choose the microbatch_size. 1 is not the best and maximum is also not good.
+                # Somewhere in between is good, and maybe it's the number of GPUs?idk. but this is something not to
+                # be tuned by us. This is UQ Teams job.
                 microbatch_size = 8  # 8 * 16 + 8 * 10
                 total = inputs["input_ids"].shape[0]
 
@@ -612,17 +626,13 @@ if __name__ == "__main__":
 
             # Select the completions that should be used for the binarized sample
             start = time.time()
-            # (n_samples_in_batch, n_completions_per_sample, 3)
+
             if args.acquisition_function_type in ["ultrafeedback", "random"]:
-                n_samples_in_batch = len(batch["prompt_id"])
-                n_completions_per_sample = len(batch["completions"])
                 rewards = torch.zeros(
                     (n_samples_in_batch, n_completions_per_sample, 3), dtype=torch.float32)
                 for j in range(n_completions_per_sample):
-                    # batch["completions"][j]["overall_score"] is a list of length n_samples_in_batch
                     rewards[:, j, 0] = torch.tensor(
                         batch["completions"][j]["overall_score"], dtype=torch.float32)
-
             else:
                 rewards = outputs["rewards"].detach().view(
                     n_samples_in_batch, -1, 3)
@@ -654,7 +664,8 @@ if __name__ == "__main__":
                 temp,
                 dim=1,
             )
-            del inputs
+            if inputs:
+                del inputs
             torch.cuda.empty_cache()
 
             acquired_batch = [
@@ -697,6 +708,8 @@ if __name__ == "__main__":
                     chosen_idxs.append(b_acquired_idxs[j, 1].item())
                     rejected_idxs.append(b_acquired_idxs[j, 0].item())
 
+            # TODO: MOVE THESE IN A SEPARATE FUNCTION
+            ##########################################
             rewards_mean = rewards[:, :, 0:1]
             # Shape: (n_samples_in_batch, n_completions_per_sample, 1)
             rewards_std = (rewards[:, :, 2:3] - rewards[:, :, 1:2]) / 2
@@ -721,6 +734,7 @@ if __name__ == "__main__":
             for j in range(len(local_acquisition_KPIs_sample)):
                 local_acquisition_KPIs_sample[j]["prompt_id"] = annotated_batch_local[j]["prompt_id"]
                 local_acquisition_KPIs_sample[j]["row_id"] = annotated_batch_local[j]["row_id"]
+            ######################################
 
             accelerator.wait_for_everyone()
             annotated_batch_tmp = gather_object(annotated_batch_local)
@@ -742,6 +756,18 @@ if __name__ == "__main__":
             if "row_id" in x:
                 del x["row_id"]
 
+        # Restructuring "chosen", "rejected" columns according to allenai/ultrafeedback_binarized_cleaned dataset and the way they are properly handled by the trl RewardTrainer
+
+        for x in annotated_batch:
+            x["chosen"] = [
+                {"content": x["prompt"], "role": "user"},
+                {"content": x["chosen"], "role": "assistant"}
+            ]
+            x["rejected"] = [
+                {"content": x["prompt"], "role": "user"},
+                {"content": x["rejected"], "role": "assistant"}
+            ]
+
         # Update dataset to be saved, then save to disk
         if accelerator.is_main_process:
             output_dataset.extend([
@@ -752,7 +778,7 @@ if __name__ == "__main__":
                 } for x in annotated_batch
             ])
 
-            print(
+            logger.info(
                 f"Saving {len(output_dataset)} samples to {args.output_path}")
             Dataset.from_list(output_dataset).save_to_disk(
                 args.output_path)
@@ -788,8 +814,14 @@ if __name__ == "__main__":
         if args.acquisition_function_type in ["random", "ultrafeedback"]:
             continue
 
+        batch_ready_to_train = [{
+            # "chosen": x["chosen"], "rejected": x["rejected"],
+            "input_ids_chosen": x["input_ids_chosen"], "attention_mask_chosen": x["attention_mask_chosen"],
+            "input_ids_rejected": x["input_ids_rejected"], "attention_mask_rejected": x["attention_mask_rejected"],
+        } for x in annotated_batch]
+
         # Update replay buffer
-        replay_buffer.extend(annotated_batch)
+        replay_buffer.extend(batch_ready_to_train)
 
         del batch_loader
         torch.cuda.empty_cache()
@@ -821,17 +853,44 @@ if __name__ == "__main__":
         random_subset = random.sample(
             replay_buffer, subset_size)
 
-        uq_pipeline.trainer.train_dataset = Dataset.from_list(
-            random_subset)
+        # Creating a new trainer, to initialize the training dataset the right way.
+        # tmpTrainer = ENNRewardModelTrainer(
+        #     args=uq_pipeline.trainer_config,
+        #     model=uq_pipeline.model,
+        #     processing_class=uq_pipeline.model.tokenizer,
+        #     train_dataset=Dataset.from_list(random_subset)
+        # )
 
-        if hasattr(uq_pipeline.trainer, "train_dataloader"):
-            uq_pipeline.trainer.train_dataloader = None  # Force dataloader rebuild
+        uq_pipeline.trainer.train_dataset = Dataset.from_list(random_subset)
+        # copy.deepcopy(
+        #     tmpTrainer.train_dataset)
 
+        if accelerator.is_main_process and i == 0:
+            # with open("open_textered2.txt", "w") as f:
+            train_ds = uq_pipeline.trainer.train_dataset[0]
+            # f.write(f"Chosen: {train_ds['chosen']}\n")
+            # f.write("=====" * 5 + "\n")
+            logger.info(f"Input IDs Chosen: {train_ds['input_ids_chosen']}\n")
+            logger.info("=====" * 5)
+            logger.info(tokenizer.decode(train_ds["input_ids_chosen"]))
+            logger.info("=====" * 5)
+            # logger.info(tmpTrainer.train_dataset[0]["chosen"])
+            # logger.info("=====" * 5)
+            # logger.info(tmpTrainer.train_dataset[0]["input_ids_chosen"])
+            # logger.info("=====" * 5)
+            # logger.info(tokenizer.decode(
+            #     tmpTrainer.train_dataset[0]["input_ids_chosen"]))
+
+        # if hasattr(uq_pipeline.trainer, "train_dataloader"):
+        #     uq_pipeline.trainer.train_dataloader = None  # Force dataloader rebuild
+        # exit()
         logger.info(
             f"Starting Training of the UQ model on {len(random_subset)} samples from the replay buffer")
         uq_pipeline.trainer.train()
+        # tmpTrainer.train()
 
         global_step_offset += uq_pipeline.trainer.state.global_step
+        # global_step_offset += tmpTrainer.state.global_step
 
         end = time.time()
         logger.info(f"- Training took {end - start:.2f}s")

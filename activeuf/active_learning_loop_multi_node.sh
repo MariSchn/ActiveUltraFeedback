@@ -9,8 +9,8 @@ sbatch <<EOF
 #SBATCH --job-name=multinode_${acquisition_function}_${annotator_model}_loop
 #SBATCH -D .
 #SBATCH -A a-infra01-1
-#SBATCH --output=${SCRATCH}/ActiveUltraFeedback/loop/${annotator_model}/${acquisition_function}/O-%x.%j
-#SBATCH --error=${SCRATCH}/ActiveUltraFeedback/loop/${annotator_model}/${acquisition_function}/E-%x.%j
+#SBATCH --output=${SCRATCH}/ActiveUltraFeedback/loop/${annotator_model}/${acquisition_function}2/O-%x.%j
+#SBATCH --error=${SCRATCH}/ActiveUltraFeedback/loop/${annotator_model}/${acquisition_function}2/E-%x.%j
 #SBATCH --nodes=8                   # number of nodes
 #SBATCH --ntasks-per-node=1         # number of MP tasks
 #SBATCH --gres=gpu:4                # number of GPUs per node
@@ -20,7 +20,7 @@ sbatch <<EOF
 
 export GPUS_PER_NODE=4
 export HF_HOME=\$SCRATCH/huggingface
-export HF_TOKEN=<HF_TOKEN>
+export HF_TOKEN=\$HF_TOKEN
 ######################
 
 echo \$ACCELERATE_DIR
@@ -46,9 +46,6 @@ export PYTHON_FILE="activeuf.active_learning_loop"
 export SCRIPT_ARGS=" \
    --completions_dataset_path \${SCRATCH}/datasets/combined_annotations_${annotator_model}/ \
    --output_path=\$SCRATCH/datasets/preference_${acquisition_function}_${annotator_model}/ \
-   --logs_path=\$SCRATCH/logs_${acquisition_function}_${annotator_model}/ \
-   --args_path=\$SCRATCH/models_${acquisition_function}_${annotator_model} \
-    --report_to=wandb \
     --acquisition_function_type=${acquisition_function} \
    "
         
@@ -64,6 +61,8 @@ START=\$(date +%s)
 cd \$SCRATCH/ActiveUltraFeedback/
 export PYTHONPATH="\$SCRATCH/ActiveUltraFeedback:\$PYTHONPATH"
 # pip install --user git+https://github.com/Florian-toll/rewarduq.git
+
+export CUDA_VISIBLE_DEVICES=0,1,2,3
 
 srun --chdir=\$SCRATCH/ActiveUltraFeedback \$CMD
 

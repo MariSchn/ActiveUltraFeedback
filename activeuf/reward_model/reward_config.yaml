@@ -12,8 +12,8 @@ lora:
   target_module_patterns: ["query", "key", "value"]
 
 training:
-  train_batch_size: 32
-  eval_batch_size: 32
+  train_batch_size: 8
+  eval_batch_size: 8
   epochs: 2
   grad_acc_steps: 2
   logging_steps: 10
@@ -28,7 +28,7 @@ training:
 
 optimization:
   optimizer: adamw_torch
-  learning_rate: 5e-6
+  learning_rate: 2e-5
 
 lr_scheduling:
   num_warmup_steps: 0

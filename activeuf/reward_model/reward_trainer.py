@@ -9,6 +9,7 @@ from peft import LoraConfig, get_peft_model
 import pprint
 import math
 from accelerate import Accelerator
+from datetime import datetime
 
 os.environ["WANDB_PROJECT"] = "RM-Training"
 
@@ -30,6 +31,11 @@ def train_reward_model(config, args):
     optimization_config = config.get("optimization", {})
     lr_scheduling_config = config.get("lr_scheduling", {})
     lora_config = config.get("lora", {})
+
+    if accelerator.is_main_process and training_config.get("report_to", "none") == "wandb":
+        print("wandb_dir changed")
+        os.environ.setdefault(
+            "WANDB_DIR", f"/iopsstor/scratch/cscs/dmelikidze/ActiveUltraFeedback/wandb/job_{datetime.now().strftime('%Y%m%d-%H%M%S')}")
 
     base_model = general_config.get(
         "base_model", "meta-llama/Llama-3.2-1B-Instruct")
@@ -91,7 +97,7 @@ def train_reward_model(config, args):
             "eval_batch_size", 32) / accelerator.num_processes),
         gradient_accumulation_steps=training_config.get("grad_acc_steps", 2),
         num_train_epochs=training_config.get("epochs", 1),
-        learning_rate=float(optimization_config.get("lr", 2e-5)),
+        learning_rate=float(optimization_config.get("learning_rate", 5e-6)),
         max_length=training_config.get("max_length", 4096),
         warmup_steps=lr_scheduling_config.get("num_warmup_steps", 10),
         logging_steps=training_config.get("logging_steps", 10),
