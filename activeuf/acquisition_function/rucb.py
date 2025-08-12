@@ -47,32 +47,27 @@ class RelativeUpperConfidenceBound(BaseAcquisitionFunction):
             posterior_mean, posterior_std = r, s
             n = posterior_mean.shape[0]
 
-            ucb = posterior_mean + self.beta * posterior_std
-            mask_diag = np.eye(n, dtype=bool)
-            cond_mask = np.logical_or(ucb > (0.5 - self.decision_buffer), mask_diag)
-            candidate_mask = np.all(cond_mask, axis=1)
+            ucb = posterior_mean + self.beta * posterior_std          # shape (n,)
+            candidate_mask = ucb > (0.5 - self.decision_buffer)       # simplify: it's a 1D condition
 
             if np.sum(candidate_mask) == 1:
-                idx = np.argmax(candidate_mask)
+                idx = int(np.argmax(candidate_mask))
                 selected_pairs.append([idx, idx])
                 continue
 
             candidate_indices = np.flatnonzero(candidate_mask)
-            next_j = self.rng.choice(candidate_indices)
+            next_j = int(self.rng.choice(candidate_indices))
 
-            ucb_no_diag = np.copy(ucb)
-            np.fill_diagonal(ucb_no_diag, -np.inf)
-            ucb_j_col = ucb_no_diag[:, next_j]
-            max_ucb = np.max(ucb_j_col)
+            # Exclude j from i-selection
+            ucb_j = ucb.copy()
+            ucb_j[next_j] = -np.inf
 
-            approx_max_mask = np.abs(ucb_j_col - max_ucb) < self.argmax_tol
+            max_ucb = np.max(ucb_j)
+            approx_max_mask = np.abs(ucb_j - max_ucb) < self.argmax_tol
             approx_max_indices = np.flatnonzero(approx_max_mask)
 
-            if len(approx_max_indices) == 0:
-                next_i = int(np.argmax(ucb_j_col))
-            else:
-                next_i = int(self.rng.choice(approx_max_indices))
-
+            next_i = int(self.rng.choice(approx_max_indices)) if len(approx_max_indices) else int(np.argmax(ucb_j))
             selected_pairs.append([next_i, next_j])
+
 
         return selected_pairs
