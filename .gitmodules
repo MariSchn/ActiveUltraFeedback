@@ -9,7 +9,7 @@
 [submodule "resources/reward-bench"]
 	path = resources/reward-bench
 	url = https://github.com/allenai/reward-bench.git
-	ignore=all
+	ignore = all
 [submodule "resources/olmes"]
 	path = resources/olmes
 	url = https://github.com/allenai/olmes.git
