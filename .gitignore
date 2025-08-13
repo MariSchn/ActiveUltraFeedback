@@ -164,11 +164,11 @@ datasets/
 models/
 results/
 logs/
-scripts/
+scripts/completions/
+scripts/generate_completions_script.py
 .vscode
-playground.ipynb
-playground.py
-start_session.sh
+playground.*
+start*session.sh
 wandb/
 olmes/
 trainer_output/

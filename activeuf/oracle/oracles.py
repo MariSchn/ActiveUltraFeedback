@@ -8,10 +8,10 @@ import regex as re
 def init_oracle(oracle_name: str):
     """
     Parses the oracle class name and returns the corresponding oracle class.
-
+    
     Args:
         oracle_name (str): The name of the oracle class to parse.
-
+        
     Returns:
         BaseOracle: The corresponding oracle class.
     """
