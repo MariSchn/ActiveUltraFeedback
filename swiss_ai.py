@@ -43,6 +43,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=SEED, help="Seed for random sampling")
     parser.add_argument("--w_principles", action="store_true", help="If set, will sample system prompts and principles from the dataset")
 
+    parser.add_argument("--num_chunks", type=int, default=1, help="Number of chunks to split the dataset into")
+    parser.add_argument("--chunk_index", type=int, default=0, help="Index of the chunk to process (0-indexed)")
+
     parser.add_argument("--output_path", type=str, help="Where to save the generated completions")
 
     parser.add_argument("--debug", action="store_true", help="If set, will only generate completions for the first 10 samples")
@@ -81,6 +84,10 @@ if __name__ == "__main__":
     if args.debug:
         logger.info("Debug mode: only generating completions for the first 10 samples")
         dataset = dataset.select(range(10))
+
+    if args.num_chunks > 1:
+        dataset = dataset.shard(num_shards=args.num_chunks, index=args.chunk_index)
+        print(f"Sharding dataset into {args.num_chunks} chunks and selecting chunk {args.chunk_index} (len: {len(dataset)})")
 
     # Load generation model and tokenizer, and prepare sampling params
     logger.info(f"Using {args.model_name} for completion generation")
@@ -165,6 +172,6 @@ if __name__ == "__main__":
     dataset.to_json(args.output_path, orient="records", lines=True, force_ascii=False)
 
     # Export args
-    args_path = path.join(args.output_path, "args.json")
+    args_path = ".".join(args.output_path.split(".")[:-1]) + "_args.json"
     with open(args_path, "w") as f_out:
         json.dump(vars(args), f_out)
