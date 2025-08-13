@@ -145,6 +145,31 @@ class LoopArguments:
         default=None,
         metadata={"help": "WandB project name for logging."}
     )
+    regularization_towards_initial_weights: float = field(
+        default=None,
+        metadata={"help": "Regularization strength towards initial weights."}
+    )
+    regularization_weight_decay_type: str = field(
+        default=None,
+        metadata={
+            "help": "Weight decay type for regularization. Choices: ['linear', 'exponential']"}
+    )
+    exponential_decay_base: float = field(
+        default=None,
+        metadata={"help": "Base for the exponential decay schedule."}
+    )
+    max_training_steps: int = field(
+        default=None,
+        metadata={"help": "Maximum number of training steps."}
+    )
+    initialization_xavier_gain: float = field(
+        default=None,
+        metadata={"help": "Xavier initialization gain."}
+    )
+    base_model_name_or_path: str = field(
+        default=None,
+        metadata={"help": "Base model name or path."}
+    )
 
 
 global_step_offset = 0
@@ -188,7 +213,7 @@ def parse_postprocess(args: argparse.Namespace) -> argparse.Namespace:
     # Acquisition function type + annotator model + timestamp
     args.timestamp = args.acquisition_function_type + "_" + \
         ("llama" if "llama" in args.completions_dataset_path else "qwen") + \
-        "_" + get_timestamp()
+        "_" + get_timestamp(more_detailed=True)
 
     if not args.output_path:
         args.output_path = f"{args.completions_dataset_path.rstrip('/')}_active_{args.timestamp}"
@@ -232,6 +257,20 @@ def parse_postprocess(args: argparse.Namespace) -> argparse.Namespace:
 
     # Add enn_config as a dict
     args.enn_config = config.get("enn", {})
+
+    if args.regularization_towards_initial_weights:
+        args.enn_config["regularization_towards_initial_weights"] = args.regularization_towards_initial_weights
+    if args.regularization_weight_decay_type:
+        args.enn_config["regularization_weight_decay_type"] = args.regularization_weight_decay_type
+    if args.exponential_decay_base:
+        args.enn_config["exponential_decay_base"] = args.exponential_decay_base
+    if args.max_training_steps:
+        args.enn_config["max_training_steps"] = args.max_training_steps
+    if args.initialization_xavier_gain:
+        args.enn_config["initialization_xavier_gain"] = args.initialization_xavier_gain
+        print("WE WERE HERE!")
+    if args.base_model_name_or_path:
+        args.enn_config["base_model_name_or_path"] = args.base_model_name_or_path
 
     return args
 
@@ -364,6 +403,7 @@ if __name__ == "__main__":
     if accelerator.is_main_process and args.report_to == "wandb":
         os.environ.setdefault(
             "WANDB_DIR", f"/iopsstor/scratch/cscs/dmelikidze/ActiveUltraFeedback/wandb/job_{args.timestamp}")
+        print("wandb directory is: ", os.environ["WANDB_DIR"])
 
     if accelerator.is_main_process:
         print("args: ", args)
@@ -503,6 +543,34 @@ if __name__ == "__main__":
     # wait for everyone to load the models
     accelerator.wait_for_everyone()
 
+    # if accelerator.is_main_process:
+    #     chosen = [{
+    #         "content": "Hey I am Davit",
+    #         "role": "user"
+    #     }, {"content": "Hey Davit, how can I assist you today?", "role": "assistant"}]
+    #     rejected = [{"content": "I don't need any assistance.", "role": "user"},
+    #                 {"content": "Do I look like a person who cares?", "role": "assistant"}]
+    #     tokenizer = uq_pipeline.model.tokenizer
+    #     chosen_applied = tokenizer.apply_chat_template(
+    #         chosen, tokenize=False
+    #     )
+    #     rejected_applied = tokenizer.apply_chat_template(
+    #         rejected, tokenize=False
+    #     )
+    #     chosen_tokenized = tokenizer(
+    #         chosen_applied
+    #     )
+    #     rejected_tokenized = tokenizer(
+    #         rejected_applied
+    #     )
+    #     letssee = [
+    #         {"input_ids_chosen": chosen_tokenized,
+    #          "input_ids_rejected": rejected_tokenized}]
+    #     print("before: ", letssee)
+    #     letssee = filter_training_data(letssee, tokenizer)
+    #     print("after: ", letssee)
+
+    # exit()
     if args.previous_checkpoint_path:
         logger.info(
             f"Loading checkpoint from {args.previous_checkpoint_path}")
@@ -510,13 +578,16 @@ if __name__ == "__main__":
             args.previous_checkpoint_path)
         # # TODO:
         # load trainer state
-    logger.info("UQ model class: %s", uq_pipeline.model.__class__.__name__)
-    logger.info("UQ model config: %s", uq_pipeline.model_config)
-    logger.info("UQ model tokenizer: %s",
-                uq_pipeline.model.tokenizer.__class__.__name__)
-    logger.info("UQ trainer class: %s", uq_pipeline.trainer.__class__.__name__)
-    logger.info("UQ pipeline trainer config: %s", uq_pipeline.trainer_config)
-    logger.info("UQ trainer args: %s", uq_pipeline.trainer.args)
+    if accelerator.is_main_process:
+        logger.info("UQ model class: %s", uq_pipeline.model.__class__.__name__)
+        logger.info("UQ model config: %s", uq_pipeline.model_config)
+        logger.info("UQ model tokenizer: %s",
+                    uq_pipeline.model.tokenizer.__class__.__name__)
+        logger.info("UQ trainer class: %s",
+                    uq_pipeline.trainer.__class__.__name__)
+        logger.info("UQ pipeline trainer config: %s",
+                    uq_pipeline.trainer_config)
+        logger.info("UQ trainer args: %s", uq_pipeline.trainer.args)
 
     model = uq_pipeline.model
     tokenizer = model.tokenizer
@@ -757,7 +828,6 @@ if __name__ == "__main__":
                 del x["row_id"]
 
         # Restructuring "chosen", "rejected" columns according to allenai/ultrafeedback_binarized_cleaned dataset and the way they are properly handled by the trl RewardTrainer
-
         for x in annotated_batch:
             x["chosen"] = [
                 {"content": x["prompt"], "role": "user"},
@@ -814,14 +884,36 @@ if __name__ == "__main__":
         if args.acquisition_function_type in ["random", "ultrafeedback"]:
             continue
 
+        # TODO: can be moved into a separate function
         batch_ready_to_train = [{
-            # "chosen": x["chosen"], "rejected": x["rejected"],
+            "chosen": x["chosen"], "rejected": x["rejected"],
             "input_ids_chosen": x["input_ids_chosen"], "attention_mask_chosen": x["attention_mask_chosen"],
             "input_ids_rejected": x["input_ids_rejected"], "attention_mask_rejected": x["attention_mask_rejected"],
         } for x in annotated_batch]
 
+        # filtering rows whose input_ids counter don't exceed max_length
+        # just like it is done in RewardTrainer of the trl library.
+        batch_ready_to_train_filtered = []
+        for train_sample in batch_ready_to_train:
+            chosen = tokenizer.apply_chat_template(
+                train_sample["chosen"], tokenize=False)
+            chosen_tokenized = tokenizer(chosen)
+            rejected = tokenizer.apply_chat_template(
+                train_sample["rejected"], tokenize=False)
+            rejected_tokenized = tokenizer(rejected)
+            if len(chosen_tokenized["input_ids"]) <= tokenizer.model_max_length and len(rejected_tokenized["input_ids"]) <= tokenizer.model_max_length:
+                batch_ready_to_train_filtered.append(train_sample)
+
+        dataset_no_chosen_rejected = [
+            {k: v for k, v in d.items() if k not in ("chosen", "rejected")}
+            for d in batch_ready_to_train_filtered
+        ]
+
         # Update replay buffer
-        replay_buffer.extend(batch_ready_to_train)
+        replay_buffer.extend(dataset_no_chosen_rejected)
+        if len(batch_ready_to_train) > len(dataset_no_chosen_rejected):
+            logger.info(
+                f"Filtered out {len(batch_ready_to_train) - len(dataset_no_chosen_rejected)} samples out of {len(batch_ready_to_train)}")
 
         del batch_loader
         torch.cuda.empty_cache()
@@ -836,8 +928,14 @@ if __name__ == "__main__":
                 allow_val_change=True,  # Allow changing the config values
             )
 
-        updated_lambda_regularizer = initial_lambda_regularizer * \
-            args.outer_loop_batch_size / ((i + 1) * args.outer_loop_batch_size)
+        if enn_config.get("regularization_weight_decay_type") == "linear":
+            updated_lambda_regularizer = initial_lambda_regularizer * \
+                args.outer_loop_batch_size / \
+                ((i + 1) * args.outer_loop_batch_size)
+        elif enn_config.get("regularization_weight_decay_type") == "exponential":
+            updated_lambda_regularizer = initial_lambda_regularizer * \
+                (enn_config.get("exponential_decay_base") ** i)
+
         uq_pipeline.trainer.args.regularization_towards_initial_weights = updated_lambda_regularizer
 
         logger.info(

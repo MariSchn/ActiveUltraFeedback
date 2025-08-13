@@ -9,7 +9,7 @@
 #SBATCH --ntasks-per-node=1         # number of MP tasks
 #SBATCH --gres=gpu:4                # number of GPUs per node
 #SBATCH --cpus-per-task=288         # number of cores per tasks
-#SBATCH --time=02:00:00             # maximum execution time (HH:MM:SS)
+#SBATCH --time=01:30:00             # maximum execution time (HH:MM:SS)
 #SBATCH --environment=activeuf_dev      # using compressed docker image as an environment
 
 export GPUS_PER_NODE=4
@@ -37,9 +37,9 @@ export LAUNCHER="accelerate launch \
 export ACCELERATE_DIR="${ACCELERATE_DIR:-/accelerate}"
 export PYTHON_FILE="${SCRATCH}/ActiveUltraFeedback/activeuf/reward_model/reward_trainer.py"
 export SCRIPT_ARGS=" \
-    --output_dir ${SCRATCH}/models/reward_models/active_dts_11 \
+    --output_dir ${SCRATCH}/models/reward_models/preference_new_dts_llama_4 \
     --reward_config ${SCRATCH}/ActiveUltraFeedback/activeuf/reward_model/reward_config.yaml \
-    --dataset_path ${SCRATCH}/datasets/preference_dts_llama_11 \
+    --dataset_path ${SCRATCH}/datasets/preference_new_dts_llama_4 \
     "
         
 # This step is necessary because accelerate launch does not handle multiline arguments properly

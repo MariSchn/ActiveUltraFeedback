@@ -34,8 +34,11 @@ def train_reward_model(config, args):
 
     if accelerator.is_main_process and training_config.get("report_to", "none") == "wandb":
         print("wandb_dir changed")
+        now = datetime.now()
         os.environ.setdefault(
-            "WANDB_DIR", f"/iopsstor/scratch/cscs/dmelikidze/ActiveUltraFeedback/wandb/job_{datetime.now().strftime('%Y%m%d-%H%M%S')}")
+            "WANDB_DIR", f"/iopsstor/scratch/cscs/dmelikidze/ActiveUltraFeedback/wandb/job_{now.strftime('%Y%m%d-%H%M%S') + f'-{now.microsecond // 1000:03d}'}"
+        )
+        print("wandb directory is: ", os.environ["WANDB_DIR"])
 
     base_model = general_config.get(
         "base_model", "meta-llama/Llama-3.2-1B-Instruct")
@@ -159,7 +162,7 @@ def train_reward_model(config, args):
         print(train_dataset[0]["rejected"])
 
     if args.debug:
-        train_dataset = train_dataset.select(range(100))
+        train_dataset = train_dataset.select(range(270))
 
     trainer = RewardTrainer(
         model=model,
