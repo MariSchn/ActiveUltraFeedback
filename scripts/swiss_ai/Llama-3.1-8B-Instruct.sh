@@ -10,7 +10,8 @@
 export HF_TOKEN=$(cat ~/.hf-token)
 dataset_path="/capstor/store/cscs/swissai/infra01/posttrain_data/04_decontaminated_newformat/olmo-2-0325-32b-preference-mix-promptsOnly"
 model_name="meta-llama/Llama-3.1-8B-Instruct"
-srun --environment=activeuf_dev python ~/projects/ActiveUltraFeedback/swiss_ai.py \
+
+srun --environment=activeuf_dev python swiss_ai.py \
   --dataset_path "${dataset_path}" \
   --dataset_split "train" \
   --model_name "${model_name}" \
