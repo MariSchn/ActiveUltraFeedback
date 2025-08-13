@@ -14,10 +14,10 @@ lora:
 training:
   train_batch_size: 8
   eval_batch_size: 8
-  epochs: 1
+  epochs: 2
   grad_acc_steps: 2
   logging_steps: 10
-  save_strategy: "steps"
+  save_strategy: "no"
   save_steps: 125
   remove_unused_columns: false
   max_length: 4096
@@ -28,7 +28,7 @@ training:
 
 optimization:
   optimizer: adamw_torch
-  learning_rate: 5e-6
+  learning_rate: 2e-5
 
 lr_scheduling:
   num_warmup_steps: 0
