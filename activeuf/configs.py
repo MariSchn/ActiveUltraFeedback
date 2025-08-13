@@ -111,6 +111,7 @@ PROMPT_SOURCE2PRINCIPLES = {
     "flan": ["helpfulness", "verbalized_calibration"],
     "false_qa": ["honesty", "truthfulness"],
     "evol_instruct": ["helpfulness"],
+    "olmo-2-0325-32b-preference-mix": ["helpfulness", "honesty", "truthfulness"],
 }
 
 # ====================================
