@@ -171,3 +171,10 @@ playground.*
 start*session.sh
 wandb/
 olmes/
+trainer_output/
+multinodeloop/
+playground.sh
+loop/
+resources/reward-bench/
+resources/rewarduq/
+RM-Training/

@@ -23,8 +23,13 @@ from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer, Pipeline
 from activeuf.configs import *
 from activeuf.schemas import *
 
-def get_timestamp() -> str:
-    return datetime.now().strftime("%Y%m%d-%H%M%S")
+
+def get_timestamp(more_detailed=False) -> str:
+    now = datetime.now()
+    if more_detailed:
+        return now.strftime("%Y%m%d-%H%M%S") + f"-{now.microsecond // 1000:03d}"
+    return now.strftime("%Y%m%d-%H%M%S")
+
 
 def get_logger(name: str, logs_path: str = "app.log") -> logging.Logger:
     logger = logging.getLogger(name)
@@ -38,6 +43,7 @@ def get_logger(name: str, logs_path: str = "app.log") -> logging.Logger:
         logger.addHandler(handler)
     return logger
 
+
 def setup(login_to_hf: bool = False, login_to_wandb: bool = False) -> None:
     # load env variables
     load_dotenv(PUBLIC_ENV_PATH)
@@ -49,7 +55,8 @@ def setup(login_to_hf: bool = False, login_to_wandb: bool = False) -> None:
     if login_to_wandb:
         load_dotenv(LOCAL_ENV_PATH)
         wandb.login(key=os.getenv("WANDB_TOKEN"))
-        
+
+
 def set_seed(seed: int) -> None:
     random.seed(seed)
     np.random.seed(seed)
@@ -58,6 +65,7 @@ def set_seed(seed: int) -> None:
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     os.environ["PYTHONHASHSEED"] = str(seed)
+
 
 def sample_principle(source: str) -> str:
     principle_pool = PROMPT_SOURCE2PRINCIPLES.get(source, [DEFAULT_PRINCIPLE])
@@ -69,8 +77,10 @@ def sample_principle(source: str) -> str:
 
     return principle
 
+
 def sample_system_prompt(principle: str) -> str:
     return random.choice(PRINCIPLE2SYSTEM_PROMPTS[principle])
+
 
 def load_model(
         model_name: str, 
@@ -113,12 +123,12 @@ def load_model(
     # load model and tokenizer
     if model_class == "transformers":
         model = AutoModelForCausalLM.from_pretrained(
-            model_name, 
+            model_name,
             device_map="auto",
             # TODO: Ideally set this to "auto" but it causes some models to throw errors during loading or inference, so just leave empty (float32) for now
-            # torch_dtype="auto", 
+            # torch_dtype="auto",
             # * Avoid sliding window attention warning (this warning only occurs for Qwen2.5 models. But the code on the model card also does not do this)
-            # attn_implementation="flash_attention_2",  
+            # attn_implementation="flash_attention_2",
             **model_kwargs
         )
         # padding_side should be "left" for text generation (https://huggingface.co/docs/transformers/llm_tutorial)
@@ -126,7 +136,7 @@ def load_model(
             model_name,
             padding_side="left"
         )
-    elif model_class == "vllm":      
+    elif model_class == "vllm":
         # Search over tensor_parallel_size, as number of attention heads needs to be divisible by it
         tps = tensor_parallel_size
         model = None
@@ -214,8 +224,8 @@ def load_model(
             raise ValueError(f"Failed to load model {model_name} with any tensor_parallel_size.")
     elif model_class == "pipeline":
         model = pipeline(
-            "text-generation", 
-            model=model_name, 
+            "text-generation",
+            model=model_name,
             torch_dtype="auto",
             device_map="auto",
             **model_kwargs
@@ -230,10 +240,10 @@ def load_model(
             raise ValueError("Tokenizer does not have a chat template. Please use a model that supports chat templates.")
         if not 'mistral' in model_name.lower() and tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
-            
+
             if isinstance(model, PreTrainedModel):
                 model.config.pad_token_id = tokenizer.pad_token_id
-    
+
     return model, tokenizer
 
 async def vllm_server_inference(url: str, all_messages: list[list[dict[str, str]]], sampling_params: vllm.SamplingParams, max_api_retry: int, generate_kwargs: dict) -> list[str]:
@@ -351,11 +361,13 @@ def get_response_texts(
     
     elif isinstance(model, PreTrainedModel):
         if tokenizer is None:
-            raise ValueError("Tokenizer must be provided if model is an AutoModelForCausalLM (PreTrainedModel).")
+            raise ValueError(
+                "Tokenizer must be provided if model is an AutoModelForCausalLM (PreTrainedModel).")
 
         # ensure padding_side "left" (https://huggingface.co/docs/transformers/llm_tutorial)
         if tokenizer.padding_side != "left":
-            raise ValueError("Tokenizer padding side must be 'left' for text generation.")
+            raise ValueError(
+                "Tokenizer padding side must be 'left' for text generation.")
 
         batches = [all_messages[i:i + batch_size] for i in range(0, len(all_messages), batch_size)]
         response_texts = []

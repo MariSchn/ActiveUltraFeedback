@@ -1,7 +1,9 @@
 from abc import ABC, abstractmethod
+import torch
 import random
 
 import regex as re
+
 
 def init_oracle(oracle_name: str):
     """
@@ -20,11 +22,13 @@ def init_oracle(oracle_name: str):
     else:
         raise ValueError(f"Unknown oracle class: {oracle_name}")
 
+
 class BaseOracle(ABC):
     """
     This is the base class for all oracles. It defines the interface that all oracles must implement.
     The task of oracles is: Given 2 completions for the same prompt, select which one is the chosen and which one is the rejected one.
     """
+
     def __init__(self):
         pass
 
@@ -55,18 +59,20 @@ class BaseOracle(ABC):
         """
         pass
 
+
 class RandomOracle(BaseOracle):
     """
     This oracle randomly selects among the two passed completions which one is the chosen and which one is the rejected one.
     It is mainly used for debugging purposes and as a baseline.
     """
+
     def __init__(self):
         super().__init__()
 
     def __call__(self, prompts_with_completions: list[dict[str, str]]) -> list[dict[str, str]]:
         """
         Rnadomly selects among the two passed completions which one is the chosen and which one is the rejected one.
-        
+
         Args:
             prompts_with_completions (list[dict[str, str]]): A list of dictionaries, each containing a prompt and 2 completions.
                 Each dictionary should have the following keys:
@@ -95,6 +101,8 @@ class RandomOracle(BaseOracle):
             out.append({
                 "prompt": x["prompt"],
                 "prompt_id": x["prompt_id"],
+                "row_id": x["row_id"],
+                "batch_id": x["batch_id"],
                 "chosen": x[f"response_text_{chosen_int}"],
                 "chosen_model": x[f"model_{chosen_int}"],
                 "chosen_score": x[f"overall_score_{chosen_int}"],
@@ -103,17 +111,33 @@ class RandomOracle(BaseOracle):
                 "rejected_score": x[f"overall_score_{rejected_int}"],
             })
         return out
-    
+
+
 class UltraFeedbackOracle(BaseOracle):
     """
     This oracle implements the annotation approach proposed in the paper https://arxiv.org/abs/2310.01377.
     It uses a LLM as a judge to annotate the completions for multiple aspects.
     The completion with the highest overall score is selected as the chosen one, and the other one is selected as the rejected one.
     """
+
     def __init__(self):
         super().__init__()
 
-    def parse_score_str(self, score_str: str) -> int:
+    def parse_score_str(self, score_str: str) -> float:
+        if isinstance(score_str, str):
+            return float(score_str)
+        elif isinstance(score_str, int):
+            return float(score_str)
+        elif isinstance(score_str, float):
+            return float(score_str)
+        elif isinstance(score_str, torch.Tensor):
+            return float(score_str.item())
+        else:
+            raise ValueError(
+                f"Unknown type {type(score_str)} for score_str: {score_str}. Expected str, int, float or torch.Tensor."
+            )
+
+    def parse_score_str_old(self, score_str: str) -> int:
         try:
             match = re.search(r"(\d+)", score_str)
             score = int(match.group())
@@ -126,7 +150,7 @@ class UltraFeedbackOracle(BaseOracle):
     def __call__(self, prompts_with_completions: list[dict[str, str]]) -> list[dict[str, str]]:
         """
         Selects among the two passed completions which one is the chosen and which one is the rejected one.
-        
+
         Args:
             prompts_with_completions (list[dict[str, str]]): A list of dictionaries, each containing a prompt and 2 completions.
                 Each dictionary should have the following keys:
@@ -162,6 +186,8 @@ class UltraFeedbackOracle(BaseOracle):
             out.append({
                 "prompt": x["prompt"],
                 "prompt_id": x["prompt_id"],
+                "row_id": x["row_id"],
+                "batch_id": x["batch_id"],
                 "chosen": x[f"response_text_{chosen_int}"],
                 "chosen_model": x[f"model_{chosen_int}"],
                 "chosen_score": x[f"score_{chosen_int}"],
