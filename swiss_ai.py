@@ -1,10 +1,11 @@
 import argparse
 import json
 import os.path as path
+import os
 
 import torch
 import vllm
-from datasets import load_from_disk, load_dataset
+from datasets import load_from_disk, load_dataset, DatasetDict
 from transformers import pipeline
 
 from activeuf.schemas import Completion, PromptWithCompletions
@@ -28,6 +29,7 @@ def parse_args() -> argparse.Namespace:
     # Parse arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset_path", type=str, required=True, help="The path to the prompts dataset")
+    parser.add_argument("--dataset_split", type=str, default=None, help="Split of the dataset to use")
     parser.add_argument("--model_name", type=str, required=True, help="The Huggingface path or API of the model to use for completions (e.g. HuggingFaceTB/SmolLM2-135M-Instruct, gpt-4)")
     
     parser.add_argument("--model_class", type=str, help="How the HuggingFace model for completions should be loaded", choices=["transformers", "pipeline", "vllm", "vllm_server"], default=DEFAULT_MODEL_CLASS)
@@ -71,6 +73,9 @@ if __name__ == "__main__":
     logger.info(f"Loading {args.dataset_path}")
     if path.exists(args.dataset_path):
         dataset = load_from_disk(args.dataset_path)
+        if isinstance(dataset, DatasetDict):
+            assert args.dataset_split is not None, "Define dataset_split if the input is a DatasetDict"
+            dataset = dataset[args.dataset_split]
     else:
         dataset = load_dataset(args.dataset_path, split="train")
     if args.debug:
@@ -88,8 +93,9 @@ if __name__ == "__main__":
 
     # Construct messages for samples needing completions
     logger.info("Constructing messages for generation model")
+    source_column_name = "source" if "source" in dataset[0] else "dataset_source"
     sampled_principles = [
-        sample_principle(dataset[i]["source"]) for i in range(len(dataset))
+        sample_principle(dataset[i][source_column_name]) for i in range(len(dataset))
     ]
     sampled_system_prompts = [
         sample_system_prompt(principle) for principle in sampled_principles
@@ -100,7 +106,7 @@ if __name__ == "__main__":
         all_messages = [
             [
                 Message(role="system", content=system_prompt).model_dump(),
-                Message(role="user", content=dataset[i]["chosen"][0]["content"]).model_dump(),
+                Message(role="user", content=dataset[i]["initial_prompt"]["content"]).model_dump(),
             ]
             for system_prompt, i in zip(sampled_system_prompts, range(len(dataset)))
         ]
@@ -109,7 +115,7 @@ if __name__ == "__main__":
         all_messages = [
             [
                 # Message(role="system", content=system_prompt).model_dump(),
-                Message(role="user", content=dataset[i]["chosen"][0]["content"]).model_dump(),
+                Message(role="user", content=dataset[i]["initial_prompt"]["content"]).model_dump(),
             ]
             for system_prompt, i in zip(sampled_system_prompts, range(len(dataset)))
         ]
@@ -152,7 +158,11 @@ if __name__ == "__main__":
 
     # Export dataset
     logger.info(f"Exporting dataset to {args.output_path}")
-    dataset.save_to_disk(args.output_path)
+    # dataset.save_to_disk(args.output_path)
+    parent_dir = os.path.dirname(args.output_path)
+    if parent_dir and not os.path.exists(parent_dir):
+        os.makedirs(parent_dir, exist_ok=True)
+    dataset.to_json(args.output_path, orient="records", lines=True, force_ascii=False)
 
     # Export args
     args_path = path.join(args.output_path, "args.json")

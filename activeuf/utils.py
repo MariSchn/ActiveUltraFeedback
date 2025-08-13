@@ -61,6 +61,7 @@ def set_seed(seed: int) -> None:
 
 def sample_principle(source: str) -> str:
     principle_pool = PROMPT_SOURCE2PRINCIPLES.get(source, [DEFAULT_PRINCIPLE])
+    print("Using principle pool: ", principle_pool)
     principle = random.choice(principle_pool)
 
     if principle == "honesty":
