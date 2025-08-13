@@ -7,4 +7,11 @@
 #SBATCH --output=./logs/swiss_ai/Llama-3.1-8B-Instruct_%j.out
 #SBATCH --exclude=nid006438,nid006439,nid006440,nid006441,nid006442,nid006443,nid006444,nid006445,nid006446,nid006447,nid006448,nid006449,nid006450,nid006451,nid006461,nid006462,nid006868
 
-srun --environment=activeuf_dev python swiss_ai.py --dataset_path allenai/olmo-2-0325-32b-preference-mix --model_name meta-llama/Llama-3.1-8B-Instruct --output_path /iopsstor/scratch/cscs/smarian/datasets/swiss_ai/raw/Llama-3.1-8B-Instruct
+export HF_TOKEN=$(cat ~/.hf-token)
+dataset_path="/capstor/store/cscs/swissai/infra01/posttrain_data/04_decontaminated_newformat/olmo-2-0325-32b-preference-mix-promptsOnly"
+model_name="meta-llama/Llama-3.1-8B-Instruct"
+srun --environment=activeuf_dev python ~/projects/ActiveUltraFeedback/swiss_ai.py \
+  --dataset_path "${dataset_path}" \
+  --dataset_split "train" \
+  --model_name "${model_name}" \
+  --output_path "${dataset_path}/completions/${model_name#*/}.jsonl"
