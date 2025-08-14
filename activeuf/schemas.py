@@ -21,8 +21,8 @@ class Message(BaseModel):
 
 class Completion(BaseModel):
     model: str
-    principle: str
-    system_prompt: str
+    principle: Optional[str] = None
+    system_prompt: Optional[str] = None
     messages: list[Message]
     response_text: str
 
