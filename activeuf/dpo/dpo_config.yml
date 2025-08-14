@@ -21,7 +21,7 @@ training:
   save_strategy: "no"
   save_steps: 500
   remove_unused_columns: false
-  max_length: 1024
+  max_length: 4096
   report_to: wandb
   run_name: "DPO Active"
   max_steps: -1
