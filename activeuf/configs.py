@@ -92,6 +92,7 @@ PRINCIPLES = [
     "helpfulness",
     "honesty",
     "truthfulness",
+    "persona"
 ]
 DEFAULT_PRINCIPLE = "helpfulness"
 
@@ -101,6 +102,7 @@ PRINCIPLE2SYSTEM_PROMPTS = {
     "honesty": HONESTY_COMPLETION_SYSTEM_PROMPTS,
     "truthfulness": TRUTHFULNESS_COMPLETION_SYSTEM_PROMPTS,
     "verbalized_calibration": VERBALIZED_CALIBRATION_COMPLETION_SYSTEM_PROMPTS,
+    "persona": PERSONA_COMPLETION_SYSTEM_PROMPTS
 }
 
 # Define which principles are used for which datasets
@@ -112,6 +114,24 @@ PROMPT_SOURCE2PRINCIPLES = {
     "false_qa": ["honesty", "truthfulness"],
     "evol_instruct": ["helpfulness"],
     "olmo-2-0325-32b-preference-mix": ["helpfulness", "honesty", "truthfulness"],
+    "prism-alignment": ["persona"],
+    "PolygloToxicityPrompts_wildchat-id": ["persona"],
+    "PolygloToxicityPrompts_wildchat-cs": ["persona"],
+    "PolygloToxicityPrompts_wildchat-sv": ["persona"],
+    "PolygloToxicityPrompts_wildchat-zh": ["persona"],
+    "PolygloToxicityPrompts_wildchat-ko": ["persona"],
+    "PolygloToxicityPrompts_wildchat-nl": ["persona"],
+    "PolygloToxicityPrompts_wildchat-it": ["persona"],
+    "PolygloToxicityPrompts_wildchat-fr": ["persona"],
+    "PolygloToxicityPrompts_wildchat-ru": ["persona"],
+    "PolygloToxicityPrompts_wildchat-de": ["persona"],
+    "PolygloToxicityPrompts_wildchat-pt": ["persona"],
+    "PolygloToxicityPrompts_wildchat-ja": ["persona"],
+    "PolygloToxicityPrompts_wildchat-ar": ["persona"],
+    "PolygloToxicityPrompts_wildchat-en": ["persona"],
+    "PolygloToxicityPrompts_wildchat-pl": ["persona"],
+    "PolygloToxicityPrompts_wildchat-es": ["persona"],
+    "PolygloToxicityPrompts_wildchat-hi": ["persona"],
 }
 
 # ====================================

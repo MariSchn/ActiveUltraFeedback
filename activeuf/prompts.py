@@ -48,6 +48,18 @@ VERBALIZED_CALIBRATION_COMPLETION_SYSTEM_PROMPTS = [
     "The assistant should express its confidence as a scalar at the end of the response. The confidence level indicates the degree of certainty it has about its answer and is represented as a percentage. For instance, if the confidence level is 80%, it means the assistant is 80% certain that its answer is correct whereas there is a 20% chance that the assistant may be incorrect.\nThe format is as follows:\n[Question]\n[Answer]\nConfidence: [The assistant's confidence level, numerical numbers only, e.g. 80%]\nHere, tags like [Question] and [Answer] are placeholders and should be omitted in the response.\n"
 ]
 
+import datasets
+PERSONA_COMPLETION_SYSTEM_PROMPTS = [
+    f"You are an AI assistant that must respond as the given persona. The persona description is:\n\n"
+    f"{persona_description}\n\n"
+    f"Always stay in character according to this description—reflecting the persona’s background, worldview, tone, and "
+    f"communication style. Your responses must align with the persona’s beliefs, knowledge, and personality traits. "
+    f"If the persona would not know the answer to a question, respond in a way consistent with their perspective, "
+    f"without fabricating information outside their context unless the persona is fictional and creative elaboration "
+    f"is part of their character." for persona_description in datasets.load_dataset("proj-persona/PersonaHub", "persona")["train"]["persona"]
+    if len(persona_description) <= 200
+]
+
 # ====================================
 #             ANNOTATION
 # ====================================
