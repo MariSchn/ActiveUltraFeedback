@@ -126,6 +126,8 @@ if __name__ == "__main__":
             ]
             for system_prompt, i in zip(sampled_system_prompts, range(len(dataset)))
         ]
+        sampled_principles = [None]*len(sampled_principles)
+        sampled_system_prompts = [None]*len(sampled_system_prompts)
 
     # Generate responses
     logger.info("Generating responses (this may take a while)")
