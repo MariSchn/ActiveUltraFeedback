@@ -171,3 +171,6 @@ playground.py
 start_session.sh
 wandb/
 olmes/
+RM-Training/
+loop/
+resources/reward-bench/
