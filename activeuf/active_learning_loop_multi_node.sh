@@ -11,11 +11,11 @@ sbatch <<EOF
 #SBATCH -A a-infra01-1
 #SBATCH --output=${SCRATCH}/ActiveUltraFeedback/loop/${annotator_model}/${acquisition_function}_new/O-%x.%j
 #SBATCH --error=${SCRATCH}/ActiveUltraFeedback/loop/${annotator_model}/${acquisition_function}_new/E-%x.%j
-#SBATCH --nodes=8                   # number of nodes
+#SBATCH --nodes=16                   # number of nodes
 #SBATCH --ntasks-per-node=1         # number of MP tasks
 #SBATCH --gres=gpu:4                # number of GPUs per node
 #SBATCH --cpus-per-task=288         # number of cores per tasks
-#SBATCH --time=07:00:00             # maximum execution time (HH:MM:SS)
+#SBATCH --time=12:00:00             # maximum execution time (HH:MM:SS)
 #SBATCH --environment=activeuf_dev      # using compressed docker image as an environment
 
 export GPUS_PER_NODE=4
@@ -45,11 +45,14 @@ export ACCELERATE_DIR="\${ACCELERATE_DIR:-/accelerate}"
 export PYTHON_FILE="activeuf.active_learning_loop"
 export SCRIPT_ARGS=" \
    --completions_dataset_path \${SCRATCH}/datasets/combined_annotations_${annotator_model}/ \
-   --output_path=\$SCRATCH/datasets/preference_new_${acquisition_function}_${annotator_model}_8/ \
+   --output_path=\$SCRATCH/datasets/preference_new_new_${acquisition_function}_${annotator_model}_3/ \
     --acquisition_function_type=${acquisition_function} \
     --regularization_weight_decay_type=linear \
     --exponential_decay_base=0.95 \
-    --regularization_towards_initial_weights=100 \
+    --regularization_towards_initial_weights=5 \
+    --outer_loop_batch_size=64 \
+    --initialization_xavier_gain=2.0 \
+    --rm_training_batch_size=64 \
    "
         
 # This step is necessary because accelerate launch does not handle multiline arguments properly

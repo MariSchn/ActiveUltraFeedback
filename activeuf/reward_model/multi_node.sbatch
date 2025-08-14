@@ -37,9 +37,9 @@ export LAUNCHER="accelerate launch \
 export ACCELERATE_DIR="${ACCELERATE_DIR:-/accelerate}"
 export PYTHON_FILE="${SCRATCH}/ActiveUltraFeedback/activeuf/reward_model/reward_trainer.py"
 export SCRIPT_ARGS=" \
-    --output_dir ${SCRATCH}/models/reward_models/preference_new_dts_llama_4_new \
+    --output_dir ${SCRATCH}/models/reward_models/preference_new_new_dts_llama_1 \
     --reward_config ${SCRATCH}/ActiveUltraFeedback/activeuf/reward_model/reward_config.yaml \
-    --dataset_path ${SCRATCH}/datasets/preference_new_dts_llama_4 \
+    --dataset_path ${SCRATCH}/datasets/preference_new_new_dts_llama_1 \
     "
         
 # This step is necessary because accelerate launch does not handle multiline arguments properly

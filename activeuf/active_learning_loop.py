@@ -268,7 +268,6 @@ def parse_postprocess(args: argparse.Namespace) -> argparse.Namespace:
         args.enn_config["max_training_steps"] = args.max_training_steps
     if args.initialization_xavier_gain:
         args.enn_config["initialization_xavier_gain"] = args.initialization_xavier_gain
-        print("WE WERE HERE!")
     if args.base_model_name_or_path:
         args.enn_config["base_model_name_or_path"] = args.base_model_name_or_path
 

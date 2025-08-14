@@ -6,10 +6,10 @@ loop:
   output_path: null
   logs_path: null
   args_path: null
-  outer_loop_batch_size: 64
+  outer_loop_batch_size: 32
   rm_training_batch_size: 32
   max_length: 4096
-  seed: 4
+  seed: 54255
   replay_buffer_size: 3200
   report_to: wandb
   wandb_project: null
@@ -32,7 +32,7 @@ enn:
   lr_scheduler_type: "constant"
   learning_rate: 5e-6
   regularization_towards_initial_weights: 5
-  regularization_weight_decay_type: "exponential"
+  regularization_weight_decay_type: "linear"
   exponential_decay_base: 0.99
   max_training_steps: 10
-  initialization_xavier_gain: 1.0
+  initialization_xavier_gain: 2.0
