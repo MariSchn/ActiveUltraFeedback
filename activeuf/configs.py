@@ -1,4 +1,4 @@
-# from activeuf.prompts import *
+from activeuf.prompts import *
 
 PUBLIC_ENV_PATH = ".env"
 LOCAL_ENV_PATH = ".env.local"
@@ -82,7 +82,7 @@ COMPLETION_MODEL_NAMES = {
 }
 
 # ! When changing this from 4, the prompt template needs to be changed as well
-NUM_COMPLETION_MODELS = len(COMPLETION_MODEL_PATHS)
+NUM_COMPLETION_MODELS = len(COMPLETION_MODEL_NAMES)
 
 # General parameters for the completions generation step
 COMPLETION_MAX_TOKENS = 4096
@@ -98,12 +98,12 @@ PRINCIPLES = [
 DEFAULT_PRINCIPLE = "helpfulness"
 
 # System prompts to be used when generating completions
-# PRINCIPLE2SYSTEM_PROMPTS = {
-#     "helpfulness": HELPFULNESS_COMPLETION_SYSTEM_PROMPTS,
-#     "honesty": HONESTY_COMPLETION_SYSTEM_PROMPTS,
-#     "truthfulness": TRUTHFULNESS_COMPLETION_SYSTEM_PROMPTS,
-#     "verbalized_calibration": VERBALIZED_CALIBRATION_COMPLETION_SYSTEM_PROMPTS,
-# }
+PRINCIPLE2SYSTEM_PROMPTS = {
+    "helpfulness": HELPFULNESS_COMPLETION_SYSTEM_PROMPTS,
+    "honesty": HONESTY_COMPLETION_SYSTEM_PROMPTS,
+    "truthfulness": TRUTHFULNESS_COMPLETION_SYSTEM_PROMPTS,
+    "verbalized_calibration": VERBALIZED_CALIBRATION_COMPLETION_SYSTEM_PROMPTS,
+}
 
 # Define which principles are used for which datasets
 PROMPT_SOURCE2PRINCIPLES = {

@@ -28,7 +28,7 @@ This script is used to annotate the completions generated from the generate_comp
 It uses a LLM as a judge to rate the completions based on the aspects defined in the configs.py file and provides critique/feedback for each completion.
 
 Example run command:
-    python -m activeuf.get_raw_annotations_v4c \
+    python -m activeuf.oracle.get_raw_annotations \
         --dataset_path /iopsstor/scratch/cscs/dmelikidze/datasets/completions_combined \
         --model_name="meta-llama/Llama-3.3-70B-Instruct" \
         --max_tokens 24000 \
@@ -39,18 +39,18 @@ Example run command:
         --model_to_annotate "google/gemma-3-27b-it" \
         --batch_size_to_annotate 1000
 
-    python -m activeuf.get_raw_annotations_v4c \
+    python -m activeuf.oracle.get_raw_annotations \
         --dataset_path /iopsstor/scratch/cscs/dmelikidze/datasets/completions_combined \
-        --model_name="Qwen/Qwen3-32B" \
+        --model_name="meta-llama/Llama-3.2-1B-Instruct" \
         --max_tokens 24000 \
-        --output_path /iopsstor/scratch/cscs/dmelikidze/datasets/ultrafeedback_annotated_combined_new_qwen10/ \
+        --output_path /iopsstor/scratch/cscs/dmelikidze/datasets/heeeeeeeeeeeeeey/ \
         --model_class vllm \
         --temperature 0.0 \
         --top_p 0.1 \
         --model_to_annotate "google/gemma-3-27b-it" \
         --batch_size_to_annotate 200
 
-    python -m activeuf.get_raw_annotations_v4b2 \
+    python -m activeuf.oracle.get_raw_annotations_test \
         --dataset_path allenai/ultrafeedback_binarized_cleaned \
         --model_name="meta-llama/Llama-3.3-70B-Instruct" \
         --max_tokens 24000 \
@@ -199,7 +199,8 @@ if __name__ == "__main__":
     logger.info(f"{len(dataset)}")
 
     logger.info(f"Using {args.model_name} for annotation")
-    model = LLM(model=args.model_name, tensor_parallel_size=4)
+    model = LLM(model=args.model_name,
+                tensor_parallel_size=torch.cuda.device_count())
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
 
     sampling_params = SamplingParams(
@@ -253,11 +254,8 @@ if __name__ == "__main__":
                             "model": args.model_to_annotate,
                             "aspect": aspect,
                         })
-
-        all_raw_outputs = get_response_texts(
-            model, tokenizer, batch_messages, sampling_params, use_tqdm=True, chat_template_kwargs={"enable_thinking": False})
-
-        all_raw_objects = [output["raw"] for output in all_raw_outputs]
+        _, all_raw_objects = get_response_texts(
+            model, tokenizer, batch_messages, sampling_params)
 
         all_probabilities = calculate_probabilities(
             all_raw_objects, tokenizer, target_words=["1", "2", "3", "4", "5"])
