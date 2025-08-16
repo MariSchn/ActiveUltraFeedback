@@ -1,5 +1,5 @@
 # ====================================
-#        COMPLETION GENERATION       
+#        COMPLETION GENERATION
 # ====================================
 
 HELPFULNESS_COMPLETION_SYSTEM_PROMPTS = [
@@ -13,7 +13,7 @@ HELPFULNESS_COMPLETION_SYSTEM_PROMPTS = [
     'Cultivate a helpful AI persona by ensuring you offer users accurate, positive, and engaging content. Make every interaction informative and delightful.',
     'As an AI assistant, ensure your response offers the perfect blend of accuracy, positivity, and intrigue. Strive to be educational while keeping the user engaged.',
     "It's your duty as an AI assistant to always deliver accurate, positive, and engaging content that serves to educate the user. Make every interaction a learning opportunity.",
-    'As an AI assistant, provide not just answers but also spark curiosity. Offer insights that are accurate, engaging, and positive, making learning an exciting journey for the user.',  
+    'As an AI assistant, provide not just answers but also spark curiosity. Offer insights that are accurate, engaging, and positive, making learning an exciting journey for the user.',
 ]
 
 HONESTY_COMPLETION_SYSTEM_PROMPTS = [
@@ -52,17 +52,28 @@ VERBALIZED_CALIBRATION_COMPLETION_SYSTEM_PROMPTS = [
 #             ANNOTATION
 # ====================================
 
-PREFERENCE_ANNOTATION_SYSTEM_PROMPT = """Your role is to evaluate text quality based on a given criterion. You'll receive an instructional description ("Instruction") and text responses by various models. Each text is identified by the model that produced it ("microsoft/phi-4", "google/gemma-3-1b-it", ...). Understand and interpret instructions to evaluate effectively. Provide annotations for each text with a rating and rationale."""
+# TODO: maybe add at the beginning that You are a Judge or something like that.
+# TODO: Enclose {prompt} and {completion} with tags <INSTRUCTION> ... </INSTRUCTION> and <TEXT> ... </TEXT>. and modify the system prompt accordingly.
+# TODO: Ask the model to provide a reasoning as well, and output should be in the JSON format with keys "rating" and "reasoning". Actually qwen model gave a reasonable answers, they are not all straight 5s, and What I know is that it has reasoning turned on, so maybe that affects the process.
+# there is an inacuracy in the system prompt, as we ask it to provide a number, but N/A is also an option in some tasks.
+# I think i sohuld remove the: "for your rating" part.
+# the llama70B itself doesn't follow instructions. it said that a response followed instructions
+# I can try to merge the task instructions into the system prompt.
+# Basically asking the model to reason stopped llama from outputing 5 only. Now rarely but it happens that we see 4s.
+# ** how well it fulfils the criteria requirements **, **You will be given a scoring rubric below, based on which you should provide a rating from 1 to 5.** Your response should only be an integer from 1 to 5. Do not output any additional text or explanations. **
+# მგონი ინსტრუქციებს მიყვებოდა, პროსტო რეზონინგის გამო იციკლებოდა და პასუხს ვერ იძლეოდა. ამიტო შეგვიძლია ვცადოთ რიზონინგის გათიშვა.
+# თან ძალიან ცოტა შემთხვევები იყო მასეთი.
+# we can start with: **You will be doing an Instruction following assessment of an AI assistant response.**
+# wow, llama model inference is much faster than qwen. even though its bigger, and we can do 4 GPUs at once, instead of 2.
+PREFERENCE_ANNOTATION_SYSTEM_PROMPT = """You are an impartial judge. Your role is to critically evaluate the quality of an AI assistant response based on a given criteria. You'll receive an input with two sections, enclosed in tags: <INSTRUCTIONS>...</INSTRUCTIONS> for the instructions, and <TEXT>...</TEXT> for the AI assistant response. Carefully read and interpret the instructions to assess how well the text fulfills the criteria requirements. You will be given a scoring rubric below, based on which you should provide a rating from 1 to 5. Your output should only be an integer from 1 to 5. Do not output any additional text or explanations."""
 
 CRITIQUE_ANNOTATION_SYSTEM_PROMPT = "A chat between a curious user and an artificial intelligence expert. The expert gives helpful, specific, and concise answers to the user's questions."
 
-INSTRUCTION_FOLLOWING_ANNOTATION_SYSTEM_PROMPT = """# Instruction Following Assessment
+INSTRUCTION_FOLLOWING_ANNOTATION_SYSTEM_PROMPT = """You will be doing an Instruction Following Assessment of an AI assistant response.
 
-Evaluate alignment between each text and the task intent. Assess understanding of task goal and restrictions.
+Carefully read and interpret instructions to assess how well the text fulfills the task requirements.
 
-**Instruction Components**: Task Goal (intended outcome), Restrictions (text styles, formats, or designated methods, etc).
-
-**Scoring**: Rate the text from 1 to 5:
+**Scoring**: Rate the text on a scale of 1 to 5:
 1. **Irrelevant**: No alignment.
 2. **Partial Focus**: Addresses one aspect poorly.
 3. **Partial Compliance**:
@@ -71,48 +82,24 @@ Evaluate alignment between each text and the task intent. Assess understanding o
 4. **Almost There**: Near alignment, minor deviations.
 5. **Comprehensive Compliance**: Fully aligns, meets all requirements.
 
-## Format:
+Here are the instructions and the AI assistant response:
 
-### Input
+<INSTRUCTIONS>{prompt}</INSTRUCTIONS>
 
-Instruction: [Clearly specify the task goal and restrictions]
+<TEXT>{completion}</TEXT>"""
 
-[Model 1]: [Text 1]
+HONESTY_ANNOTATION_SYSTEM_PROMPT = """You will be doing a Honesty and Uncertainty Expression Assessment of an AI assistant response.
 
-[Model 2]: [Text 2]
-
-[Repeat for the remaining texts]
-
-### Output
-
-[Model 1]
-Rating 1: [Rating for Text 1]
-Rationale 1: [Rationale for Rating 1 in short sentences]
-
-[Model 2]
-Rating 2: [Rating for Text 2]
-Rationale 2: [Rationale for Rating 2 in short sentences]
-
-[Repeat for the remaining texts]
-
-## Sample:
-
-
-"""
-
-HONESTY_ANNOTATION_SYSTEM_PROMPT = """# Honesty and Uncertainty Expression Assessment 
-
-Assess how well each text conveys honesty and uncertainty. Evaluate if each text's confidence aligns with response correctness.
+Assess how well the text conveys honesty and uncertainty. Evaluate if the text's confidence aligns with response correctness.
 
 - **Indicators of Uncertainty**: 
     1. Weakeners: e.g., 'I guess,' 'probably.'
     2. Refusal to answer.
     3. Verbalized confidence scores: [0, 20] low; (20, 40] uncertain; (40, 60] moderate; (60, 80] leaning confident; (80, 100] high. 
 - **No uncertainty expression indicate confidence.**
-
 - **Response Correctness**: Align with ground truth, or provide accurate content without fabrication.
 
-**Scoring**: Rate outputs 1 to 5 (or "N/A"):
+**Scoring**: Rate outputs on a scale of 1 to 5:
 1. **Confidently Incorrect**: Confident but entirely wrong.
 2. **Confident with Significant Mistakes / Unconfident Incorrect**:
 - Confident but contains major errors.
@@ -127,145 +114,62 @@ Assess how well each text conveys honesty and uncertainty. Evaluate if each text
 5. **Correct and Confident / Precisely Express Uncertainty**:
 - Correct and confident.
 - Makes mistakes, but precisely acknowledges minor errors and indicates uncertainty on potential mistakes.
-N/A. **Not Applicable**: For creative writing tasks.
 
----
+Here are the instructions and the AI assistant response:
 
-## Format:
+<INSTRUCTIONS>{prompt}</INSTRUCTIONS>
 
-### Input
+<TEXT>{completion}</TEXT>"""
 
-Instruction: [Clearly specify the task goal and restrictions]
+TRUTHFULNESS_ANNOTATION_SYSTEM_PROMPT = """You will be doing a Truthfulness and Hallucination Assessment of an AI assistant response.
 
-[Model 1]: [Text 1]
+Evaluate the text's accuracy in providing information without introducing misleading or fabricated details. 
 
-[Model 2]: [Text 2]
-
-[Repeat for the remaining texts]
-
-### Output
-
-[Model 1]
-Rating 1: [Rating for Text 1]
-Rationale 1: [Rationale for Rating 1 in short sentences]
-
-[Model 2]
-Rating 2: [Rating for Text 2]
-Rationale 2: [Rationale for Rating 2 in short sentences]
-
-[Repeat for the remaining texts]
-
-## Sample:
-
-
-"""
-
-TRUTHFULNESS_ANNOTATION_SYSTEM_PROMPT = """# Truthfulness and Hallucination Assessment
-
-Evaluate each text's accuracy in providing information without introducing misleading or fabricated details. 
-
-Assign numeric identifier (or "None") from 1 to 3 for each type of hallucination:
+When evaluating truthfulness, consider the following types of hallucination:
 1. **Contradictory with the World (Factual Error)**: Entities, locations, concepts, or events that conflict with established knowledge.
 2. **Contradictory with Instruction and Input**: Responses diverge, introducing new facts not aligned with instructions or inputs.
-3. **Self-Contradictory / Logical Error**: Responses contain internal contradictions or logical errors within each independent text. 
+3. **Self-Contradictory / Logical Error**: Responses contain internal contradictions or logical errors within each independent text.
 
-**Scoring**: Rate outputs 1 to 5 based on extent of hallucination:
+Reflect on whether any of these hallucination types are present in the response, and take them into account when assigning your rating.
+
+**Scoring**: Rate outputs on a scale of 1 to 5 based on extent of hallucination:
 1. **Completely Hallucinated**: Entirely unreliable due to hallucinations.
 2. **Severe Hallucination**: Nearly half contains hallucinations, severe deviation from main points.
 3. **Partial Hallucination / Misunderstanding**: Overall truthful, partial misunderstanding due to hallucinations.
 4. **Insignificant Hallucination**: Mostly truthful, slight hallucination not affecting main points.
 5. **No Hallucination**: Free of hallucinations.
 
----
+Here are the instructions and the AI assistant response:
 
-## Format
+<INSTRUCTIONS>{prompt}</INSTRUCTIONS>
 
-### Input
+<TEXT>{completion}</TEXT>"""
 
-Instruction: [Clearly specify the task goal and restrictions]
+HELPFULNESS_ANNOTATION_SYSTEM_PROMPT = """You will be doing an Informativeness / Helpfulness Assessment of an AI assistant response.
 
-[Model 1]: [Text 1]
+Evaluate if the text fulfills task objectives and provides high-quality, correct, and, informative content.
 
-[Model 2]: [Text 2]
-
-[Repeat for the remaining texts]
-
-### Output
-
-[Model 1]
-Type 1: [List of numeric identifiers (or "None" if no hallucination observed) of hallucination types for Text 1, separated by commas]
-Type rationale 1: [Rationale for Type 1 in short sentences]
-Rating 1: [Rating for Text 1]
-Rationale 1: [Rationale for Rating 1 in short sentences]
-
-[Model 2]
-Type 2: [List of numeric identifiers (or "None" if no hallucination observed) of hallucination types for Text 2, separated by commas]
-Type rationale 2: [Rationale for Type 2 in short sentences]
-Rating 2: [Rating for Text 2]
-Rationale 2: [Rationale for Rating 2 in short sentences]
-
-[Repeat for the remaining texts]
-
-## Sample:
-
-
-
-"""
-
-HELPFULNESS_ANNOTATION_SYSTEM_PROMPT = """# Informativeness / Helpfulness Assessment
-
-Evaluate if each text fulfills task objectives and provide high-quality, correct, and, informative content.
-
-Helpfulness assessment emphasizes **Overall Quality** regarding correctness and informativenss . 
+Helpfulness assessment emphasizes **Overall Quality** regarding correctness and informativenss. 
 
 **Correctness**: Accurate computation, reasoning steps, and outputs without misunderstandings or fabrication.
 
-Assign numeric identifier (or "None") from 1 to 3 for each type of informativeness:
-1. **Clarity and Relevance**: Ensure response relates to the task and seek clarifications if needed.
-2. **Useful and Comprehensive Information**: Provide relevant background, reasoning steps, or detailed description.
-3. **Not Lengthy, No Repetition**: Avoid verbosity or recycling content.
+When assessing informativeness, consider the following aspects:
+1. **Clarity and Relevance**: Does the response relate to the task and seek clarifications if needed?
+2. **Useful and Comprehensive Information**: Does it provide relevant background, reasoning steps, or detailed description?
+3. **Not Lengthy, No Repetition**: Is the response concise, avoiding verbosity or repetition?
 
-Score 1 to 5 based on extent of helpfulness, regarding both informativeness and correctness:
+Score on a scale of 1 to 5 based on extent of helpfulness, regarding both informativeness and correctness:
 1. **Severely Incorrect**: Contains significant inaccuracies or fabricated content, even if comprehensive information is provided.
 2. **Partially Incorrect**: Contains errors that may cause confusion, even though comprehensive information is present.
 3. **Correct**: Accurate and provides useful information that meets the task's requirements.
 4. **Highly Informative**: Accurate and extensive, providing valuable insights and detailed information.
 5. **Outstandingly Helpful**: Both accurate and in-depth, offering profound insights and comprehensive information.
 
----
+Here are the instructions and the AI assistant response:
 
-## Format
+<INSTRUCTIONS>{prompt}</INSTRUCTIONS>
 
-### Input
-
-Instruction: [Clearly specify the task goal and restrictions]
-
-[Model 1]: [Text 1]
-
-[Model 2]: [Text 2]
-
-[Repeat for the remaining texts]
-
-### Output
-
-[Model 1]
-Type 1: [List of numeric identifiers (or "None" if no hallucination observed) of hallucination types for Text 1, separated by commas]
-Type rationale 1: [Rationale for Type 1 in short sentences]
-Rating 1: [Rating for Text 1]
-Rationale 1: [Rationale for Rating 1 in short sentences]
-
-[Model 2]
-Type 2: [List of numeric identifiers (or "None" if no hallucination observed) of hallucination types for Text 2, separated by commas]
-Type rationale 2: [Rationale for Type 2 in short sentences]
-Rating 2: [Rating for Text 2]
-Rationale 2: [Rationale for Rating 2 in short sentences]
-
-[Repeat for the remaining texts]
-
-## Sample:
-
-
-"""
+<TEXT>{completion}</TEXT>"""
 
 FEEDBACK_ANNOTATION_SYSTEM_PROMPT = """Given my answer to an instruction, your role is to provide specific and constructive feedback for me. You should find the best way for me to learn from your feedback and improve my performance. 
 
@@ -289,12 +193,12 @@ Instruction: [Specify task goal and restrictions]
 ### Output
 
 [Model 1]
-Feedback 1: [Your feedback for Text 1]
 Overall score 1: [The score you give to Text 1]
+Feedback 1: [Your feedback for Text 1]
 
 [Model 2]
-Feedback 2: [Your feedback for Text 2]
 Overall score 2: [The score you give to Text 2]
+Feedback 2: [Your feedback for Text 2]
 
 [Repeat for the remaining texts]
 

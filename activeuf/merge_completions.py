@@ -16,7 +16,8 @@ This script takes a folder of datasets with completions as input and merges them
 
 Example run command:
     python -m activeuf.merge_completions \
-        --datasets_path datasets/allenai/ultrafeedback_binarized_cleaned/test_prefs-with-completions
+        --datasets_path datasets/completions \
+        --output_path datasets/merged_completions
 """
 
 def parse_args() -> argparse.Namespace:

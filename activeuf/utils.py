@@ -83,22 +83,26 @@ def sample_system_prompt(principle: str) -> str:
 
 
 def load_model(
-        model_name: str, 
+        model_name: str,
         model_class: str = DEFAULT_MODEL_CLASS,
-        max_num_gpus: int | None = None, 
+        max_num_gpus: int | None = None,
         num_nodes: int = 1,
         ping_delay: int = PING_DELAY,
         max_ping_retries: int = MAX_PING_RETRIES,
         model_kwargs: dict = {},
     ) -> Union[
-        tuple[str, None],                                                # model requires API calls (e.g. gpt-4) or model_class == "vllm_server"
-        tuple[AutoModelForCausalLM, AutoTokenizer],                      # model_class == "transformers"
-        tuple[Pipeline, None],                                           # model_class == "pipeline"
-        tuple[vllm.LLM, vllm.transformers_utils.tokenizer.AnyTokenizer], # model_class == "vllm"
-    ]:
+        # model requires API calls (e.g. gpt-4) or model_class == "vllm_server"
+        tuple[str, None],
+        # model_class == "transformers"
+        tuple[AutoModelForCausalLM, AutoTokenizer],
+        # model_class == "pipeline"
+        tuple[Pipeline, None],
+        # model_class == "vllm"
+        tuple[vllm.LLM, vllm.transformers_utils.tokenizer.AnyTokenizer],
+]:
     """
     Loads a model given the name. 
-    
+
     If the specified model is among the supported APIs, no model is actually loaded and the model name is returned.
 
     Args:
@@ -159,16 +163,18 @@ def load_model(
                     vllm_kwargs["tokenizer_mode"] = "mistral"
 
                 model = vllm.LLM(
-                    model_name, 
+                    model_name,
                     **vllm_kwargs
                 )
             except Exception as e:
-                print(f"Failed to load model with tensor_parallel_size={tps}: {e}")
+                print(
+                    f"Failed to load model with tensor_parallel_size={tps}: {e}")
                 print(f"Retrying with tensor_parallel_size={tps-1}...")
                 tps -= 1
         if model is None:
-            raise ValueError(f"Failed to load model {model_name} with any tensor_parallel_size.")
-        
+            raise ValueError(
+                f"Failed to load model {model_name} with any tensor_parallel_size.")
+
         tokenizer = model.get_tokenizer()
     elif model_class == "vllm_server":
         # Start the vLLM server for the model (logic is similar to the vllm class)
@@ -177,19 +183,21 @@ def load_model(
 
         while model is None and tps > 0:
             try:
-                out_file  = f"./logs/server/{model_name.split('/')[-1]}_server_tps_{tps}"
-                out_file += f"_{os.getenv('SLURM_JOB_ID', '')}.out" if os.getenv("SLURM_JOB_ID", None) else ".out"
+                out_file = f"./logs/server/{model_name.split('/')[-1]}_server_tps_{tps}"
+                out_file += f"_{os.getenv('SLURM_JOB_ID', '')}.out" if os.getenv(
+                    "SLURM_JOB_ID", None) else ".out"
 
-                command =  f"vllm serve {model_name}"
-                command +=  " --gpu-memory-utilization 0.9"
-                command +=  " --swap-space 1"
+                command = f"vllm serve {model_name}"
+                command += " --gpu-memory-utilization 0.9"
+                command += " --swap-space 1"
                 command += f" --tensor-parallel-size {tps}"
                 command += f" --pipeline-parallel-size {num_nodes}"
-                command +=  " --trust-remote-code"
-                command +=  " --dtype auto"
-                command += f" --download-dir {os.getenv('HF_CACHE', None)}" if os.getenv("HF_CACHE", None) else ""
+                command += " --trust-remote-code"
+                command += " --dtype auto"
+                command += f" --download-dir {os.getenv('HF_CACHE', None)}" if os.getenv(
+                    "HF_CACHE", None) else ""
                 command += f" --port 8000"  # Default port
-                command +=  " --tokenizer-mode=mistral" if "mistral" in model_name.lower() else ""
+                command += " --tokenizer-mode=mistral" if "mistral" in model_name.lower() else ""
                 command += f" > {out_file} 2>&1"
                 command += " &"  # Run in background
 
@@ -208,20 +216,23 @@ def load_model(
                     time.sleep(ping_delay)
 
                 if not server_ready:
-                    raise RuntimeError("vLLM server did not start after maximum retries.")
+                    raise RuntimeError(
+                        "vLLM server did not start after maximum retries.")
                 else:
                     print("vLLM server is ready.")
 
                 model = "http://localhost:8000"  # Return the URL of the vLLM server
                 tokenizer = None                 # No tokenizer needed for vLLM server API calls
-                
+
             except Exception as e:
-                print(f"Failed to load model with tensor_parallel_size={tps}: {e}")
+                print(
+                    f"Failed to load model with tensor_parallel_size={tps}: {e}")
                 print(f"Retrying with tensor_parallel_size={tps-1}...")
                 tps -= 1
 
         if model is None:
-            raise ValueError(f"Failed to load model {model_name} with any tensor_parallel_size.")
+            raise ValueError(
+                f"Failed to load model {model_name} with any tensor_parallel_size.")
     elif model_class == "pipeline":
         model = pipeline(
             "text-generation",
@@ -232,12 +243,14 @@ def load_model(
         )
         tokenizer = None
     else:
-        raise ValueError(f"Invalid model_class: {model_class}. Must be one of ['transformers', 'pipeline', 'vllm']")
-    
+        raise ValueError(
+            f"Invalid model_class: {model_class}. Must be one of ['transformers', 'pipeline', 'vllm']")
+
     # Check tokenizer and set padding token if needed
     if tokenizer is not None:
         if not 'mistral' in model_name.lower() and tokenizer.chat_template is None:
-            raise ValueError("Tokenizer does not have a chat template. Please use a model that supports chat templates.")
+            raise ValueError(
+                "Tokenizer does not have a chat template. Please use a model that supports chat templates.")
         if not 'mistral' in model_name.lower() and tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
 
@@ -245,6 +258,7 @@ def load_model(
                 model.config.pad_token_id = tokenizer.pad_token_id
 
     return model, tokenizer
+
 
 async def vllm_server_inference(url: str, all_messages: list[list[dict[str, str]]], sampling_params: vllm.SamplingParams, max_api_retry: int, generate_kwargs: dict) -> list[str]:
     """
@@ -263,14 +277,15 @@ async def vllm_server_inference(url: str, all_messages: list[list[dict[str, str]
     client = openai.AsyncOpenAI(
         api_key="EMPTY",
         base_url=f"{url}/v1",
-        http_client=httpx.AsyncClient(verify=False, timeout=httpx.Timeout(None))
+        http_client=httpx.AsyncClient(
+            verify=False, timeout=httpx.Timeout(None))
     )
 
     models = await client.models.list()
     model = models.data[0].id
 
     # Use a semaphore to limit the number of concurrent requests
-    concurrency_limit = 50 
+    concurrency_limit = 50
     semaphore = asyncio.Semaphore(concurrency_limit)
 
     # Define helper function that runs the API calls asynchronously
@@ -290,22 +305,24 @@ async def vllm_server_inference(url: str, all_messages: list[list[dict[str, str]
                 except Exception as e:
                     print(f"An error occurred: {e}. Retrying...")
                     await asyncio.sleep(1)
-            raise RuntimeError(f"Failed to get response after {max_api_retry} retries.")
+            raise RuntimeError(
+                f"Failed to get response after {max_api_retry} retries.")
 
     tasks = [send_request(chat) for chat in all_messages]
     responses = await async_tqdm.gather(*tasks)
 
     return [response.choices[0].message.content for response in responses], responses
 
+
 def get_response_texts(
-        model: str | PreTrainedModel | vllm.LLM | Pipeline,
-        tokenizer: AutoTokenizer | None,
-        all_messages: list[list[dict[str, str]]],
-        sampling_params: vllm.SamplingParams | None,
-        batch_size: int = 64,
-        max_api_retry: int = MAX_API_RETRY,
-        generate_kwargs: dict = {},
-    ) -> tuple[list[str], list[Any]]:
+    model: str | PreTrainedModel | vllm.LLM | Pipeline,
+    tokenizer: AutoTokenizer | None,
+    all_messages: list[list[dict[str, str]]],
+    sampling_params: vllm.SamplingParams | None,
+    batch_size: int = 64,
+    max_api_retry: int = MAX_API_RETRY,
+    generate_kwargs: dict = {},
+) -> tuple[list[str], list[Any]]:
     """
     This function generates responses for the given messages using the specified model.
     The model may be the name of a supported model API (e.g. gpt-4) or a locally loaded model.
@@ -347,18 +364,19 @@ def get_response_texts(
                     else:
                         responses.append(response)
                         break
-            response_texts = [response.choices[0].message.content for response in responses]
+            response_texts = [
+                response.choices[0].message.content for response in responses]
         else:
             response_texts, responses = asyncio.run(
                 vllm_server_inference(
-                    model, 
-                    all_messages, 
-                    sampling_params, 
-                    max_api_retry, 
+                    model,
+                    all_messages,
+                    sampling_params,
+                    max_api_retry,
                     generate_kwargs
                 )
             )
-    
+
     elif isinstance(model, PreTrainedModel):
         if tokenizer is None:
             raise ValueError(
@@ -369,7 +387,8 @@ def get_response_texts(
             raise ValueError(
                 "Tokenizer padding side must be 'left' for text generation.")
 
-        batches = [all_messages[i:i + batch_size] for i in range(0, len(all_messages), batch_size)]
+        batches = [all_messages[i:i + batch_size]
+                   for i in range(0, len(all_messages), batch_size)]
         response_texts = []
         responses = []
 
@@ -380,7 +399,7 @@ def get_response_texts(
                 add_generation_prompt=True,
             )
             batch_inputs = tokenizer(
-                batch_messages_with_generation_prompt, 
+                batch_messages_with_generation_prompt,
                 padding=True,
                 pad_to_multiple_of=8,
                 return_tensors="pt",
@@ -388,7 +407,7 @@ def get_response_texts(
 
             batch_outputs = model.generate(
                 **batch_inputs,
-                do_sample=True, # required for temperature and top_p to work
+                do_sample=True,  # required for temperature and top_p to work
                 temperature=sampling_params.temperature,
                 max_new_tokens=sampling_params.max_tokens,
                 top_p=sampling_params.top_p,
@@ -397,7 +416,8 @@ def get_response_texts(
 
             # AutoModelForCausalLM does not allow to return only the generated text so manually remove the input
             batch_outputs = batch_outputs[:, batch_inputs.input_ids.shape[1]:]
-            batch_texts = tokenizer.batch_decode(batch_outputs, skip_special_tokens=True)
+            batch_texts = tokenizer.batch_decode(
+                batch_outputs, skip_special_tokens=True)
 
             response_texts.extend(batch_texts)
             responses.extend(batch_outputs)
@@ -406,45 +426,52 @@ def get_response_texts(
         # * vLLM performs batching internally
         try:
             responses = model.chat(
-                all_messages, 
-                sampling_params=sampling_params, 
+                all_messages,
+                sampling_params=sampling_params,
                 chat_template=tokenizer.chat_template,
                 # use_tqdm=False, # to avoid spamming the console with progress bars
-                chat_template_kwargs={"enable_thinking": False},  # disable thinking for now
+                # disable thinking for now
+                chat_template_kwargs={"enable_thinking": False},
                 **generate_kwargs
             )
         except Exception as e:
-            print(f"Failed to generate responses with vLLM: {e}\nRetrying without fixed chat template...")
+            print(
+                f"Failed to generate responses with vLLM: {e}\nRetrying without fixed chat template...")
             responses = model.chat(
-                all_messages, 
-                sampling_params=sampling_params, 
+                all_messages,
+                sampling_params=sampling_params,
                 # use_tqdm=False, # to avoid spamming the console with progress bars
-                chat_template_kwargs={"enable_thinking": False},  # disable thinking for now
+                # disable thinking for now
+                chat_template_kwargs={"enable_thinking": False},
                 **generate_kwargs
             )
         response_texts = [_.outputs[0].text for _ in responses]
 
     elif isinstance(model, Pipeline):
-        batches = [all_messages[i:i + batch_size] for i in range(0, len(all_messages), batch_size)]
+        batches = [all_messages[i:i + batch_size]
+                   for i in range(0, len(all_messages), batch_size)]
         responses = []
 
         for batch in tqdm(batches, desc="Generating responses", total=len(batches)):
             batch_outputs = model(
                 batch,
                 return_full_text=False,
-                num_return_sequences=1, 
-                temperature=sampling_params.temperature, 
-                top_p=sampling_params.top_p, 
-                max_new_tokens=sampling_params.max_tokens, 
+                num_return_sequences=1,
+                temperature=sampling_params.temperature,
+                top_p=sampling_params.top_p,
+                max_new_tokens=sampling_params.max_tokens,
                 **generate_kwargs
             )
 
             responses.extend(batch_outputs)
-        response_texts = [response[0]["generated_text"] for response in responses]
+        response_texts = [response[0]["generated_text"]
+                          for response in responses]
     else:
-        raise ValueError(f"Was not able to resolve model to be used for generation. model: {model}")
-    
+        raise ValueError(
+            f"Was not able to resolve model to be used for generation. model: {model}")
+
     return response_texts, responses
+
 
 if __name__ == "__main__":
     setup(login_to_hf=True)

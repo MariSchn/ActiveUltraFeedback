@@ -9,14 +9,15 @@ SEED = 123
 MAX_NUM_GPUS = 4
 MAX_NUM_NODES = 1
 MAX_API_RETRY = 10
-DEFAULT_MODEL_CLASS = "vllm"  # Which package to use for the model. ["transformers", "pipeline" "vllm", "vllm_server"]
+# Which package to use for the model. ["transformers", "pipeline" "vllm", "vllm_server"]
+DEFAULT_MODEL_CLASS = "vllm"
 
 VLLM_SERVER_BASE_URL = "http://localhost:8000"  # URL of the vLLM server
 PING_DELAY = 10        # Delay between pings to the server to check if it is already running
 MAX_PING_RETRIES = 30  # Number of retries to check if the server is running
 
 # ====================================
-#               DATASETS              
+#               DATASETS
 # ====================================
 
 PROMPT_SOURCES = {
@@ -31,7 +32,7 @@ PROMPT_SOURCES = {
 }
 
 # ====================================
-#         COMPLETION GENERATION       
+#         COMPLETION GENERATION
 # ====================================
 
 MODEL_APIS = {
@@ -69,7 +70,7 @@ COMPLETION_MODEL_NAMES = {
 
     # ===== MoE MODELS =====
     "meta-llama/Llama-4-Scout-17B-16E-Instruct",     # 109B (17B Active)
-    "meta-llama/Llama-4-Maverick-17B-128E-Instruct", # 402B (17B Active)
+    "meta-llama/Llama-4-Maverick-17B-128E-Instruct",  # 402B (17B Active)
 
     "Qwen/Qwen3-30B-A3B",                            # 30B  (03B Active)
     "Qwen/Qwen3-235B-A22B",                          # 235B (22B Active)
@@ -79,6 +80,8 @@ COMPLETION_MODEL_NAMES = {
     "moonshotai/Moonlight-16B-A3B-Instruct",         # 16B (03B Active)
     "moonshotai/Kimi-K2-Instruct",                   # 1000B (32B Active)
 }
+
+# ! When changing this from 4, the prompt template needs to be changed as well
 NUM_COMPLETION_MODELS = len(COMPLETION_MODEL_NAMES)
 
 # General parameters for the completions generation step
@@ -116,10 +119,42 @@ PROMPT_SOURCE2PRINCIPLES = {
 #             ANNOTATION
 # ====================================
 
-# Model to use for annotating completions
-ANNOTATION_MODEL_NAME = "meta-llama/Llama-3.3-70B-Instruct" 
+ANNOTATION_MODEL = ""
 
 # General parameters for the annotation step
-ANNOTATION_MAX_TOKENS = 10
+NUM_SHUFFLES = 1
+
+ANNOTATION_MAX_TOKENS = 1024
 ANNOTATION_TEMPERATURE = 1.0
 ANNOTATION_TOP_P = 1.0
+
+# How often to retry calling the API for models that require API calls.
+MAX_API_RETRY = 10
+# How often to retry parsing the response from the annotating model. This might fail as the model is not always guaranteed to follow the expected format.
+# Keep in mind that trying to parse again requires to re-run the model again, which can be expensive (O(MAX_API_RETRY * MAX_PARSE_RETRY)).
+MAX_PARSE_RETRY = 10
+
+# Aspects to be used to annotate the generated completions
+ASPECTS = [
+    "instruction_following",
+    "helpfulness",
+    "honesty",
+    "truthfulness"
+]
+
+# Map an aspect to the corresponding system prompt (template) that is used to annotate the generated completions
+# ASPECT2ANNOTATION_PROMPT = {
+#     "instruction_following": INSTRUCTION_FOLLOWING_ANNOTATION_SYSTEM_PROMPT,
+#     "honesty": HONESTY_ANNOTATION_SYSTEM_PROMPT,
+#     "truthfulness": TRUTHFULNESS_ANNOTATION_SYSTEM_PROMPT,
+#     "helpfulness": HELPFULNESS_ANNOTATION_SYSTEM_PROMPT,
+# }
+
+# Regex patterns used to extract the ratings and rationales from the annotation model's response
+ASPECT2ANNOTATION_PATTERN = {
+    "instruction_following": r"Rating:(.+?)Rationale:(.+)",
+    "honesty": r"Rating:(.+?)Rationale:(.+)",
+    "truthfulness": r"Type:(.+?)Type rationale:(.+?)Rating:(.+?)Rationale:(.+)",
+    "helpfulness": r"Type:(.+?)Type rationale:(.+?)Rating:(.+?)Rationale:(.+)",
+}
+FEEDBACK_ANNOTATION_PATTERN = r"Feedback:(.+?)Overall score:(.+)"
