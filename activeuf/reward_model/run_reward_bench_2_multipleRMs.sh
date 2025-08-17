@@ -3,17 +3,12 @@
 
 # Array of reward model paths
 MODELS=(
-    "$SCRATCH/models/reward_models/preference_new_new_dts_llama_2"
-    "$SCRATCH/models/reward_models/preference_new_new_dts_llama_3"
-    "$SCRATCH/models/reward_models/preference_new_dts_llama_1"
-    "$SCRATCH/models/reward_models/preference_new_dts_llama_2"
-    "$SCRATCH/models/reward_models/preference_new_dts_llama_3"
-    "$SCRATCH/models/reward_models/preference_new_dts_llama_4"
-    "$SCRATCH/models/reward_models/preference_new_dts_llama_5"
-    "$SCRATCH/models/reward_models/preference_new_dts_llama_6"
-    "$SCRATCH/models/reward_models/preference_new_dts_llama_7"
-    "$SCRATCH/models/reward_models/preference_new_dts_llama_8"
-    # Add more model paths as needed
+    # "$SCRATCH/models/reward_models/preference_albation_dts_llama_15"
+    # "$SCRATCH/models/reward_models/preference_albation_dts_llama_16"
+    # "$SCRATCH/models/reward_models/preference_albation_dts_llama_17"
+    "$SCRATCH/models/reward_models/preference_albation_dts_llama_18"
+    "$SCRATCH/models/reward_models/preference_albation_dts_llama_19"
+    # "$SCRATCH/models/reward_models/preference_albation_dts_llama_20"
 )
 
 for MODEL in "${MODELS[@]}"; do

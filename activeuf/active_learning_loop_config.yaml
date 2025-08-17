@@ -9,9 +9,9 @@ loop:
   outer_loop_batch_size: 32
   rm_training_batch_size: 32
   max_length: 4096
-  seed: 54255
+  seed: 4
   replay_buffer_size: 3200
-  report_to: wandb
+  report_to: none
   wandb_project: null
 
 acquisition:
@@ -27,7 +27,7 @@ enn:
   save_strategy: "no"
   report_to: "none"
   disable_tqdm: true
-  logging_strategy: "steps"
+  logging_strategy: "no"
   logging_steps: 1
   lr_scheduler_type: "constant"
   learning_rate: 5e-6

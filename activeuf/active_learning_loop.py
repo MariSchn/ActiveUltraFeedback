@@ -255,6 +255,10 @@ def parse_postprocess(args: argparse.Namespace) -> argparse.Namespace:
     else:
         args.acquisition_config = {}
 
+    # Set acquisition_config.seed to args.seed if args.seed is set
+    if args.seed is not None:
+        args.acquisition_config["seed"] = args.seed
+
     # Add enn_config as a dict
     args.enn_config = config.get("enn", {})
 
@@ -441,7 +445,7 @@ if __name__ == "__main__":
     dataset = load_from_disk(args.completions_dataset_path)
     dataset = dataset.add_column("row_id", list(range(len(dataset))))
     if args.debug:
-        dataset = dataset.select(range(256))
+        dataset = dataset.select(range(32))
 
     # dataset = dataset.select(range(args.outer_loop_batch_size))
     # Unfortunately the set of prompts have duplicate prompt_ids, so we can not filter by prompt_ids.
@@ -520,10 +524,10 @@ if __name__ == "__main__":
         f"batch size per gpu is {uq_pipeline.trainer_config.per_device_train_batch_size}")
     # Initialize the trainer with an empty Dataset having the required keys. So we have access to the uq_pipeline.trainer before entering the loop.
     dummy_data = [{
-        "chosen": "",
+        # "chosen": "",
         'input_ids_chosen': [],
         'attention_mask_chosen': [],
-        "rejected": "",
+        # "rejected": "",
         'input_ids_rejected': [],
         'attention_mask_rejected': []
     } for _ in range(args.replay_buffer_size)]
@@ -614,10 +618,11 @@ if __name__ == "__main__":
         acquisition_kpis_sample = []
         acquisition_kpis_batch = []
         # By default this loop is executed once. That is batch_loader.batch_size == len(batch_loader)
-        logger.info(f"Processing batch {i}")
+        if accelerator.is_main_process:
+            logger.info(f"Processing batch {i} out of {len(dataloader)}")
 
         for batch in batch_loader:
-            start = time.time()
+            # start = time.time()
             n_samples_in_batch = len(batch["prompt_id"])
             n_completions_per_sample = len(batch["completions"])
 
@@ -649,11 +654,11 @@ if __name__ == "__main__":
                 ).to(model.device)
 
             # inputs["input_ids]: (n_samples_in_batch * n_completions_per_sample, max_length)
-            end = time.time()
-            logger.info(f"- Preprocessing took {end - start:.2f}s")
+            # end = time.time()
+            # logger.info(f"- Preprocessing took {end - start:.2f}s")
 
             # Get reward and uncertainty (lower and upper bounds)
-            start = time.time()
+            # start = time.time()
             model.eval()
 
             if args.acquisition_function_type not in ["random", "ultrafeedback"]:
@@ -690,12 +695,12 @@ if __name__ == "__main__":
 
                 outputs = {"rewards": torch.cat(rewards_list, dim=0)}
 
-            end = time.time()
-            logger.info(
-                f"- Uncertainty quantification took {end - start:.2f}s")
+            # end = time.time()
+            # logger.info(
+            #     f"- Uncertainty quantification took {end - start:.2f}s")
 
             # Select the completions that should be used for the binarized sample
-            start = time.time()
+            # start = time.time()
 
             if args.acquisition_function_type in ["ultrafeedback", "random"]:
                 rewards = torch.zeros(
@@ -711,8 +716,8 @@ if __name__ == "__main__":
                 acquisition_function(*rewards.unbind(-1))
             )
 
-            end = time.time()
-            logger.info(f"- Acquisition function took {end - start:.2f}s")
+            # end = time.time()
+            # logger.info(f"- Acquisition function took {end - start:.2f}s")
 
             # (n_samples_in_batch, 2, max_length)
             temp = b_acquired_idxs.unsqueeze(-1).expand(-1, -
@@ -778,53 +783,58 @@ if __name__ == "__main__":
                     chosen_idxs.append(b_acquired_idxs[j, 1].item())
                     rejected_idxs.append(b_acquired_idxs[j, 0].item())
 
-            # TODO: MOVE THESE IN A SEPARATE FUNCTION
-            ##########################################
-            rewards_mean = rewards[:, :, 0:1]
-            # Shape: (n_samples_in_batch, n_completions_per_sample, 1)
-            rewards_std = (rewards[:, :, 2:3] - rewards[:, :, 1:2]) / 2
-            # Shape: (n_samples_in_batch, n_completions_per_sample, 2)
-            rewards_for_kpi = torch.cat(
-                [rewards_mean, rewards_std], dim=-1)
+            if args.report_to == "wandb":
+                # TODO: MOVE THESE IN A SEPARATE FUNCTION
+                ##########################################
+                rewards_mean = rewards[:, :, 0:1]
+                # Shape: (n_samples_in_batch, n_completions_per_sample, 1)
+                rewards_std = (rewards[:, :, 2:3] - rewards[:, :, 1:2]) / 2
+                # Shape: (n_samples_in_batch, n_completions_per_sample, 2)
+                rewards_for_kpi = torch.cat(
+                    [rewards_mean, rewards_std], dim=-1)
 
-            acquisition_kpis = acquisition_function_KPIs(
-                rewards_for_kpi, torch.tensor(chosen_idxs)[:, None], torch.tensor(
-                    rejected_idxs)[:, None]
-            )
+                acquisition_kpis = acquisition_function_KPIs(
+                    rewards_for_kpi, torch.tensor(chosen_idxs)[:, None], torch.tensor(
+                        rejected_idxs)[:, None]
+                )
 
-            local_acquisition_KPIs_sample = [{}
-                                             for _ in range(len(chosen_idxs))]
-            local_acquisition_KPIs_batch = [{}]
-            for k, v in acquisition_kpis.items():
-                if isinstance(v, list):
-                    for j, val in enumerate(v):
-                        local_acquisition_KPIs_sample[j][k] = val
-                else:
-                    local_acquisition_KPIs_batch[0][k] = v
-            for j in range(len(local_acquisition_KPIs_sample)):
-                local_acquisition_KPIs_sample[j]["prompt_id"] = annotated_batch_local[j]["prompt_id"]
-                local_acquisition_KPIs_sample[j]["row_id"] = annotated_batch_local[j]["row_id"]
-            ######################################
+                local_acquisition_KPIs_sample = [{}
+                                                 for _ in range(len(chosen_idxs))]
+                local_acquisition_KPIs_batch = [{}]
+                for k, v in acquisition_kpis.items():
+                    if isinstance(v, list):
+                        for j, val in enumerate(v):
+                            local_acquisition_KPIs_sample[j][k] = val
+                    else:
+                        local_acquisition_KPIs_batch[0][k] = v
+                for j in range(len(local_acquisition_KPIs_sample)):
+                    local_acquisition_KPIs_sample[j]["prompt_id"] = annotated_batch_local[j]["prompt_id"]
+                    local_acquisition_KPIs_sample[j]["row_id"] = annotated_batch_local[j]["row_id"]
+                ######################################
 
             accelerator.wait_for_everyone()
             annotated_batch_tmp = gather_object(annotated_batch_local)
-            acquisition_kpis_sample_tmp = gather_object(
-                local_acquisition_KPIs_sample)
-            acquisition_kpis_batch_tmp = gather_object(
-                local_acquisition_KPIs_batch)
+
+            if args.report_to == "wandb":
+                acquisition_kpis_sample_tmp = gather_object(
+                    local_acquisition_KPIs_sample)
+                acquisition_kpis_batch_tmp = gather_object(
+                    local_acquisition_KPIs_batch)
 
             annotated_batch.extend(annotated_batch_tmp)
-            acquisition_kpis_sample.extend(acquisition_kpis_sample_tmp)
-            acquisition_kpis_batch.extend(acquisition_kpis_batch_tmp)
+            if args.report_to == "wandb":
+                acquisition_kpis_sample.extend(acquisition_kpis_sample_tmp)
+                acquisition_kpis_batch.extend(acquisition_kpis_batch_tmp)
 
         annotated_batch = list(
             {str(x["prompt_id"])+"_"+str(x["row_id"].item()): x for x in annotated_batch}.values())
-        acquisition_kpis_sample = list(
-            {str(x["prompt_id"])+"_"+str(x["row_id"].item()): x for x in acquisition_kpis_sample}.values())
+        if args.report_to == "wandb":
+            acquisition_kpis_sample = list(
+                {str(x["prompt_id"])+"_"+str(x["row_id"].item()): x for x in acquisition_kpis_sample}.values())
 
-        for x in acquisition_kpis_sample:
-            if "row_id" in x:
-                del x["row_id"]
+            for x in acquisition_kpis_sample:
+                if "row_id" in x:
+                    del x["row_id"]
 
         # Restructuring "chosen", "rejected" columns according to allenai/ultrafeedback_binarized_cleaned dataset and the way they are properly handled by the trl RewardTrainer
         for x in annotated_batch:
@@ -846,21 +856,22 @@ if __name__ == "__main__":
                     if not k.startswith("input_ids") and not k.startswith("attention_mask")
                 } for x in annotated_batch
             ])
+            if i % 100 == 0:
+                logger.info(
+                    f"Saving {len(output_dataset)} samples to {args.output_path}")
+                Dataset.from_list(output_dataset).save_to_disk(
+                    args.output_path)
 
-            logger.info(
-                f"Saving {len(output_dataset)} samples to {args.output_path}")
-            Dataset.from_list(output_dataset).save_to_disk(
-                args.output_path)
-
-        # processing the acquisition KPIs
-        acquisition_kpis_batch_copy = {
-            k: 0 for k in acquisition_kpis_batch[0].keys()}
-        for k in acquisition_kpis_batch[0].keys():
-            for j in range(total_processes):
-                acquisition_kpis_batch_copy[k] += acquisition_kpis_batch[j][k]
-        for k in acquisition_kpis_batch_copy.keys():
-            acquisition_kpis_batch_copy[k] /= len(acquisition_kpis_batch)
-        acquisition_kpis_batch = acquisition_kpis_batch_copy
+        if args.report_to == "wandb":
+            # processing the acquisition KPIs
+            acquisition_kpis_batch_copy = {
+                k: 0 for k in acquisition_kpis_batch[0].keys()}
+            for k in acquisition_kpis_batch[0].keys():
+                for j in range(total_processes):
+                    acquisition_kpis_batch_copy[k] += acquisition_kpis_batch[j][k]
+            for k in acquisition_kpis_batch_copy.keys():
+                acquisition_kpis_batch_copy[k] /= len(acquisition_kpis_batch)
+            acquisition_kpis_batch = acquisition_kpis_batch_copy
 
         if accelerator.is_main_process and args.report_to == "wandb":
             wandb.init(
@@ -885,38 +896,38 @@ if __name__ == "__main__":
 
         # TODO: can be moved into a separate function
         batch_ready_to_train = [{
-            "chosen": x["chosen"], "rejected": x["rejected"],
+            # "chosen": x["chosen"], "rejected": x["rejected"],
             "input_ids_chosen": x["input_ids_chosen"], "attention_mask_chosen": x["attention_mask_chosen"],
             "input_ids_rejected": x["input_ids_rejected"], "attention_mask_rejected": x["attention_mask_rejected"],
         } for x in annotated_batch]
 
         # filtering rows whose input_ids counter don't exceed max_length
         # just like it is done in RewardTrainer of the trl library.
-        batch_ready_to_train_filtered = []
-        for train_sample in batch_ready_to_train:
-            chosen = tokenizer.apply_chat_template(
-                train_sample["chosen"], tokenize=False)
-            chosen_tokenized = tokenizer(chosen)
-            rejected = tokenizer.apply_chat_template(
-                train_sample["rejected"], tokenize=False)
-            rejected_tokenized = tokenizer(rejected)
-            if len(chosen_tokenized["input_ids"]) <= tokenizer.model_max_length and len(rejected_tokenized["input_ids"]) <= tokenizer.model_max_length:
-                batch_ready_to_train_filtered.append(train_sample)
+        # batch_ready_to_train_filtered = []
+        # for train_sample in batch_ready_to_train:
+        #     chosen = tokenizer.apply_chat_template(
+        #         train_sample["chosen"], tokenize=False)
+        #     chosen_tokenized = tokenizer(chosen)
+        #     rejected = tokenizer.apply_chat_template(
+        #         train_sample["rejected"], tokenize=False)
+        #     rejected_tokenized = tokenizer(rejected)
+        #     if len(chosen_tokenized["input_ids"]) <= tokenizer.model_max_length and len(rejected_tokenized["input_ids"]) <= tokenizer.model_max_length:
+        #         batch_ready_to_train_filtered.append(train_sample)
 
-        dataset_no_chosen_rejected = [
-            {k: v for k, v in d.items() if k not in ("chosen", "rejected")}
-            for d in batch_ready_to_train_filtered
-        ]
+        # dataset_no_chosen_rejected = [
+        #     {k: v for k, v in d.items() if k not in ("chosen", "rejected")}
+        #     for d in batch_ready_to_train_filtered
+        # ]
 
         # Update replay buffer
-        replay_buffer.extend(dataset_no_chosen_rejected)
-        if len(batch_ready_to_train) > len(dataset_no_chosen_rejected):
-            logger.info(
-                f"Filtered out {len(batch_ready_to_train) - len(dataset_no_chosen_rejected)} samples out of {len(batch_ready_to_train)}")
+        replay_buffer.extend(batch_ready_to_train)
+        # if len(batch_ready_to_train) > len(dataset_no_chosen_rejected):
+        #     logger.info(
+        #         f"Filtered out {len(batch_ready_to_train) - len(dataset_no_chosen_rejected)} samples out of {len(batch_ready_to_train)}")
 
         del batch_loader
         torch.cuda.empty_cache()
-        start = time.time()
+        # start = time.time()
         if accelerator.is_main_process and args.report_to == "wandb":
             wandb.init(
                 project=args.wandb_project,
@@ -937,8 +948,8 @@ if __name__ == "__main__":
 
         uq_pipeline.trainer.args.regularization_towards_initial_weights = updated_lambda_regularizer
 
-        logger.info(
-            f"Updated lambda regularizer: {updated_lambda_regularizer}")
+        # logger.info(
+        #     f"Updated lambda regularizer: {updated_lambda_regularizer}")
 
         # Training
         model.train()
@@ -981,17 +992,24 @@ if __name__ == "__main__":
         # if hasattr(uq_pipeline.trainer, "train_dataloader"):
         #     uq_pipeline.trainer.train_dataloader = None  # Force dataloader rebuild
         # exit()
-        logger.info(
-            f"Starting Training of the UQ model on {len(random_subset)} samples from the replay buffer")
+        # logger.info(
+        #     f"Starting Training of the UQ model on {len(random_subset)} samples from the replay buffer")
         uq_pipeline.trainer.train()
         # tmpTrainer.train()
 
         global_step_offset += uq_pipeline.trainer.state.global_step
         # global_step_offset += tmpTrainer.state.global_step
 
-        end = time.time()
-        logger.info(f"- Training took {end - start:.2f}s")
-        logger.info(f"Done with batch {i}\n")
+        # end = time.time()
+        # logger.info(f"- Training took {end - start:.2f}s")
+        # logger.info(f"Done with batch {i}\n")
         torch.cuda.empty_cache()
         if accelerator.is_main_process and args.report_to == "wandb":
             wandb.finish()
+
+    if accelerator.is_main_process:
+        logger.info(
+            f"Saving the final: {len(output_dataset)} samples to {args.output_path}")
+        if len(output_dataset) > 0:
+            Dataset.from_list(output_dataset).save_to_disk(
+                args.output_path)

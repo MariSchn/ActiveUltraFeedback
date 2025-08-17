@@ -5,7 +5,7 @@
 # 1. git clone https://github.com/allenai/reward-bench.git resources/reward-bench
 # 2. chmod +x activeuf/reward_model/run_reward_bench_2.sh
 # 3. pip install resources/reward-bench
-# 4. Run it with your model name: activeuf/reward_model/run_reward_bench_2.sh /iopsstor/scratch/cscs/dmelikidze/models/reward_models/preference_new_dts_llama_4_new
+# 4. Run it with your model name: activeuf/reward_model/run_reward_bench_2.sh /iopsstor/scratch/cscs/dmelikidze/models/reward_models/preference_albation_ultrafeedback_5
 
 # Check if model name is provided
 if [ -z "$1" ]; then

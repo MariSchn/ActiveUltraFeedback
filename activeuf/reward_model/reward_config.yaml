@@ -21,7 +21,7 @@ training:
   save_steps: 125
   remove_unused_columns: false
   max_length: 4096
-  report_to: "wandb"
+  report_to: "none"
   max_steps: -1
   bf16: true
   lr_scheduler_type: constant
