@@ -8,12 +8,13 @@ LOGS_DIR = "logs"
 SEED = 123
 MAX_NUM_GPUS = 4
 MAX_NUM_NODES = 1
+DATA_PARALLEL_SIZE = 1  # Only compatible with "vllm_server" model class
 MAX_API_RETRY = 10
 # Which package to use for the model. ["transformers", "pipeline" "vllm", "vllm_server"]
 DEFAULT_MODEL_CLASS = "vllm"
 
 VLLM_SERVER_BASE_URL = "http://localhost:8000"  # URL of the vLLM server
-PING_DELAY = 10        # Delay between pings to the server to check if it is already running
+PING_DELAY = 30        # Delay between pings to the server to check if it is already running
 MAX_PING_RETRIES = 30  # Number of retries to check if the server is running
 
 # ====================================
