@@ -1,12 +1,16 @@
 [submodule "resources/lm-evaluation-harness"]
 	path = resources/lm-evaluation-harness
 	url = https://github.com/EleutherAI/lm-evaluation-harness
+	ignore = all
 [submodule "resources/rewarduq"]
 	path = resources/rewarduq
 	url = git@github.com:Florian-toll/rewarduq.git
+	ignore = all
 [submodule "resources/reward-bench"]
 	path = resources/reward-bench
 	url = https://github.com/allenai/reward-bench.git
+	ignore = all
 [submodule "resources/olmes"]
 	path = resources/olmes
 	url = https://github.com/allenai/olmes.git
+	ignore = all

@@ -6,7 +6,7 @@ def calc_reward_uncertainty_random(completion_data_batch):
 
     rewards_list = []        # List of lists: rewards per prompt
     uncertainties_list = []  # List of lists: uncertainties per prompt
-    
+
     for _ in range(len(completion_data_batch["completions"])):
         prompt_rewards = []
         prompt_uncertainties = []
@@ -49,9 +49,9 @@ class UQModelClass:
         return cls()
 
     def __call__(self, tokenized_prompts_with_completions):
-        rewards, uncertainty = calc_reward_uncertainty_random(tokenized_prompts_with_completions)
+        rewards, uncertainty = calc_reward_uncertainty_random(
+            tokenized_prompts_with_completions)
         return rewards, uncertainty
-
 
 
 class UQTrainer():
@@ -60,7 +60,6 @@ class UQTrainer():
         self.tokenizer = tokenizer
         self.model = model
         self.trainer_config = trainer_config
-
 
     def training_step(self, prompts_with_completions_for_annotation, labels):
         pass
