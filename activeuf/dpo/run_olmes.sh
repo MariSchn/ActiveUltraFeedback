@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # Usage:
-# 1. chmod +x activeuf/reward_model/run_olmes.sh
-# 2. activeuf/reward_model/run_olmes.sh <model_name> <task_name> <output_dir> 
-# (e.g. activeuf/reward_model/run_olmes.sh olmo-1b arc_challenge::olmes my-eval-dir1)
+# 1. chmod +x activeuf/dpo/run_olmes.sh
+# 2. activeuf/dpo/run_olmes.sh <model_name> <task_name> <output_dir> 
+# (e.g. activeuf/dpo/run_olmes.sh olmo-1b arc_challenge::olmes my-eval-dir1)
 
 # Validate arguments
 if [ $# -ne 3 ]; then
