@@ -183,6 +183,22 @@ def load_model(
         tps = tensor_parallel_size
         model = None
 
+        # Check if vLLM server is already running
+        server_url = "http://localhost:8000/ping"
+        server_running = False
+        try:
+            response = requests.get(server_url)
+            if response.status_code == 200:
+                print("vLLM server is already running.")
+                model = "http://localhost:8000"
+                tokenizer = None
+                server_running = True
+        except Exception:
+            pass
+
+        if server_running:
+            tps = 0  # Skip starting a new server
+
         while model is None and tps > 0:
             try:
                 out_dir = f"./logs/server/{model_name.split('/')[-1]}"
