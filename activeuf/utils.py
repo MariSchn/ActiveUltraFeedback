@@ -184,20 +184,26 @@ def load_model(
         model = None
 
         # Check if vLLM server is already running
-        server_url = "http://localhost:8000/ping"
-        server_running = False
+        server_url = "http://localhost:8000"
         try:
-            response = requests.get(server_url)
+            # Check if server is running
+            response = requests.get(f"{server_url}/ping")
             if response.status_code == 200:
-                print("vLLM server is already running.")
-                model = "http://localhost:8000"
-                tokenizer = None
-                server_running = True
+                # Check which model is loaded
+                models_resp = requests.get(f"{server_url}/v1/models")
+                if models_resp.status_code == 200:
+                    models_data = models_resp.json()
+                    loaded_models = [m["id"] for m in models_data.get("data", [])]
+                    # Accept both full repo name and short name
+                    model_short_name = model_name.split("/")[-1]
+                    if model_name in loaded_models or model_short_name in loaded_models:
+                        print(
+                            f"vLLM server is already running with model: {loaded_models} reusing existing server"
+                        )
+                    model = server_url
+                    tokenizer = None
         except Exception:
             pass
-
-        if server_running:
-            tps = 0  # Skip starting a new server
 
         while model is None and tps > 0:
             try:
