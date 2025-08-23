@@ -355,6 +355,9 @@ async def vllm_server_inference(
                         frequency_penalty=sampling_params.frequency_penalty,
                         logprobs=True if sampling_params.logprobs else False,
                         top_logprobs=sampling_params.logprobs,
+                        extra_body={
+                            "chat_template_kwargs": {"enable_thinking": False},
+                        },
                     )
                     return response
                 except Exception as e:
