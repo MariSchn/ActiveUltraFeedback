@@ -179,3 +179,9 @@ if __name__ == "__main__":
     args_path = path.join(args.output_path, "args.json")
     with open(args_path, "w") as f_out:
         json.dump(vars(args), f_out)
+
+    # Export first sample
+    first_sample = dataset[0]
+    first_sample_path = path.join(args.output_path, "first_sample.json")
+    with open(first_sample_path, "w") as f_out:
+        json.dump(first_sample, f_out)
