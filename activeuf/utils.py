@@ -318,7 +318,6 @@ async def vllm_server_inference(
         async with semaphore:
             for _ in range(max_api_retry):
                 try:
-                    start = time.time()
                     response = await client.chat.completions.create(
                         model=model,
                         messages=conversation,
@@ -327,10 +326,8 @@ async def vllm_server_inference(
                         top_p=sampling_params.top_p,
                         presence_penalty=sampling_params.presence_penalty,
                         frequency_penalty=sampling_params.frequency_penalty,
-                    )
-                    end = time.time()
-                    print(
-                        f"Completion successfuly generated in {end - start:.2f} seconds."
+                        logprobs=True if sampling_params.logprobs else False,
+                        top_logprobs=sampling_params.logprobs,
                     )
                     return response
                 except Exception as e:
@@ -386,6 +383,8 @@ def get_response_texts(
                             top_p=sampling_params.top_p,
                             presence_penalty=sampling_params.presence_penalty,
                             frequency_penalty=sampling_params.frequency_penalty,
+                            logprobs=True if sampling_params.logprobs else False,
+                            top_logprobs=sampling_params.logprobs,
                             **generate_kwargs,
                         )
                     except Exception as e:
