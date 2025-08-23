@@ -34,6 +34,7 @@ from collections import defaultdict
 import torch
 from vllm import SamplingParams, LLM
 from datasets import Dataset, load_from_disk, load_dataset
+from transformers import AutoTokenizer
 
 from activeuf.configs import *
 from activeuf.schemas import *
@@ -62,6 +63,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model_class", type=str, default=DEFAULT_MODEL_CLASS, help="The class which is used to perform inference (e.g. transformers, pipeline, vllm)")
     parser.add_argument("--max_tokens", type=int, default=ANNOTATION_MAX_TOKENS, help="The maximum number of tokens for LLM responses")
     parser.add_argument("--max_num_gpus", type=int, default=MAX_NUM_GPUS, help="The maximum number of GPUs to use")
+    parser.add_argument("--num_nodes", type=int, default=1, help="The number of nodes to use")
     parser.add_argument("--temperature", type=float, default=ANNOTATION_TEMPERATURE, help="The temperature for sampling")
     parser.add_argument("--top_p", type=float, default=ANNOTATION_TOP_P, help="The top_p for sampling")
 
@@ -99,6 +101,43 @@ def calculate_probabilities(raw_output, tokenizer, target_words):
         }
 
         word_probabilities.append(prob_dict)
+
+    return word_probabilities
+
+
+def calculate_probabilities_openai(raw_output, target_words):
+    """
+    Calculates the probabilities of target words from OpenAI API outputs.
+    """
+    word_probabilities = []
+
+    for output in raw_output:
+        first_token_logprobs = output.choices[0].logprobs.content[0].top_logprobs
+
+        token_logprobs = {}
+        for token_logprob in first_token_logprobs:
+            token_logprobs[token_logprob.token] = token_logprob.logprob
+
+        # Find logprobs for our target words
+        target_logprobs = {}
+        for word in target_words:
+            logprob = token_logprobs.get(word, -float("inf"))
+            target_logprobs[word] = logprob
+
+        exp_values = [np.exp(lp) for lp in target_logprobs.values()]
+        total = sum(exp_values)
+
+        if total == 0:
+            # Avoid division by zero if no target words were found
+            prob_dict = {k: 0.0 for k in target_logprobs.keys()}
+        else:
+            prob_dict = {
+                k: float(v) / total for k, v in zip(target_logprobs.keys(), exp_values)
+            }
+
+        word_probabilities.append(prob_dict)
+
+    print(word_probabilities[0])
 
     return word_probabilities
 
@@ -298,11 +337,6 @@ def process_single_model(dataset):
 
 
 def run(dataset: Dataset, args: argparse.Namespace):
-    chosen_scores = [[] for _ in range(len(dataset))]
-    chosen_probabilities = [[] for _ in range(len(dataset))]
-    rejected_scores = [[] for _ in range(len(dataset))]
-    rejected_probabilities = [[] for _ in range(len(dataset))]
-
     logger.info("Unrolling dataset for annotation")
     unrolled_dataset = []
     subsets = []
@@ -360,21 +394,20 @@ def run(dataset: Dataset, args: argparse.Namespace):
                 ]
             )
 
-    # print("len(subsets)", len(subsets))
-    # print("subsets[0]", subsets[0])
-    # print("len(total_completions)", len(total_completions))
-    # print("total_completions[0]", total_completions[0])
-    # print("len(num_correct)", len(num_correct))
-    # print("num_correct[0]", num_correct[0])
-    # print("len(unrolled_dataset)", len(unrolled_dataset))
-    # print("len(ids)", len(ids))
-    # print("ids[0]", ids[0])
-    # print("len(conversations)", len(conversations))
-
     logger.info(f"Loading {args.model_path} for annotation")
     model, tokenizer = load_model(
-        args.model_path, args.model_class, max_num_gpus=torch.cuda.device_count()
+        args.model_path,
+        args.model_class,
+        max_num_gpus=args.max_num_gpus,
+        num_nodes=args.num_nodes,
+        data_parallel_size=1,
     )
+
+    if not tokenizer:
+        tokenizer = AutoTokenizer.from_pretrained(
+            args.model_path,
+            trust_remote_code=True,
+        )
 
     logger.info("Running inference for annotation")
     sampling_params = SamplingParams(
@@ -389,9 +422,14 @@ def run(dataset: Dataset, args: argparse.Namespace):
     )
 
     logger.info("Extracting probabilities from completions")
-    probabilities = calculate_probabilities(
-        response_objects, tokenizer, target_words=["1", "2", "3", "4", "5"]
-    )
+    if isinstance(model, LLM):
+        probabilities = calculate_probabilities(
+            response_objects, tokenizer, target_words=["1", "2", "3", "4", "5"]
+        )
+    else:
+        probabilities = calculate_probabilities_openai(
+            response_objects, target_words=["1", "2", "3", "4", "5"]
+        )
 
     logger.info("Grouping probabilities by completion")
     n_aspects = len(ASPECT2ANNOTATION_PROMPT)
@@ -484,8 +522,7 @@ if __name__ == "__main__":
         set_seed(args.seed)
 
     # This is hardcoded for https://huggingface.co/datasets/allenai/reward-bench-2
-    logger.info("No annotated dataset found, annotating completions")
-
+    logger.info("Loading RewardBench dataset")
     reward_bench_dataset = load_dataset("allenai/reward-bench-2")
     reward_bench_dataset = reward_bench_dataset["test"]
 
