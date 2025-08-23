@@ -24,12 +24,15 @@ Example run command:
         --model_class transformers
 """
 
+
 def parse_args() -> argparse.Namespace:
+    # fmt: off
+
     # Parse arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset_path", type=str, required=True, help="The path to the prompts dataset")
     parser.add_argument("--model_name", type=str, required=True, help="The Huggingface path or API of the model to use for completions (e.g. HuggingFaceTB/SmolLM2-135M-Instruct, gpt-4)")
-    
+
     parser.add_argument("--model_class", type=str, help="How the HuggingFace model for completions should be loaded", choices=["transformers", "pipeline", "vllm", "vllm_server"], default=DEFAULT_MODEL_CLASS)
 
     parser.add_argument("--max_num_gpus", type=int, default=MAX_NUM_GPUS, help="The maximum number of GPUs to use")
@@ -39,6 +42,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--temperature", type=int, default=COMPLETION_TEMPERATURE, help="Temperature for generation")
     parser.add_argument("--top_p", type=int, default=COMPLETION_TOP_P, help="top_p value for generation")
     parser.add_argument("--seed", type=int, default=SEED, help="Seed for random sampling")
+
+    parser.add_argument("--num_chunks", type=int, default=1, help="Number of chunks to split the dataset into")
+    parser.add_argument("--chunk_index", type=int, default=0, help="Index of the chunk to process (0-indexed)")
 
     parser.add_argument("--output_path", type=str, help="Where to save the generated completions")
 
@@ -53,6 +59,7 @@ def parse_args() -> argparse.Namespace:
         assert not path.exists(args.output_path), f"Output path {args.output_path} already exists"
 
     return args
+
 
 if __name__ == "__main__":
     args = parse_args()
@@ -71,6 +78,12 @@ if __name__ == "__main__":
     dataset = load_from_disk(args.dataset_path).map(
         lambda x: PromptWithCompletions(**x).model_dump()
     )
+    if args.num_chunks > 1:
+        dataset = dataset.shard(num_shards=args.num_chunks, index=args.chunk_index)
+        print(
+            f"Sharding dataset into {args.num_chunks} chunks and selecting chunk {args.chunk_index} (len: {len(dataset)})"
+        )
+
     if args.debug:
         logger.info("Debug mode: only generating completions for the first 10 samples")
         dataset = dataset.select(range(10))
@@ -89,11 +102,17 @@ if __name__ == "__main__":
 
     # Load generation model and tokenizer, and prepare sampling params
     logger.info(f"Using {args.model_name} for completion generation")
-    model, tokenizer = load_model(args.model_name, args.model_class, args.max_num_gpus, args.num_nodes, args.data_parallel_size)
+    model, tokenizer = load_model(
+        args.model_name,
+        args.model_class,
+        args.max_num_gpus,
+        args.num_nodes,
+        args.data_parallel_size,
+    )
     sampling_params = vllm.SamplingParams(
-        max_tokens = args.max_tokens,
-        temperature = args.temperature,
-        top_p = args.top_p,
+        max_tokens=args.max_tokens,
+        temperature=args.temperature,
+        top_p=args.top_p,
     )
 
     # Construct messages for samples needing completions
@@ -117,10 +136,10 @@ if __name__ == "__main__":
     logger.info("Generating responses (this may take a while)")
     with torch.inference_mode():
         all_response_texts, _ = get_response_texts(
-            all_messages = all_messages, 
-            model = model,
-            tokenizer = tokenizer, 
-            sampling_params = sampling_params,
+            all_messages=all_messages,
+            model=model,
+            tokenizer=tokenizer,
+            sampling_params=sampling_params,
         )
 
     logger.info("Formatting responses to follow Completion schema")
@@ -128,26 +147,28 @@ if __name__ == "__main__":
     for principle, system_prompt, messages, response_text in zip(
         sampled_principles,
         sampled_system_prompts,
-        all_messages, 
+        all_messages,
         all_response_texts,
     ):
         all_completions.append(
             Completion(
-                model = args.model_name,
-                principle = principle,
-                system_prompt = system_prompt,
-                messages = messages,
-                response_text = response_text,
+                model=args.model_name,
+                principle=principle,
+                system_prompt=system_prompt,
+                messages=messages,
+                response_text=response_text,
             ).model_dump()
         )
 
     # Update dataset with completions
     idx2new_completion = dict(zip(idxs_needing_completion, all_completions))
+
     def add_completion(sample, idx):
         new_completion = idx2new_completion.get(idx)
         if new_completion:
             sample["completions"].append(new_completion)
         return sample
+
     dataset = dataset.map(add_completion, with_indices=True)
 
     # Export dataset
