@@ -185,12 +185,16 @@ def load_model(
 
         while model is None and tps > 0:
             try:
-                out_file = f"./logs/server/{model_name.split('/')[-1]}_server_tps_{tps}"
+                out_dir = f"./logs/server/{model_name.split('/')[-1]}"
+                os.makedirs(out_dir, exist_ok=True)
+
+                out_file = f"{out_dir}/"
                 out_file += (
-                    f"_{os.getenv('SLURM_JOB_ID', '')}.out"
+                    f"{os.getenv('SLURM_JOB_ID', '')}_"
                     if os.getenv("SLURM_JOB_ID", None)
-                    else ".out"
+                    else ""
                 )
+                out_file += f"tp_{tps}_pp_{num_nodes}_dp_{data_parallel_size}.out"
 
                 command = f"vllm serve {model_name}"
                 command += " --gpu-memory-utilization 0.9"
@@ -205,19 +209,20 @@ def load_model(
                     if os.getenv("HF_CACHE", None)
                     else ""
                 )
-                command += f" --port 8000"  # Default port
+                command += " --port 8000"  # Default port
                 command += (
                     " --tokenizer-mode=mistral"
                     if "mistral" in model_name.lower()
                     else ""
                 )
+                # command += " --load-format dummy"  # Debug
                 command += f" > {out_file} 2>&1"
                 command += " &"  # Run in background
 
-                os.system(command)
                 print(f"Starting vLLM server with command: {command}")
-                print(f"Logging server output to {out_file}")
+                os.system(command)
 
+                # TODO: Use exponential backoff
                 server_ready = False
                 for attempt in range(max_ping_retries):
                     try:
