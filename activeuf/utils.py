@@ -96,6 +96,7 @@ def load_model(
     data_parallel_size: int = 1,
     ping_delay: int = PING_DELAY,
     max_ping_retries: int = MAX_PING_RETRIES,
+    max_model_len: int = 0,
     model_kwargs: dict = {},
 ) -> Union[
     # model requires API calls (e.g. gpt-4) or model_class == "vllm_server"
@@ -120,6 +121,7 @@ def load_model(
         data_parallel_size (Optional[int]): The size of the data parallel group (only applicable for vllm_server model class).
         ping_delay (int): Delay between pings to the vLLM server to check if it is already running (only used for model_class == "vllm_server").
         max_ping_retries (int): Number of retries to check if the vLLM server is running (only used for model_class == "vllm_server").
+        max_model_len (int): The maximum context length of the model. Pass 0 to use the model's default max length.
         model_kwargs (Optional[dict]): Additional keyword arguments to pass to the model when loading it.
     Returns:
         Union[Tuple[str, None], Tuple[AutoModelForCausalLM, AutoTokenizer], Tuple[Pipeline, None], Tuple[LLM, vllm.transformers_utils.tokenizer.AnyTokenizer]]: The loaded model and tokenizer (if applicable).
@@ -162,6 +164,9 @@ def load_model(
                     "download_dir": os.getenv("HF_CACHE", None),
                     **model_kwargs,
                 }
+
+                if max_model_len > 0:
+                    vllm_kwargs["max_model_len"] = max_model_len
 
                 # Specify tokenizer mode for Mistral models
                 if "mistral" in model_name.lower():
@@ -227,6 +232,9 @@ def load_model(
                 command += " --trust-remote-code"
                 command += " --dtype auto"
                 command += (
+                    f" --max-model-len {max_model_len}" if max_model_len > 0 else ""
+                )
+                command += (
                     f" --download-dir {os.getenv('HF_CACHE', None)}"
                     if os.getenv("HF_CACHE", None)
                     else ""
@@ -244,7 +252,6 @@ def load_model(
                 print(f"Starting vLLM server with command: {command}")
                 os.system(command)
 
-                # TODO: Use exponential backoff
                 server_ready = False
                 for attempt in range(max_ping_retries):
                     try:
