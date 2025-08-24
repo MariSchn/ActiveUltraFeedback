@@ -39,7 +39,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num_nodes", type=int, default=os.getenv("SLURM_NNODES", 1), help="The maximum number of nodes to use for distributed training (if applicable)")
     parser.add_argument("--data_parallel_size", type=int, default=DATA_PARALLEL_SIZE, help="The size of the data parallel group (only applicable for vllm_server model class)")
     parser.add_argument("--max_tokens", type=int, default=COMPLETION_MAX_TOKENS, help="The maximum number of tokens to generate for each completion")
-    parser.add_argument("--max_model_len", type=int, default=MAX_MODEL_LEN, help="The maximum context length of the model")
+    parser.add_argument("--max_model_len", type=int, default=0, help="The maximum context length of the model")
+    parser.add_argument("--gpu_memory_utilization", type=float, default=0.9, help="The GPU memory utilization to use for loading the model (only used for vllm models)")
     parser.add_argument("--temperature", type=int, default=COMPLETION_TEMPERATURE, help="Temperature for generation")
     parser.add_argument("--top_p", type=int, default=COMPLETION_TOP_P, help="top_p value for generation")
     parser.add_argument("--seed", type=int, default=SEED, help="Seed for random sampling")
@@ -110,6 +111,7 @@ if __name__ == "__main__":
         num_nodes=args.num_nodes,
         data_parallel_size=args.data_parallel_size,
         max_model_len=args.max_model_len,
+        gpu_memory_utilization=args.gpu_memory_utilization,
     )
     sampling_params = vllm.SamplingParams(
         max_tokens=args.max_tokens,

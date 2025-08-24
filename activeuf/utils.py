@@ -96,6 +96,7 @@ def load_model(
     data_parallel_size: int = 1,
     ping_delay: int = PING_DELAY,
     max_ping_retries: int = MAX_PING_RETRIES,
+    gpu_memory_utilization: float = 0.9,
     max_model_len: int = 0,
     model_kwargs: dict = {},
 ) -> Union[
@@ -121,6 +122,7 @@ def load_model(
         data_parallel_size (Optional[int]): The size of the data parallel group (only applicable for vllm_server model class).
         ping_delay (int): Delay between pings to the vLLM server to check if it is already running (only used for model_class == "vllm_server").
         max_ping_retries (int): Number of retries to check if the vLLM server is running (only used for model_class == "vllm_server").
+        gpu_memory_utilization (float): The GPU memory utilization to use for loading the model (only used for vllm models).
         max_model_len (int): The maximum context length of the model. Pass 0 to use the model's default max length.
         model_kwargs (Optional[dict]): Additional keyword arguments to pass to the model when loading it.
     Returns:
@@ -155,7 +157,7 @@ def load_model(
         while model is None and tps > 0:
             try:
                 vllm_kwargs = {
-                    "gpu_memory_utilization": 0.9,
+                    "gpu_memory_utilization": gpu_memory_utilization,
                     "swap_space": 1,
                     "tensor_parallel_size": tps,
                     "pipeline_parallel_size": num_nodes,
@@ -224,7 +226,7 @@ def load_model(
                 out_file += f"tp_{tps}_pp_{num_nodes}_dp_{data_parallel_size}.out"
 
                 command = f"vllm serve {model_name}"
-                command += " --gpu-memory-utilization 0.9"
+                command += f" --gpu-memory-utilization {gpu_memory_utilization}"
                 command += " --swap-space 1"
                 command += f" --tensor-parallel-size {tps}"
                 command += f" --pipeline-parallel-size {num_nodes}"
