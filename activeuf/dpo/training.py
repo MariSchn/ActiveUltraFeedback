@@ -4,6 +4,7 @@ import shutil
 import yaml
 
 from trl import DPOConfig, DPOTrainer
+from trl.data_utils import maybe_extract_prompt, maybe_apply_chat_template
 from peft import LoraConfig, get_peft_model
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from datasets import load_from_disk
@@ -61,13 +62,36 @@ if __name__ == "__main__":
     if config.get("debug"):
         dataset = dataset.select(range(5000))
 
-    # load tokenizer and model from HF
+    # load tokenizer, then use it to remove overly long samples
     model_path = config["base_model_path"]
     tokenizer = AutoTokenizer.from_pretrained(model_path)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_path, trust_remote_code=True, torch_dtype=torch_dtype)
+
+    # make dataset suitable for DPO training # this part is based on https://github.com/huggingface/trl/blob/main/trl/trainer/dpo_trainer.py#L617
+    dataset = dataset.map(maybe_extract_prompt) # this ensures prompt is in conversational format
+    dataset = dataset.map(
+        maybe_apply_chat_template, fn_kwargs={"tokenizer": tokenizer})
+    
+    # remove samples where prompt+chosen or prompt+rejected exceeds max length
+    if training_config["max_length"]:
+        dataset = dataset.map(lambda _: DPOTrainer.tokenize_row(
+            _, 
+            processing_class=tokenizer, 
+            max_prompt_length=None, 
+            max_completion_length=None, 
+            add_special_tokens=True,
+        ))
+
+        old_n = len(dataset)
+        print(f"Original number of samples: {old_n}")
+        dataset = dataset.filter(
+            lambda x: len(x["prompt_input_ids"]) + len(x["chosen_input_ids"]) <= training_config["max_length"] or \
+                len(x["prompt_input_ids"]) + len(x["rejected_input_ids"]) <= training_config["max_length"]
+        )
+        print(f"Number of samples removed: {old_n - len(dataset)}")
 
     # create lora version of model
+    model = AutoModelForCausalLM.from_pretrained(
+        model_path, trust_remote_code=True, torch_dtype=torch_dtype)
     peft_config = LoraConfig(**lora_config)
     try:
         model = get_peft_model(model, peft_config)
