@@ -609,6 +609,7 @@ if __name__ == "__main__":
     initial_lambda_regularizer = float(
         uq_pipeline.trainer.args.regularization_towards_initial_weights)
 
+    # start = time.time()
     for i, full_batch in enumerate(dataloader):
         batch_loader = DataLoader(Dataset.from_dict(full_batch),
                                   batch_size=math.ceil(len(full_batch["prompt_id"])/total_processes))
@@ -720,27 +721,33 @@ if __name__ == "__main__":
             # logger.info(f"- Acquisition function took {end - start:.2f}s")
 
             # (n_samples_in_batch, 2, max_length)
-            temp = b_acquired_idxs.unsqueeze(-1).expand(-1, -
-                                                        1, inputs["input_ids"].shape[-1])
-
-            input_ids = inputs["input_ids"].cpu()
-            b_acquired_input_ids = torch.take_along_dim(                                         # (n_samples_in_batch, 2, max_length)
-                # (n_samples_in_batch, n_completions_per_sample, max_length)
-                input_ids.view(n_samples_in_batch,
-                               n_completions_per_sample, -1),
-                temp,
-                dim=1,
-            )
-            attention_masks = inputs["attention_mask"].cpu()
-            b_acquired_attention_mask = torch.take_along_dim(                                    # (n_samples_in_batch, 2, max_length)
-                # (n_samples_in_batch, n_completions_per_sample, max_length)
-                attention_masks.view(n_samples_in_batch,
-                                     n_completions_per_sample, -1),
-                temp,
-                dim=1,
-            )
-            if inputs:
-                del inputs
+            if args.acquisition_function_type not in ["random", "ultrafeedback"]:
+                temp = b_acquired_idxs.unsqueeze(-1).expand(-1, -
+                                                            1, inputs["input_ids"].shape[-1])
+                input_ids = inputs["input_ids"].cpu()
+                b_acquired_input_ids = torch.take_along_dim(                                         # (n_samples_in_batch, 2, max_length)
+                    # (n_samples_in_batch, n_completions_per_sample, max_length)
+                    input_ids.view(n_samples_in_batch,
+                                   n_completions_per_sample, -1),
+                    temp,
+                    dim=1,
+                )
+                attention_masks = inputs["attention_mask"].cpu()
+                b_acquired_attention_mask = torch.take_along_dim(                                    # (n_samples_in_batch, 2, max_length)
+                    # (n_samples_in_batch, n_completions_per_sample, max_length)
+                    attention_masks.view(n_samples_in_batch,
+                                         n_completions_per_sample, -1),
+                    temp,
+                    dim=1,
+                )
+                if inputs:
+                    del inputs
+            else:
+                # Just a dummy tensor, won't be used
+                b_acquired_input_ids = torch.zeros(
+                    (n_samples_in_batch, 2, 1), dtype=torch.int32)
+                b_acquired_attention_mask = torch.zeros(
+                    (n_samples_in_batch, 2, 1), dtype=torch.int32)
             torch.cuda.empty_cache()
 
             acquired_batch = [
@@ -861,6 +868,9 @@ if __name__ == "__main__":
                     f"Saving {len(output_dataset)} samples to {args.output_path}")
                 Dataset.from_list(output_dataset).save_to_disk(
                     args.output_path)
+                # end = time.time()
+                # logger.info(f"- Preprocessing took {end - start:.2f}s")
+                # start = time.time()
 
         if args.report_to == "wandb":
             # processing the acquisition KPIs

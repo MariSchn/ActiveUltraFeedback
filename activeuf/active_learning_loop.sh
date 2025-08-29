@@ -4,7 +4,7 @@
 CONFIG_FILE="$SCRATCH/ActiveUltraFeedback/activeuf/reward_model/multi_gpu.yaml"
 TRAINER_SCRIPT="activeuf.active_learning_loop"
 COMPLETIONS_DATASET_PATH="$SCRATCH/datasets/combined_annotations_llama/"
-OUTPUT_PATH="$SCRATCH/datasets/testssss/"
+OUTPUT_PATH="$SCRATCH/datasets/tested/"
 REPORT_TO="none"
 ACQUISITION_FUNCTION_TYPE="dts"
 REGULARIZATION_TOWARDS_INITIAL_WEIGHTS=10.0
@@ -21,7 +21,7 @@ accelerate launch --config_file="$CONFIG_FILE" -m "$TRAINER_SCRIPT" \
     --completions_dataset_path="$COMPLETIONS_DATASET_PATH" \
     --output_path="$OUTPUT_PATH" \
     --report_to="$REPORT_TO" \
-    --acquisition_function_type="$ACQUISITION_FUNCTION_TYPE" 
+    --acquisition_function_type="$ACQUISITION_FUNCTION_TYPE" \
 
 
 # --regularization_weight_decay_type="$REGULARIZATION_WEIGHT_DECAY_TYPE" \

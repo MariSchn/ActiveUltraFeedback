@@ -15,7 +15,7 @@ sbatch <<EOF
 #SBATCH --ntasks-per-node=1         # number of MP tasks
 #SBATCH --gres=gpu:4                # number of GPUs per node
 #SBATCH --cpus-per-task=288         # number of cores per tasks
-#SBATCH --time=10:00:00             # maximum execution time (HH:MM:SS)
+#SBATCH --time=04:00:00             # maximum execution time (HH:MM:SS)
 #SBATCH --environment=activeuf_dev      # using compressed docker image as an environment
 
 export GPUS_PER_NODE=4
@@ -45,16 +45,16 @@ export ACCELERATE_DIR="\${ACCELERATE_DIR:-/accelerate}"
 export PYTHON_FILE="activeuf.active_learning_loop"
 export SCRIPT_ARGS=" \
    --completions_dataset_path \${SCRATCH}/datasets/combined_annotations_${annotator_model}/ \
-   --output_path=\$SCRATCH/datasets/preference_albation_${acquisition_function}_${annotator_model}_24/ \
+   --output_path=\$SCRATCH/datasets/grid_search_${acquisition_function}_${annotator_model}_test/ \
     --acquisition_function_type=${acquisition_function} \
-    --regularization_weight_decay_type=exponential \
+    --regularization_weight_decay_type=linear \
     --exponential_decay_base=0.95 \
-    --regularization_towards_initial_weights=5 \
+    --regularization_towards_initial_weights=10 \
     --outer_loop_batch_size=32 \
     --initialization_xavier_gain=2.0 \
     --rm_training_batch_size=32 \
-    --max_training_steps=20 \
-    --seed=1029384756 \
+    --max_training_steps=10 \
+    --seed=4 \
    "
         
 # This step is necessary because accelerate launch does not handle multiline arguments properly

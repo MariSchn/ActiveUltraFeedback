@@ -6,21 +6,23 @@ loop:
   output_path: null
   logs_path: null
   args_path: null
-  outer_loop_batch_size: 32
-  rm_training_batch_size: 32
-  max_length: 4096
+  outer_loop_batch_size: 32 # 32, 128, 512
+  rm_training_batch_size: 32 # RM training batch size ask Samuel, whether it makes the difference. (grdi search by them), yeah 64,128 is better then Iuse grad accumulation
+  max_length: 4096 # just remove truncate elements.
   seed: 4
-  replay_buffer_size: 3200
-  report_to: none
+  replay_buffer_size: 3200 # factor, it's 100 times better. 1000 times  (100 * outerloopbatchsize) 10, 100, 1000
+  report_to: none # wandb some good way to visualize grids. 
   wandb_project: null
 
 acquisition:
   acquisition_function_type: dts
   acquisition_config: activeuf/acquisition_function/configs.yaml
-
+# converge to evals 
+# given a 
+# try to evalulate checkpoints, 5000 datapoints. 2500 per each step. 
 enn:
   # "meta-llama/Llama-3.2-1B-Instruct", "unsloth/Qwen2.5-1.5B-Instruct", "allenai/OLMo-2-1124-7B-SFT", "allenai/Llama-3.1-Tulu-3-8B-SFT"
-  base_model_name_or_path: "unsloth/Qwen2.5-1.5B-Instruct"
+  base_model_name_or_path: "unsloth/Qwen2.5-0.5B-Instruct" # 0.5B qwen (ask Samuel big difference in performance for using qwen 1.5B and 0.5B, what model choose), Tulu3 Paper, how to train model. ablations 8B scale. Big labs, deepsek lab.s they experimentwith smaler models. 
   freeze_base_model: false
   feature_extraction_layer: "last_hidden_state"
   num_train_epochs: 1
@@ -30,9 +32,15 @@ enn:
   logging_strategy: "no"
   logging_steps: 1
   lr_scheduler_type: "constant"
-  learning_rate: 5e-6
-  regularization_towards_initial_weights: 5
-  regularization_weight_decay_type: "linear"
-  exponential_decay_base: 0.99
-  max_training_steps: 10
+  learning_rate: 5e-6 # Ask Samuel, what was the right learning rate, he used.  Loss Curves from them. How quickly the 
+  regularization_towards_initial_weights: 10 # ()
+  regularization_weight_decay_type: "linear" #exponential decay is more importnant.
+  exponential_decay_base: 0.95 #0.95 0.99
+  max_training_steps: 10 # 10 undetraining.  Underfitting more concern. 
   initialization_xavier_gain: 2.0
+
+##
+## 3 * 3 * 3 * 3   This is equal to 81... Keep in mind the evaluation on multiple seeds.
+## Now let's focus on RM training. how robust it is to change of seeds. 
+##
+##
