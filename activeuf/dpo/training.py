@@ -7,20 +7,39 @@ from trl import DPOConfig, DPOTrainer
 from trl.data_utils import apply_chat_template, extract_prompt
 from peft import LoraConfig, get_peft_model
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from datasets import load_from_disk
+from datasets import load_from_disk, load_dataset
 
 from accelerate import Accelerator
 
 from activeuf.configs import *
 from activeuf.utils import *
 
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config_path", type=str, 
+    parser.add_argument("--config_path", type=str,
                         help="Path to the YAML training config.")
     parser.add_argument("--slurm_job_id", type=str,
                         help="SLURM Job ID associated with this run")
     return parser.parse_args()
+
+
+def process_dataset(dataset):
+    # Dataset processing (Determining splits, restructuring (chosen/rejected columns))
+    if isinstance(dataset, dict):
+        if "train_prefs" in dataset:
+            train_dataset = dataset["train_prefs"]
+        elif "train" in dataset:
+            train_dataset = dataset["train"]
+        else:
+            # TODO: More general way of handling dataset splits (They should come as arguments, for example).
+            raise Exception(
+                "Unknown dataset format. Expected 'train' or 'train_prefs' split.")
+    else:
+        train_dataset = dataset
+
+    return train_dataset
+
 
 if __name__ == "__main__":
     # load env vars, args, configs
@@ -45,7 +64,7 @@ if __name__ == "__main__":
     accelerator = Accelerator()
     torch.cuda.empty_cache()
     torch.cuda.reset_peak_memory_stats()
-    
+
     if config.get("torch_dtype", "bfloat16") == "bfloat16":
         torch_dtype = torch.bfloat16
     else:
@@ -53,7 +72,19 @@ if __name__ == "__main__":
 
     # load dataset, remove problematic columns
     print(f"Loading dataset from {config["train_path"]}...\n")
-    dataset = load_from_disk(config["train_path"])
+    dataset_path = config["train_path"]
+    # Load dataset
+    try:
+        dataset = load_dataset(dataset_path)
+    except Exception as e:
+        try:
+            dataset = load_from_disk(dataset_path)
+        except Exception as e:
+            print(f"Failed to load remote or local datasets: {e}")
+            exit(-1)
+
+    dataset = process_dataset(dataset)
+
     try:
         dataset = dataset.remove_columns(["messages"])
     except:
@@ -69,23 +100,25 @@ if __name__ == "__main__":
 
     # make dataset suitable for DPO training # this part is based on https://github.com/huggingface/trl/blob/main/trl/trainer/dpo_trainer.py#L617
     dataset = dataset.map(extract_prompt)
-    dataset = dataset.map(apply_chat_template, fn_kwargs={"tokenizer": tokenizer})
-    
+    dataset = dataset.map(apply_chat_template, fn_kwargs={
+                          "tokenizer": tokenizer})
+
     # remove samples where prompt+chosen or prompt+rejected exceeds max length
     if training_config["max_length"]:
         dataset = dataset.map(lambda _: DPOTrainer.tokenize_row(
-            _, 
-            processing_class=tokenizer, 
-            max_prompt_length=None, 
-            max_completion_length=None, 
+            _,
+            processing_class=tokenizer,
+            max_prompt_length=None,
+            max_completion_length=None,
             add_special_tokens=True,
         ))
 
         old_n = len(dataset)
         print(f"Original number of samples: {old_n}")
         dataset = dataset.filter(
-            lambda x: len(x["prompt_input_ids"]) + len(x["chosen_input_ids"]) <= training_config["max_length"] or \
-                len(x["prompt_input_ids"]) + len(x["rejected_input_ids"]) <= training_config["max_length"]
+            lambda x: len(x["prompt_input_ids"]) + len(x["chosen_input_ids"]) <= training_config["max_length"] or
+            len(x["prompt_input_ids"]) +
+            len(x["rejected_input_ids"]) <= training_config["max_length"]
         )
         print(f"Number of samples removed: {old_n - len(dataset)}")
 
@@ -106,11 +139,13 @@ if __name__ == "__main__":
                     target_modules.append(name)
             peft_config.target_modules = target_modules
         else:
-            print(f"Target module patterns for {model_path} must be implemented manually")
+            print(
+                f"Target module patterns for {model_path} must be implemented manually")
             raise
-        
+
     # create DPO trainer
-    trainer_config = DPOConfig(run_name=run_name, output_dir=output_dir, **training_config)
+    trainer_config = DPOConfig(
+        run_name=run_name, output_dir=output_dir, dataset_num_proc=accelerator.num_processes, **training_config)
     trainer = DPOTrainer(
         model=model,
         args=trainer_config,

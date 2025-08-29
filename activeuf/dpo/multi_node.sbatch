@@ -7,8 +7,8 @@
 #SBATCH --nodes=2
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=4
-#SBATCH --cpus-per-task=20
-#SBATCH --time=02:00:00             # maximum execution time (HH:MM:SS)
+#SBATCH --cpus-per-task=288
+#SBATCH --time=05:00:00             # maximum execution time (HH:MM:SS)
 
 export HF_HOME=$SCRATCH/hf_home
 export VLLM_CACHE_DIR=$SCRATCH/vllm_cache
