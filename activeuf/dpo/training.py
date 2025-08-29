@@ -4,7 +4,7 @@ import shutil
 import yaml
 
 from trl import DPOConfig, DPOTrainer
-from trl.data_utils import maybe_extract_prompt, maybe_apply_chat_template
+from trl.data_utils import apply_chat_template, extract_prompt
 from peft import LoraConfig, get_peft_model
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from datasets import load_from_disk
@@ -51,25 +51,25 @@ if __name__ == "__main__":
     else:
         torch_dtype = torch.float32
 
-    # load dataset, remove unnecessary columns
+    # load dataset, remove problematic columns
     print(f"Loading dataset from {config["train_path"]}...\n")
     dataset = load_from_disk(config["train_path"])
-    if all(_ in dataset.column_names for _ in ["messages", "prompt", "chosen", "rejected"]):
-        print("Warning: Dataset contains 'messages' column along with 'prompt', 'chosen', 'rejected'. Removing 'messages' column to avoid conflict.")
+    try:
         dataset = dataset.remove_columns(["messages"])
+    except:
+        pass
 
     # limit dataset if in debug mode
     if config.get("debug"):
         dataset = dataset.select(range(5000))
 
     # load tokenizer, then use it to remove overly long samples
-    model_path = config["base_model_path"]
+    model_path = config["model_path"]
     tokenizer = AutoTokenizer.from_pretrained(model_path)
 
     # make dataset suitable for DPO training # this part is based on https://github.com/huggingface/trl/blob/main/trl/trainer/dpo_trainer.py#L617
-    dataset = dataset.map(maybe_extract_prompt) # this ensures prompt is in conversational format
-    dataset = dataset.map(
-        maybe_apply_chat_template, fn_kwargs={"tokenizer": tokenizer})
+    dataset = dataset.map(extract_prompt)
+    dataset = dataset.map(apply_chat_template, fn_kwargs={"tokenizer": tokenizer})
     
     # remove samples where prompt+chosen or prompt+rejected exceeds max length
     if training_config["max_length"]:
