@@ -232,7 +232,13 @@ def load_model(
                 command += f" --pipeline-parallel-size {num_nodes}"
                 command += f" --data-parallel-size {data_parallel_size}"
                 command += " --trust-remote-code"
-                command += " --dtype auto"
+                command += (
+                    " --dtype auto"
+                    if "deepseek" in model_name.lower()
+                    else " --dtype bfloat16"
+                )
+                command += " --port 8000"  # Default port
+
                 command += (
                     f" --max-model-len {max_model_len}" if max_model_len > 0 else ""
                 )
