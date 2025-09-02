@@ -85,10 +85,11 @@ if __name__ == "__main__":
 
     dataset = process_dataset(dataset)
 
-    try:
-        dataset = dataset.remove_columns(["messages"])
-    except:
-        pass
+    for column in ["messages", "prompt"]:
+        try:
+            dataset = dataset.remove_columns(column)
+        except:
+            print(f"Unable to remove {column=} from dataset")
 
     # limit dataset if in debug mode
     if config.get("debug"):
@@ -98,14 +99,12 @@ if __name__ == "__main__":
     model_path = config["model_path"]
     tokenizer = AutoTokenizer.from_pretrained(model_path)
 
-    # make dataset suitable for DPO training # this part is based on https://github.com/huggingface/trl/blob/main/trl/trainer/dpo_trainer.py#L617
-    dataset = dataset.map(extract_prompt)
-    dataset = dataset.map(apply_chat_template, fn_kwargs={
-                          "tokenizer": tokenizer})
-
     # remove samples where prompt+chosen or prompt+rejected exceeds max length
     if training_config["max_length"]:
-        dataset = dataset.map(lambda _: DPOTrainer.tokenize_row(
+        temp = dataset.map(extract_prompt)
+        temp = temp.map(apply_chat_template, fn_kwargs={
+                        "tokenizer": tokenizer})
+        temp = temp.map(lambda _: DPOTrainer.tokenize_row(
             _,
             processing_class=tokenizer,
             max_prompt_length=None,
@@ -115,12 +114,15 @@ if __name__ == "__main__":
 
         old_n = len(dataset)
         print(f"Original number of samples: {old_n}")
-        dataset = dataset.filter(
-            lambda x: len(x["prompt_input_ids"]) + len(x["chosen_input_ids"]) <= training_config["max_length"] or
-            len(x["prompt_input_ids"]) +
-            len(x["rejected_input_ids"]) <= training_config["max_length"]
-        )
-        print(f"Number of samples removed: {old_n - len(dataset)}")
+        def check_if_short(x: dict) -> dict[str, bool]:
+            return {
+                "is_short": len(x["prompt_input_ids"]) + len(x["chosen_input_ids"]) <= training_config["max_length"] or \
+                len(x["prompt_input_ids"]) + len(x["rejected_input_ids"]) <= training_config["max_length"]
+            }
+        temp = temp.map(check_if_short)
+        idxs = [i for i, _ in enumerate(temp["is_short"]) if _]
+        dataset = dataset.select(idxs)
+        print(f"Number of samples removed due to length constraints: {old_n - len(dataset)}")
 
     # create lora version of model
     model = AutoModelForCausalLM.from_pretrained(
