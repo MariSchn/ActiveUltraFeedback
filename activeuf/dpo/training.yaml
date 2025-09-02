@@ -3,10 +3,10 @@ debug: false
 seed: 42
 torch_dtype: bfloat16
 
-train_path: /iopsstor/scratch/cscs/dmelikidze/final_datasets/combined_skywork_allenai
+train_path: datasets/preference_random_llama
 model_path: allenai/Llama-3.1-Tulu-3-8B-SFT
-base_run_name: llama_3.1_tulu_3_8b_sft-allenai
-base_output_dir: trainer_output/dpo/skywork_allenai/
+base_run_name: llama_8b-preference_random_llama
+base_output_dir: trainer_output/dpo/
 
 lora:
   r: 32
