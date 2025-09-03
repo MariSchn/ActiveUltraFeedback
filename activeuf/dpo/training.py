@@ -1,6 +1,5 @@
 import argparse
 import os
-import shutil
 import yaml
 
 from trl import DPOConfig, DPOTrainer
@@ -47,14 +46,20 @@ if __name__ == "__main__":
     args = parse_args()
     with open(args.config_path, "r") as f:
         config = yaml.safe_load(f)
-
     config["slurm_job_id"] = args.slurm_job_id
+
     lora_config = config.get("lora", {})
     training_config = config.get("training", {})
 
     # prepare output dir based on SLURM job id and run name
     run_name = f"{args.slurm_job_id}-{config['base_run_name']}"
     output_dir = os.path.join(config["base_output_dir"], run_name)
+
+    # send config file to wandb
+    wandb.config.update(config)
+    artifact = wandb.Artifact(run_name, type="config")
+    artifact.add_file(args.config_path)
+    wandb.log_artifact(artifact)
 
     # set seed for reproducibility
     if isinstance(config.get("seed"), int):
