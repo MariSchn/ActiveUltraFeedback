@@ -124,6 +124,9 @@ if __name__ == "__main__":
         dataset = dataset.select(idxs)
         print(f"Number of samples removed due to length constraints: {old_n - len(dataset)}")
 
+    dataset = dataset.select_columns(["chosen", "rejected"])
+    print(dataset[0])
+
     # create lora version of model
     model = AutoModelForCausalLM.from_pretrained(
         model_path, trust_remote_code=True, torch_dtype=torch_dtype)
@@ -164,7 +167,6 @@ if __name__ == "__main__":
         print(f"Model and tokenizer saved to {output_dir}")
 
     # Export config file for reproducibility
-    shutil.copy2(
-        args.config_path,
-        os.path.join(output_dir, os.path.basename(args.config_path)),
-    )
+    out_path = os.path.join(output_dir, os.path.basename(args.config_path))
+    with open(out_path, "w") as f_out:
+        yaml.dump(config, f_out, default_flow_style=False)
