@@ -3,14 +3,14 @@ debug: false
 seed: 42
 torch_dtype: bfloat16
 
-train_path: datasets/preference_random_llama
+train_path: datasets/preference_ultrafeedback_llama
 model_path: allenai/Llama-3.1-Tulu-3-8B-SFT
-base_run_name: llama_8b-preference_random_llama
+base_run_name: llama_8b-preference_ultrafeedback_llama
 base_output_dir: trainer_output/dpo/
 
 lora:
-  r: 32
-  lora_alpha: 64
+  r: 64
+  lora_alpha: 128
   lora_dropout: 0.05
   bias: none
   task_type: CAUSAL_LM
@@ -25,8 +25,8 @@ training:
   learning_rate: 5.0e-7
   lr_scheduler_type: linear
   warmup_ratio: 0.1
-  num_train_epochs: 1
+  num_train_epochs: 3
   report_to: wandb
   logging_steps: 1
-  beta: 5
+  beta: 0.01
   save_steps: 200
