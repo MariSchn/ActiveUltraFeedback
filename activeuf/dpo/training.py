@@ -2,7 +2,7 @@ import argparse
 import os
 import yaml
 
-from trl import DPOConfig, DPOTrainer
+# from trl import DPOConfig
 from trl.data_utils import apply_chat_template, extract_prompt
 from peft import LoraConfig, get_peft_model
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -12,6 +12,7 @@ from accelerate import Accelerator
 
 from activeuf.configs import *
 from activeuf.utils import *
+from activeuf.dpo.trainer import NormedDPOConfig, NormedDPOTrainer
 
 
 def parse_args() -> argparse.Namespace:
@@ -55,12 +56,6 @@ if __name__ == "__main__":
     run_name = f"{args.slurm_job_id}-{config['base_run_name']}"
     output_dir = os.path.join(config["base_output_dir"], run_name)
 
-    # send config file to wandb
-    wandb.config.update(config)
-    artifact = wandb.Artifact(run_name, type="config")
-    artifact.add_file(args.config_path)
-    wandb.log_artifact(artifact)
-
     # set seed for reproducibility
     if isinstance(config.get("seed"), int):
         set_seed(config.get("seed"))
@@ -69,6 +64,17 @@ if __name__ == "__main__":
     accelerator = Accelerator()
     torch.cuda.empty_cache()
     torch.cuda.reset_peak_memory_stats()
+
+    # send config file to wandb
+    if accelerator.is_main_process:
+        wandb.init(name=run_name)
+        wandb.config.update(config)
+        artifact = wandb.Artifact(run_name, type="config")
+        artifact.add_file(args.config_path)
+        wandb.log_artifact(artifact)
+    
+    # let all ranks wait here so that W&B is ready before training starts
+    accelerator.wait_for_everyone()
 
     if config.get("torch_dtype", "bfloat16") == "bfloat16":
         torch_dtype = torch.bfloat16
@@ -98,7 +104,7 @@ if __name__ == "__main__":
 
     # limit dataset if in debug mode
     if config.get("debug"):
-        dataset = dataset.select(range(5000))
+        dataset = dataset.select(range(100))
 
     # load tokenizer, then use it to remove overly long samples
     model_path = config["model_path"]
@@ -109,7 +115,7 @@ if __name__ == "__main__":
         temp = dataset.map(extract_prompt)
         temp = temp.map(apply_chat_template, fn_kwargs={
                         "tokenizer": tokenizer})
-        temp = temp.map(lambda _: DPOTrainer.tokenize_row(
+        temp = temp.map(lambda _: NormedDPOTrainer.tokenize_row(
             _,
             processing_class=tokenizer,
             max_prompt_length=None,
@@ -130,7 +136,6 @@ if __name__ == "__main__":
         print(f"Number of samples removed due to length constraints: {old_n - len(dataset)}")
 
     dataset = dataset.select_columns(["chosen", "rejected"])
-    print(dataset[0])
 
     # create lora version of model
     model = AutoModelForCausalLM.from_pretrained(
@@ -154,14 +159,15 @@ if __name__ == "__main__":
             raise
 
     # create DPO trainer
-    trainer_config = DPOConfig(
+    trainer_config = NormedDPOConfig(
         run_name=run_name, output_dir=output_dir, dataset_num_proc=accelerator.num_processes, **training_config)
-    trainer = DPOTrainer(
+    trainer = NormedDPOTrainer(
         model=model,
         args=trainer_config,
         train_dataset=dataset,
         processing_class=tokenizer,
     )
+    print(trainer.normalize_logps)
     trainer.train()
 
     # Save final model
