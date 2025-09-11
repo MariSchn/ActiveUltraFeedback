@@ -96,7 +96,11 @@ PRINCIPLES = [
     "honesty",
     "truthfulness",
 ]
-DEFAULT_PRINCIPLE = "helpfulness"
+DEFAULT_PRINCIPLES = [
+    "helpfulness",
+    "honesty",
+    "truthfulness",
+]
 
 # System prompts to be used when generating completions
 PRINCIPLE2SYSTEM_PROMPTS = {
