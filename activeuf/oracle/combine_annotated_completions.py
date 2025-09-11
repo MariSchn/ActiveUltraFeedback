@@ -1,4 +1,5 @@
 import os
+import argparse
 from datasets import load_from_disk, Dataset
 from tqdm import tqdm
 
@@ -16,13 +17,14 @@ def combine_annotations(annotations_folder, completions_folder, output_folder):
     datasets_annotation = []
     datasets_completion = []
     foldernames = []
-    for foldername in tqdm(os.listdir(annotations_folder)):
+    for foldername in tqdm(sorted(os.listdir(annotations_folder))):
         dataset = load_from_disk(os.path.join(annotations_folder, foldername))
+        print(f"Loaded annotation dataset from {foldername} with {len(dataset)} entries")
         datasets_annotation.append(dataset)
         foldernames.append(foldername)
 
-    for i, foldername in enumerate(tqdm(os.listdir(completions_folder))):
-        assert foldername == foldernames[i], "Folder ordering does not match"
+    for i, foldername in enumerate(tqdm(sorted(os.listdir(completions_folder)))):
+        assert foldername == foldernames[i], f"Folder ordering does not match got {foldername} expected {foldernames[i]}"
         dataset = load_from_disk(os.path.join(completions_folder, foldername))
         datasets_completion.append(dataset)
 
@@ -72,9 +74,15 @@ def combine_annotations(annotations_folder, completions_folder, output_folder):
 
 
 def main():
-    annotations_folder = "/iopsstor/scratch/cscs/dmelikidze/datasets/ultrafeedback_annotated_combined_new10/"
-    completions_folder = "/iopsstor/scratch/cscs/dmelikidze/datasets/completions_all/"
-    output_folder = "/iopsstor/scratch/cscs/dmelikidze/datasets/combined_annotations_llama/"
+    parser = argparse.ArgumentParser(description="Combine annotated completions datasets.")
+    parser.add_argument("--annotations_folder", type=str, required=True, help="Path to the folder containing annotation datasets.")
+    parser.add_argument("--completions_folder", type=str, required=True, help="Path to the folder containing completion datasets.")
+    parser.add_argument("--output_folder", type=str, required=True, help="Path to save the combined dataset.")
+
+    args = parser.parse_args()
+    annotations_folder = args.annotations_folder
+    completions_folder = args.completions_folder
+    output_folder = args.output_folder
 
     combined_dataset = combine_annotations(
         annotations_folder, completions_folder, output_folder)
