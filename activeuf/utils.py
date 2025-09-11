@@ -74,12 +74,12 @@ def set_seed(seed: int) -> None:
 
 
 def sample_principle(source: str) -> str:
-    principle_pool = PROMPT_SOURCE2PRINCIPLES.get(source, [DEFAULT_PRINCIPLE])
+    principle_pool = PROMPT_SOURCE2PRINCIPLES.get(source, DEFAULT_PRINCIPLES)
     principle = random.choice(principle_pool)
 
-    if principle == "honesty":
-        if "verbalized_calibration" in PRINCIPLES and np.random.rand() < 0.9:
-            principle = "verbalized_calibration"
+    # if principle == "honesty":
+    #     if "verbalized_calibration" in PRINCIPLES and np.random.rand() < 0.9:
+    #         principle = "verbalized_calibration"
 
     return principle
 
