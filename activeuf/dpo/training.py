@@ -181,3 +181,6 @@ if __name__ == "__main__":
     out_path = os.path.join(output_dir, os.path.basename(args.config_path))
     with open(out_path, "w") as f_out:
         yaml.dump(config, f_out, default_flow_style=False)
+
+if accelerator.is_main_process and wandb.run is not None:
+    wandb.finish()
