@@ -12,5 +12,5 @@
 	ignore = all
 [submodule "resources/olmes"]
 	path = resources/olmes
-	url = https://github.com/allenai/olmes.git
+	url = https://github.com/swiss-ai/olmes.git
 	ignore = all
