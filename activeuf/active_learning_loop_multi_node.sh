@@ -8,15 +8,16 @@ sbatch <<EOF
 
 #SBATCH --job-name=multinode_${acquisition_function}_${annotator_model}_loop
 #SBATCH -D .
-#SBATCH -A a-infra01-1
+#SBATCH -A infra01
 #SBATCH --output=${SCRATCH}/ActiveUltraFeedback/loop/${annotator_model}/${acquisition_function}_new/O-%x.%j
 #SBATCH --error=${SCRATCH}/ActiveUltraFeedback/loop/${annotator_model}/${acquisition_function}_new/E-%x.%j
-#SBATCH --nodes=8                   # number of nodes
+#SBATCH --nodes=16                   # number of nodes
 #SBATCH --ntasks-per-node=1         # number of MP tasks
 #SBATCH --gres=gpu:4                # number of GPUs per node
 #SBATCH --cpus-per-task=288         # number of cores per tasks
-#SBATCH --time=04:00:00             # maximum execution time (HH:MM:SS)
+#SBATCH --time=03:00:00             # maximum execution time (HH:MM:SS)
 #SBATCH --environment=activeuf_dev      # using compressed docker image as an environment
+#SBATCH --partition=normal
 
 export GPUS_PER_NODE=4
 export HF_HOME=\$SCRATCH/huggingface
@@ -55,6 +56,8 @@ export SCRIPT_ARGS=" \
     --rm_training_batch_size=32 \
     --max_training_steps=10 \
     --seed=4 \
+    --use_features \
+    --only_generate_features \
    "
         
 # This step is necessary because accelerate launch does not handle multiline arguments properly

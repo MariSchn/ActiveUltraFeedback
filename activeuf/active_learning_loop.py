@@ -19,6 +19,9 @@ import wandb
 import logging
 import random
 import copy
+import hashlib
+
+from tqdm import tqdm
 
 from rewarduq.models.reward_head_ensemble import (
     RewardHeadEnsembleModel as ENNRewardModel,
@@ -28,6 +31,7 @@ from rewarduq.models.reward_head_ensemble import (
     RewardHeadEnsemblePipeline as ENNRewardModelPipeline,
     # enn_compute_metrics,
 )
+
 
 from activeuf.acquisition_function import *
 from activeuf.oracle.oracles import init_oracle
@@ -45,10 +49,12 @@ Example run command:
 accelerate launch \
     --config_file=$SCRATCH/ActiveUltraFeedback/activeuf/reward_model/multi_gpu.yaml \
     -m activeuf.active_learning_loop \
-    --completions_dataset_path ${SCRATCH}/datasets/combined_annotations_llama/ \
+    --completions_dataset_path ${SCRATCH}/datasets/combined_annotations_llama_features/ \
     --output_path=$SCRATCH/datasets/testssss/ \
     --report_to="wandb" \
-    --acquisition_function_type="dts"
+    --acquisition_function_type="dts" \
+    --use_features \
+    --debug
 
 accelerate launch \
     --config_file=$SCRATCH/ActiveUltraFeedback/activeuf/reward_model/multi_gpu.yaml \
@@ -74,101 +80,101 @@ class LoopArguments:
     oracle_name: str = field(
         default="ultrafeedback",
         metadata={
-            "help": "Type of oracle to use. Choices: ['random', 'ultrafeedback']"}
+            "help": "Type of oracle to use. Choices: ['random', 'ultrafeedback']"
+        },
     )
     completions_dataset_path: str = field(
-        default=None,
-        metadata={"help": "Path to the full completions dataset."}
+        default=None, metadata={"help": "Path to the full completions dataset."}
     )
     previous_output_path: Optional[str] = field(
         default=None,
         metadata={
-            "help": "Path to the dataset that is generated so far. These will be ignored in processing."}
+            "help": "Path to the dataset that is generated so far. These will be ignored in processing."
+        },
     )
     previous_checkpoint_path: Optional[str] = field(
-        default=None,
-        metadata={"help": "Path to the reward model checkpoint."}
+        default=None, metadata={"help": "Path to the reward model checkpoint."}
     )
     output_path: Optional[str] = field(
-        default=None,
-        metadata={"help": "Path to save the annotated dataset."}
+        default=None, metadata={"help": "Path to save the annotated dataset."}
     )
     logs_path: Optional[str] = field(
-        default=None,
-        metadata={"help": "Path to save the logs for this script."}
+        default=None, metadata={"help": "Path to save the logs for this script."}
     )
     args_path: Optional[str] = field(
-        default=None,
-        metadata={"help": "Path to save the args for this script."}
+        default=None, metadata={"help": "Path to save the args for this script."}
     )
     outer_loop_batch_size: int = field(
-        default=None,
-        metadata={"help": "Batch Size for uncertainty sampling."}
+        default=None, metadata={"help": "Batch Size for uncertainty sampling."}
     )
     rm_training_batch_size: int = field(
         # Must be equal to the total number of GPUs, otherwise OOM ERRORS! Change it to 4 when running on a single node.
         default=None,
-        metadata={"help": "Batch Size for the ENN reward model training."}
+        metadata={"help": "Batch Size for the ENN reward model training."},
     )
     max_length: int = field(
-        default=None,
-        metadata={"help": "Max length for the tokenizer."}
+        default=None, metadata={"help": "Max length for the tokenizer."}
     )
     seed: int = field(
-        default=None,
-        metadata={"help": "Random seed for reproducibility."}
+        default=None, metadata={"help": "Random seed for reproducibility."}
     )
     acquisition_function_type: str = field(
         default=None,
         metadata={
-            "help": "Acquisition function type. Choices: ['dts', 'random', 'infomax', 'maxminlcb', 'infogain']"}
+            "help": "Acquisition function type. Choices: ['dts', 'random', 'infomax', 'maxminlcb', 'infogain']"
+        },
     )
     replay_buffer_size: int = field(
         default=None,
         metadata={
-            "help": "Size of the replay buffer for the ENN reward model training."}
+            "help": "Size of the replay buffer for the ENN reward model training."
+        },
     )
     report_to: Optional[str] = field(
         default=None,
         metadata={
-            "help": "Reporting tool to use. Choices: ['wandb', 'tensorboard', 'none']"}
+            "help": "Reporting tool to use. Choices: ['wandb', 'tensorboard', 'none']"
+        },
     )
     loop_config: str = field(
         default="activeuf/active_learning_loop_config.yaml",
-        metadata={"help": "Active learning loop configuration file path."}
+        metadata={"help": "Active learning loop configuration file path."},
     )
-    debug: bool = field(
-        default=False,
-        metadata={"help": "Enable debugging mode."}
-    )
+    debug: bool = field(default=False, metadata={"help": "Enable debugging mode."})
     wandb_project: Optional[str] = field(
-        default=None,
-        metadata={"help": "WandB project name for logging."}
+        default=None, metadata={"help": "WandB project name for logging."}
     )
     regularization_towards_initial_weights: float = field(
         default=None,
-        metadata={"help": "Regularization strength towards initial weights."}
+        metadata={"help": "Regularization strength towards initial weights."},
     )
     regularization_weight_decay_type: str = field(
         default=None,
         metadata={
-            "help": "Weight decay type for regularization. Choices: ['linear', 'exponential']"}
+            "help": "Weight decay type for regularization. Choices: ['linear', 'exponential']"
+        },
     )
     exponential_decay_base: float = field(
-        default=None,
-        metadata={"help": "Base for the exponential decay schedule."}
+        default=None, metadata={"help": "Base for the exponential decay schedule."}
     )
     max_training_steps: int = field(
-        default=None,
-        metadata={"help": "Maximum number of training steps."}
+        default=None, metadata={"help": "Maximum number of training steps."}
     )
     initialization_xavier_gain: float = field(
-        default=None,
-        metadata={"help": "Xavier initialization gain."}
+        default=None, metadata={"help": "Xavier initialization gain."}
     )
     base_model_name_or_path: str = field(
-        default=None,
-        metadata={"help": "Base model name or path."}
+        default=None, metadata={"help": "Base model name or path."}
+    )
+    use_features: bool = field(
+        default=False,
+        metadata={
+            "help": "Whether to precompute or load cached last layer embeddings of the model and use them."
+        },
+    )
+    only_generate_features: bool = field(
+        default=False,
+        metadata={"help": "Whether to only generate features and not train the model."},
     )
 
 
@@ -207,27 +213,35 @@ def parse_postprocess(args: argparse.Namespace) -> argparse.Namespace:
                 setattr(args, key, value)
 
     if args.acquisition_function_type is None:
-        setattr(args, "acquisition_function_type",
-                acquisition["acquisition_function_type"])
+        setattr(
+            args, "acquisition_function_type", acquisition["acquisition_function_type"]
+        )
 
     # Acquisition function type + annotator model + timestamp
-    args.timestamp = args.acquisition_function_type + "_" + \
-        ("llama" if "llama" in args.completions_dataset_path else "qwen") + \
-        "_" + get_timestamp(more_detailed=True)
+    args.timestamp = (
+        args.acquisition_function_type
+        + "_"
+        + ("llama" if "llama" in args.completions_dataset_path else "qwen")
+        + "_"
+        + get_timestamp(more_detailed=True)
+    )
 
     if not args.output_path:
-        args.output_path = f"{args.completions_dataset_path.rstrip('/')}_active_{args.timestamp}"
+        args.output_path = (
+            f"{args.completions_dataset_path.rstrip('/')}_active_{args.timestamp}"
+        )
 
     base_output_path = args.output_path
     suffix = 2
     while os.path.exists(args.output_path):
-        if base_output_path.endswith('/'):
-            base_output_path = base_output_path.rstrip('/')
+        if base_output_path.endswith("/"):
+            base_output_path = base_output_path.rstrip("/")
         args.output_path = f"{base_output_path}_{suffix}"
         suffix += 1
     if suffix > 2:
         print(
-            f"Output path already exists, using {args.output_path} instead of {base_output_path}")
+            f"Output path already exists, using {args.output_path} instead of {base_output_path}"
+        )
 
     if not args.logs_path:
         args.logs_path = f"logs/{args.timestamp}.log"
@@ -241,7 +255,8 @@ def parse_postprocess(args: argparse.Namespace) -> argparse.Namespace:
     if args.acquisition_function_type in ["random", "ultrafeedback"]:
         if args.report_to == "wandb":
             print(
-                "Warning: WandB reporting is not supported for random or ultrafeedback acquisition functions.")
+                "Warning: WandB reporting is not supported for random or ultrafeedback acquisition functions."
+            )
         args.report_to = None
         args.max_length = 1
         args.outer_loop_batch_size = 8192
@@ -263,9 +278,13 @@ def parse_postprocess(args: argparse.Namespace) -> argparse.Namespace:
     args.enn_config = config.get("enn", {})
 
     if args.regularization_towards_initial_weights:
-        args.enn_config["regularization_towards_initial_weights"] = args.regularization_towards_initial_weights
+        args.enn_config["regularization_towards_initial_weights"] = (
+            args.regularization_towards_initial_weights
+        )
     if args.regularization_weight_decay_type:
-        args.enn_config["regularization_weight_decay_type"] = args.regularization_weight_decay_type
+        args.enn_config["regularization_weight_decay_type"] = (
+            args.regularization_weight_decay_type
+        )
     if args.exponential_decay_base:
         args.enn_config["exponential_decay_base"] = args.exponential_decay_base
     if args.max_training_steps:
@@ -290,29 +309,31 @@ def custom_collate_fn(batch):
 
 def acquisition_function_KPIs(rewards, chosen_idxs, rejected_idxs):
     """
-        Function to calculate acquisition function KPIs.
-        rewards: Tensor of shape (n_samples, n_completions, 2) - rewards for each completion
-        chosen_idxs: Tensor of shape (n_samples, 1) - indices of the chosen completions
-        rejected_idxs: Tensor of shape (n_samples, 1) - indices of the rejected completions
+    Function to calculate acquisition function KPIs.
+    rewards: Tensor of shape (n_samples, n_completions, 2) - rewards for each completion
+    chosen_idxs: Tensor of shape (n_samples, 1) - indices of the chosen completions
+    rejected_idxs: Tensor of shape (n_samples, 1) - indices of the rejected completions
 
-        list of KPIs to calculate:
-        - mean rewards and mean uncertainties of:
-        --- all completions per sample
-        --- chosen completions per sample
-        --- rejected completions per sample
-        --- same as above, but for the whole batch
+    list of KPIs to calculate:
+    - mean rewards and mean uncertainties of:
+    --- all completions per sample
+    --- chosen completions per sample
+    --- rejected completions per sample
+    --- same as above, but for the whole batch
 
-        TODO:
-        track these KPIs for each model from the model pool separately.
-        combined statistics for both chosen and rejected completions.
+    TODO:
+    track these KPIs for each model from the model pool separately.
+    combined statistics for both chosen and rejected completions.
     """
     mean_rewards_per_sample = rewards.mean(dim=1)  # (n_samples, 2)
     mean_rewards_of_batch = mean_rewards_per_sample.mean(dim=0)  # (2,)
 
     chosen_rewards = rewards.gather(
-        1, chosen_idxs.unsqueeze(-1).expand(-1, -1, rewards.size(-1))).squeeze(1)
+        1, chosen_idxs.unsqueeze(-1).expand(-1, -1, rewards.size(-1))
+    ).squeeze(1)
     rejected_rewards = rewards.gather(
-        1, rejected_idxs.unsqueeze(-1).expand(-1, -1, rewards.size(-1))).squeeze(1)
+        1, rejected_idxs.unsqueeze(-1).expand(-1, -1, rewards.size(-1))
+    ).squeeze(1)
 
     mean_chosen_rewards = chosen_rewards.mean(dim=0)  # (2,)
     mean_rejected_rewards = rejected_rewards.mean(dim=0)  # (2,)
@@ -323,12 +344,10 @@ def acquisition_function_KPIs(rewards, chosen_idxs, rejected_idxs):
         "mean_rewards_per_batch": mean_rewards_of_batch[0].item(),
         "mean_uncertainty_per_sample": mean_rewards_per_sample[:, 1].tolist(),
         "mean_uncertainty_per_batch": mean_rewards_of_batch[1].item(),
-
         "mean_chosen_rewards_per_batch": mean_chosen_rewards[0].item(),
         "mean_chosen_uncertainty_per_batch": mean_chosen_rewards[1].item(),
         "mean_rejected_rewards_per_batch": mean_rejected_rewards[0].item(),
         "mean_rejected_uncertainty_per_batch": mean_rejected_rewards[1].item(),
-
         "chosen_rewards_per_sample": chosen_rewards[:, 0].tolist(),
         "chosen_uncertainty_per_sample": chosen_rewards[:, 1].tolist(),
         "rejected_rewards_per_sample": rejected_rewards[:, 0].tolist(),
@@ -343,7 +362,8 @@ def acquisition_function_handler(acquisition_function_type, acquisition_config):
         beta = acquisition_config.get("beta", 1)
         # will be changed later.
         acquisition_function = DoubleThompsonSampling(
-            beta=beta, max_iterations=max_iterations)
+            beta=beta, max_iterations=max_iterations
+        )
     elif acquisition_function_type == "random":
         acquisition_function = RandomAcquisitionFunction()
     elif acquisition_function_type == "infomax":
@@ -352,8 +372,7 @@ def acquisition_function_handler(acquisition_function_type, acquisition_config):
         beta = acquisition_config.get("beta", 1.0)
         argmax_tol = float(acquisition_config.get("argmax_tol", 1e-4))
         decision_buffer = acquisition_config.get("decision_buffer", 0.0)
-        use_candidate_set = acquisition_config.get(
-            "use_candidate_set", False)
+        use_candidate_set = acquisition_config.get("use_candidate_set", False)
         seed = acquisition_config.get("seed", 42)
 
         acquisition_function = MaxMinLCB(
@@ -361,7 +380,7 @@ def acquisition_function_handler(acquisition_function_type, acquisition_config):
             argmax_tol=argmax_tol,
             decision_buffer=decision_buffer,
             use_candidate_set=use_candidate_set,
-            seed=seed
+            seed=seed,
         )
     elif acquisition_function_type == "infogain":
         acquisition_function = InfoGain()
@@ -373,8 +392,72 @@ def acquisition_function_handler(acquisition_function_type, acquisition_config):
         acquisition_function = UltraFeedback()
     else:
         raise ValueError(
-            f"Unknown acquisition function type: {acquisition_function_type}")
+            f"Unknown acquisition function type: {acquisition_function_type}"
+        )
     return acquisition_function
+
+
+def get_cache_path(dataset_path, model_name, max_length):
+    key = f"{dataset_path}_{model_name}_{max_length}"
+    cache_name = hashlib.md5(key.encode()).hexdigest()
+    return f"{dataset_path}_features_cache_{cache_name}.pt"
+
+
+def compute_or_load_features(
+    dataset, tokenizer, model, max_length, cache_path, accelerator
+):
+    if os.path.exists(cache_path):
+        print(f"Loading features from cache: {cache_path}")
+        features = torch.load(cache_path)
+        return features
+
+    num_processes = accelerator.num_processes
+    process_index = accelerator.process_index
+
+    print("Computing features for all prompt+completion pairs...")
+    features = []
+    model.eval()
+    with torch.no_grad():
+        for i in tqdm(range(process_index, len(dataset), num_processes)):
+            row = dataset[i]
+            row_features = []
+            prompt = row["prompt"]
+            for completion in row["completions"]:
+                messages = [
+                    {"role": "user", "content": prompt},
+                    {"role": "assistant", "content": completion["response_text"]},
+                ]
+                messages_str = tokenizer.apply_chat_template([messages], tokenize=False)
+                inputs = tokenizer(
+                    messages_str,
+                    padding="max_length",
+                    max_length=max_length,
+                    truncation=True,
+                    return_tensors="pt",
+                ).to(model.device)
+                out = model(
+                    output_only_features=True,
+                    input_ids=inputs["input_ids"],
+                    attention_mask=inputs["attention_mask"],
+                )
+                row_features.append(out)
+            features.append({"features": row_features, "row_id": row["row_id"]})
+
+    accelerator.wait_for_everyone()
+    features = gather_object(
+        features
+    )  # This is already filtered by the way we process the data.
+
+    # sorting features according to row_id:
+    features.sort(key=lambda x: x["row_id"])
+    print(len(features))
+    if accelerator.is_main_process:
+        for j in range(len(features)):
+            print(features[j]["row_id"])
+        torch.save(features, cache_path)
+        print(f"Saved features to cache: {cache_path}")
+
+    return features
 
 
 # Possible problems
@@ -398,14 +481,16 @@ if __name__ == "__main__":
 
     # with TorchMemoryProfiler(record_mem_history=True, autosave=f"/iopsstor/scratch/cscs/dmelikidze/ActiveUltraFeedback/activeuf/memhst5/memory_history{accelerator.process_index}"):
     parser = HfArgumentParser((LoopArguments,))
-    args, = parser.parse_args_into_dataclasses()
+    (args,) = parser.parse_args_into_dataclasses()
     args = parse_postprocess(args)
     acquisition_config = args.acquisition_config
     enn_config = args.enn_config
 
     if accelerator.is_main_process and args.report_to == "wandb":
         os.environ.setdefault(
-            "WANDB_DIR", f"/iopsstor/scratch/cscs/dmelikidze/ActiveUltraFeedback/wandb/job_{args.timestamp}")
+            "WANDB_DIR",
+            f"/iopsstor/scratch/cscs/dmelikidze/ActiveUltraFeedback/wandb/job_{args.timestamp}",
+        )
         print("wandb directory is: ", os.environ["WANDB_DIR"])
 
     if accelerator.is_main_process:
@@ -440,12 +525,13 @@ if __name__ == "__main__":
         logger.info(f"Setting random seed to {args.seed}")
         set_seed(args.seed)
 
-    logger.info(
-        f"Loading completions from {args.completions_dataset_path}")
+    logger.info(f"Loading completions from {args.completions_dataset_path}")
     dataset = load_from_disk(args.completions_dataset_path)
-    dataset = dataset.add_column("row_id", list(range(len(dataset))))
+    if "row_id" not in dataset.column_names:
+        dataset = dataset.add_column("row_id", list(range(len(dataset))))
+
     if args.debug:
-        dataset = dataset.select(range(32))
+        dataset = dataset.select(range(37))
 
     # dataset = dataset.select(range(args.outer_loop_batch_size))
     # Unfortunately the set of prompts have duplicate prompt_ids, so we can not filter by prompt_ids.
@@ -462,21 +548,15 @@ if __name__ == "__main__":
     else:
         output_dataset = []
 
-    dataloader = DataLoader(
-        dataset,
-        batch_size=args.outer_loop_batch_size,
-        collate_fn=custom_collate_fn,
-        shuffle=True,
-    )
-
     logger.info(f"Total number of samples in the dataset: {len(dataset)}")
 
-    logger.info(
-        f"Creating acquisition function {args.acquisition_function_type}")
+    logger.info(f"Creating acquisition function {args.acquisition_function_type}")
     acquisition_function = acquisition_function_handler(
-        args.acquisition_function_type, acquisition_config)
-    logger.info("acquisition function class: %s",
-                acquisition_function.__class__.__name__)
+        args.acquisition_function_type, acquisition_config
+    )
+    logger.info(
+        "acquisition function class: %s", acquisition_function.__class__.__name__
+    )
 
     logger.info(f"Creating oracle {args.oracle_name}")
     oracle = init_oracle(args.oracle_name)
@@ -487,22 +567,26 @@ if __name__ == "__main__":
     uq_pipeline = ENNRewardModelPipeline(
         ENNRewardModelConfig(
             base_model_name_or_path=enn_config.get(
-                "base_model_name_or_path", "allenai/OLMo-2-1124-7B-SFT"),
+                "base_model_name_or_path", "allenai/OLMo-2-1124-7B-SFT"
+            ),
             # enn_config.get("freeze_base_model", True),
             freeze_base_model=enn_config.get("freeze_base_model", True),
             feature_extraction_layer=enn_config.get(
-                "feature_extraction_layer", "last_hidden_state"),
+                "feature_extraction_layer", "last_hidden_state"
+            ),
             # feature_extraction_selection_strategy="last",
             # fp16=True,
             initialization_xavier_gain=enn_config.get(
-                "initialization_xavier_gain", 1.0)
+                "initialization_xavier_gain", 1.0
+            ),
         ),
         ENNRewardModelTrainerConfig(
             num_train_epochs=enn_config.get("num_train_epochs", 1),
             output_dir=f"trainer_output/{args.timestamp}",
             save_strategy=enn_config.get("save_strategy", "no"),
             per_device_train_batch_size=math.ceil(
-                args.rm_training_batch_size / accelerator.num_processes),  # total will be exactly args.batch_size if: (B mod GPU_COUNT ≡ 0)
+                args.rm_training_batch_size / accelerator.num_processes
+            ),  # total will be exactly args.batch_size if: (B mod GPU_COUNT ≡ 0)
             report_to=enn_config.get("report_to", "none"),
             disable_tqdm=enn_config.get("disable_tqdm", True),
             logging_strategy=enn_config.get("logging_strategy", "steps"),
@@ -513,30 +597,38 @@ if __name__ == "__main__":
             max_length=args.max_length,
             bf16=True,
             regularization_towards_initial_weights=enn_config.get(
-                "regularization_towards_initial_weights", 10),
+                "regularization_towards_initial_weights", 10
+            ),
+            precompute_features=args.use_features,
+            warmup_steps=0,
             # precompute_base_model_features=True,
             # precomputed_base_model_features_path="temp/",
             # eval_on_start=False,
             # max_steps=100,
-        )
+        ),
     )
     logger.info(
-        f"batch size per gpu is {uq_pipeline.trainer_config.per_device_train_batch_size}")
+        f"batch size per gpu is {uq_pipeline.trainer_config.per_device_train_batch_size}"
+    )
     # Initialize the trainer with an empty Dataset having the required keys. So we have access to the uq_pipeline.trainer before entering the loop.
-    dummy_data = [{
-        # "chosen": "",
-        'input_ids_chosen': [],
-        'attention_mask_chosen': [],
-        # "rejected": "",
-        'input_ids_rejected': [],
-        'attention_mask_rejected': []
-    } for _ in range(args.replay_buffer_size)]
-
+    dummy_data = [
+        {
+            # "chosen": "",
+            "input_ids_chosen": [],
+            "attention_mask_chosen": [],
+            # "rejected": "",
+            "input_ids_rejected": [],
+            "attention_mask_rejected": [],
+            "features_chosen": [],
+            "features_rejected": [],
+        }
+        for _ in range(args.replay_buffer_size)
+    ]
     uq_pipeline.trainer = ENNRewardModelTrainer(
         args=uq_pipeline.trainer_config,
         model=uq_pipeline.model,
         processing_class=uq_pipeline.model.tokenizer,
-        train_dataset=Dataset.from_list(dummy_data)
+        train_dataset=Dataset.from_list(dummy_data),
     )
     if accelerator.is_main_process and args.report_to == "wandb":
         uq_pipeline.trainer.add_callback(
@@ -546,54 +638,79 @@ if __name__ == "__main__":
     # wait for everyone to load the models
     accelerator.wait_for_everyone()
 
-    # if accelerator.is_main_process:
-    #     chosen = [{
-    #         "content": "Hey I am Davit",
-    #         "role": "user"
-    #     }, {"content": "Hey Davit, how can I assist you today?", "role": "assistant"}]
-    #     rejected = [{"content": "I don't need any assistance.", "role": "user"},
-    #                 {"content": "Do I look like a person who cares?", "role": "assistant"}]
-    #     tokenizer = uq_pipeline.model.tokenizer
-    #     chosen_applied = tokenizer.apply_chat_template(
-    #         chosen, tokenize=False
-    #     )
-    #     rejected_applied = tokenizer.apply_chat_template(
-    #         rejected, tokenize=False
-    #     )
-    #     chosen_tokenized = tokenizer(
-    #         chosen_applied
-    #     )
-    #     rejected_tokenized = tokenizer(
-    #         rejected_applied
-    #     )
-    #     letssee = [
-    #         {"input_ids_chosen": chosen_tokenized,
-    #          "input_ids_rejected": rejected_tokenized}]
-    #     print("before: ", letssee)
-    #     letssee = filter_training_data(letssee, tokenizer)
-    #     print("after: ", letssee)
-
-    # exit()
     if args.previous_checkpoint_path:
-        logger.info(
-            f"Loading checkpoint from {args.previous_checkpoint_path}")
+        logger.info(f"Loading checkpoint from {args.previous_checkpoint_path}")
         uq_pipeline.model = ENNRewardModel.from_pretrained(
-            args.previous_checkpoint_path)
+            args.previous_checkpoint_path
+        )
         # # TODO:
         # load trainer state
     if accelerator.is_main_process:
         logger.info("UQ model class: %s", uq_pipeline.model.__class__.__name__)
         logger.info("UQ model config: %s", uq_pipeline.model_config)
-        logger.info("UQ model tokenizer: %s",
-                    uq_pipeline.model.tokenizer.__class__.__name__)
-        logger.info("UQ trainer class: %s",
-                    uq_pipeline.trainer.__class__.__name__)
-        logger.info("UQ pipeline trainer config: %s",
-                    uq_pipeline.trainer_config)
+        logger.info(
+            "UQ model tokenizer: %s", uq_pipeline.model.tokenizer.__class__.__name__
+        )
+        logger.info("UQ trainer class: %s", uq_pipeline.trainer.__class__.__name__)
+        logger.info("UQ pipeline trainer config: %s", uq_pipeline.trainer_config)
         logger.info("UQ trainer args: %s", uq_pipeline.trainer.args)
 
     model = uq_pipeline.model
     tokenizer = model.tokenizer
+
+    if args.use_features and "features" not in dataset["completions"][0][0].keys():
+        # Define cache path (may have to be modified as it may not generate that unique of a name).
+        cache_path = get_cache_path(
+            args.completions_dataset_path,
+            uq_pipeline.model_config.base_model_name_or_path,
+            args.max_length,
+        )
+
+        start = time.time()
+        print(f"Cache path: {cache_path}")
+        # Compute or load features
+        features = compute_or_load_features(
+            dataset, tokenizer, model, args.max_length, cache_path, accelerator
+        )
+        end = time.time()
+        print(f"Feature computation/loading took {end - start:.2f}s")
+
+        start = time.time()
+
+        def add_features_to_row(row, idx, features):
+            assert row["row_id"] == features[idx]["row_id"], "Row IDs do not match!"
+
+            for j, completion in enumerate(row["completions"]):
+                completion["features"] = features[idx]["features"][j]
+            return row
+
+        dataset = dataset.map(
+            lambda row, idx: add_features_to_row(row, idx, features),
+            with_indices=True,
+            num_proc=288,
+        )
+        end = time.time()
+        print(f"Adding features to dataset took {end - start:.2f}s")
+
+        first_shape = torch.tensor(dataset[0]["completions"][0]["features"]).shape
+        for i in tqdm(range(len(dataset))):
+            for j in range(len(dataset[i]["completions"])):
+                assert (
+                    torch.tensor(dataset[i]["completions"][j]["features"]).shape
+                    == first_shape
+                ), "Features are not of the same shape!"
+        print("Assertions passed.")
+
+        # saving the dataset with features
+        feature_dataset_path = args.completions_dataset_path + "_with_features"
+        if accelerator.is_main_process:
+            if not os.path.exists(feature_dataset_path):
+                dataset.save_to_disk(feature_dataset_path)
+                print(f"Dataset with features saved to {feature_dataset_path}")
+            else:
+                print(
+                    f"Dataset path {feature_dataset_path} already exists. Not overwriting."
+                )
 
     logger.info(f"Starting data generation loop")
     replay_buffer = deque(maxlen=args.replay_buffer_size)
@@ -607,12 +724,29 @@ if __name__ == "__main__":
             json.dump(vars(args), f, indent=4)
 
     initial_lambda_regularizer = float(
-        uq_pipeline.trainer.args.regularization_towards_initial_weights)
+        uq_pipeline.trainer.args.regularization_towards_initial_weights
+    )
 
-    # start = time.time()
-    for i, full_batch in enumerate(dataloader):
-        batch_loader = DataLoader(Dataset.from_dict(full_batch),
-                                  batch_size=math.ceil(len(full_batch["prompt_id"])/total_processes))
+    loop_batch_size = args.outer_loop_batch_size
+    num_batches = math.ceil(len(dataset) / loop_batch_size)
+    dataset = dataset.shuffle(seed=args.seed)
+
+    if args.only_generate_features:
+        exit()
+    # exit()
+    for i in range(num_batches):
+        start_idx = i * loop_batch_size
+        end_idx = min((i + 1) * loop_batch_size, len(dataset))
+        sub_dataset = dataset.select(range(start_idx, end_idx))
+        batch_loader = DataLoader(
+            sub_dataset,
+            batch_size=math.ceil(
+                len(sub_dataset) / total_processes
+            ),  # one option would be to try here batch size of 1. But still doesn't make sense to me why I don't get what I want in my dataset.
+            collate_fn=custom_collate_fn,
+            shuffle=False,
+        )
+
         batch_loader = accelerator.prepare(batch_loader)
 
         annotated_batch = []
@@ -620,30 +754,30 @@ if __name__ == "__main__":
         acquisition_kpis_batch = []
         # By default this loop is executed once. That is batch_loader.batch_size == len(batch_loader)
         if accelerator.is_main_process:
-            logger.info(f"Processing batch {i} out of {len(dataloader)}")
+            logger.info(f"Processing batch {i} out of {num_batches}")
 
         for batch in batch_loader:
-            # start = time.time()
             n_samples_in_batch = len(batch["prompt_id"])
-            n_completions_per_sample = len(batch["completions"])
+            n_completions_per_sample = len(batch["completions"][0])
 
-            # Prepare messages for model
             if args.acquisition_function_type not in ["random", "ultrafeedback"]:
                 messages = []
                 for sample_idx in range(n_samples_in_batch):
-                    for completion in batch["completions"]:  # LOOK HERE!
-                        messages.append([
-                            {
-                                "role": "user",
-                                "content": batch["prompt"][sample_idx],
-                            },
-                            {
-                                "role": "assistant",
-                                "content": completion["response_text"][sample_idx],
-                            }
-                        ])
+                    for completion in batch["completions"][sample_idx]:  # LOOK HERE!
+                        messages.append(
+                            [
+                                {
+                                    "role": "user",
+                                    "content": batch["prompt"][sample_idx],
+                                },
+                                {
+                                    "role": "assistant",
+                                    "content": completion["response_text"],
+                                },
+                            ]
+                        )
 
-                messages_str = tokenizer.apply_chat_template(
+                messages_str = tokenizer.apply_chat_template(  # Should I keep here generation_prompt=True or something? or maybe its true by default.
                     messages, tokenize=False
                 )
                 inputs = tokenizer(
@@ -654,12 +788,11 @@ if __name__ == "__main__":
                     return_tensors="pt",
                 ).to(model.device)
 
-            # inputs["input_ids]: (n_samples_in_batch * n_completions_per_sample, max_length)
             # end = time.time()
             # logger.info(f"- Preprocessing took {end - start:.2f}s")
 
             # Get reward and uncertainty (lower and upper bounds)
-            # start = time.time()
+            start = time.time()
             model.eval()
 
             if args.acquisition_function_type not in ["random", "ultrafeedback"]:
@@ -673,47 +806,75 @@ if __name__ == "__main__":
                 # Also it matters how we choose the microbatch_size. 1 is not the best and maximum is also not good.
                 # Somewhere in between is good, and maybe it's the number of GPUs?idk. but this is something not to
                 # be tuned by us. This is UQ Teams job.
+                # if args.use_features:
+                #     features = model(
+                #         output_only_features=True,
+                #         input_ids=inputs["input_ids"],
+                #         attention_mask=inputs["attention_mask"],
+                #     )
+                #     outputs = {"rewards": model(features=features)["rewards"].cpu()}
+                # else:
                 microbatch_size = 8  # 8 * 16 + 8 * 10
-                total = inputs["input_ids"].shape[0]
+                total = n_samples_in_batch * n_completions_per_sample
 
-                rewards_list = []
+                output_list = []
+                if args.use_features:
+                    features_list = []
+                    for sample_idx in range(n_samples_in_batch):
+                        for completion in batch["completions"][sample_idx]:
+                            features_list.append(
+                                torch.tensor(completion["features"]).to(model.device)
+                            )
+
                 for mb_start in range(0, total, microbatch_size):
                     mb_end = min(mb_start + microbatch_size, total)
                     mb_inputs = {
                         "input_ids": inputs["input_ids"][mb_start:mb_end],
-                        "attention_mask": inputs["attention_mask"][mb_start:mb_end]
+                        "attention_mask": inputs["attention_mask"][mb_start:mb_end],
                     }
                     with torch.no_grad():
-                        mb_outputs = model(
-                            **mb_inputs)
+                        if args.use_features:
+                            mb_outputs = model(
+                                features=torch.stack(features_list[mb_start:mb_end])
+                            )
+                        else:
+                            mb_outputs = model(**mb_inputs)
                     # Maybe you can use .extend()?
-                    rewards_list.append(mb_outputs["rewards"].cpu())
+                    output_list.append(mb_outputs["rewards"].cpu())
 
                     del mb_inputs, mb_outputs
                     # maybe I have to write cuda.empty_cache() here
-                del total
+                # del total
+                if not args.use_features:
+                    features = None
+
+                outputs = {
+                    "rewards": torch.cat(output_list, dim=0),
+                }
                 torch.cuda.empty_cache()
 
-                outputs = {"rewards": torch.cat(rewards_list, dim=0)}
+            print(outputs["rewards"].shape)
+            # exit()
 
-            # end = time.time()
-            # logger.info(
-            #     f"- Uncertainty quantification took {end - start:.2f}s")
+            end = time.time()
+            logger.info(f"- Uncertainty quantification took {end - start:.2f}s")
 
             # Select the completions that should be used for the binarized sample
             # start = time.time()
 
             if args.acquisition_function_type in ["ultrafeedback", "random"]:
                 rewards = torch.zeros(
-                    (n_samples_in_batch, n_completions_per_sample, 3), dtype=torch.float32)
+                    (n_samples_in_batch, n_completions_per_sample, 3),
+                    dtype=torch.float32,
+                )
                 for j in range(n_completions_per_sample):
                     rewards[:, j, 0] = torch.tensor(
-                        batch["completions"][j]["overall_score"], dtype=torch.float32)
+                        batch["completions"][j]["overall_score"], dtype=torch.float32
+                    )
             else:
-                rewards = outputs["rewards"].detach().view(
-                    n_samples_in_batch, -1, 3)
+                rewards = outputs["rewards"].detach().view(n_samples_in_batch, -1, 3)
 
-            b_acquired_idxs = torch.tensor(                                                      # (n_samples_in_batch, 2)
+            b_acquired_idxs = torch.tensor(  # (n_samples_in_batch, 2)
                 acquisition_function(*rewards.unbind(-1))
             )
 
@@ -722,32 +883,42 @@ if __name__ == "__main__":
 
             # (n_samples_in_batch, 2, max_length)
             if args.acquisition_function_type not in ["random", "ultrafeedback"]:
-                temp = b_acquired_idxs.unsqueeze(-1).expand(-1, -
-                                                            1, inputs["input_ids"].shape[-1])
+                temp = b_acquired_idxs.unsqueeze(-1).expand(
+                    -1, -1, inputs["input_ids"].shape[-1]
+                )
                 input_ids = inputs["input_ids"].cpu()
-                b_acquired_input_ids = torch.take_along_dim(                                         # (n_samples_in_batch, 2, max_length)
-                    # (n_samples_in_batch, n_completions_per_sample, max_length)
-                    input_ids.view(n_samples_in_batch,
-                                   n_completions_per_sample, -1),
-                    temp,
-                    dim=1,
+                b_acquired_input_ids = (
+                    torch.take_along_dim(  # (n_samples_in_batch, 2, max_length)
+                        # (n_samples_in_batch, n_completions_per_sample, max_length)
+                        input_ids.view(
+                            n_samples_in_batch, n_completions_per_sample, -1
+                        ),
+                        temp,
+                        dim=1,
+                    )
                 )
                 attention_masks = inputs["attention_mask"].cpu()
-                b_acquired_attention_mask = torch.take_along_dim(                                    # (n_samples_in_batch, 2, max_length)
-                    # (n_samples_in_batch, n_completions_per_sample, max_length)
-                    attention_masks.view(n_samples_in_batch,
-                                         n_completions_per_sample, -1),
-                    temp,
-                    dim=1,
+                b_acquired_attention_mask = (
+                    torch.take_along_dim(  # (n_samples_in_batch, 2, max_length)
+                        # (n_samples_in_batch, n_completions_per_sample, max_length)
+                        attention_masks.view(
+                            n_samples_in_batch, n_completions_per_sample, -1
+                        ),
+                        temp,
+                        dim=1,
+                    )
                 )
+
                 if inputs:
                     del inputs
             else:
                 # Just a dummy tensor, won't be used
                 b_acquired_input_ids = torch.zeros(
-                    (n_samples_in_batch, 2, 1), dtype=torch.int32)
+                    (n_samples_in_batch, 2, 1), dtype=torch.int32
+                )
                 b_acquired_attention_mask = torch.zeros(
-                    (n_samples_in_batch, 2, 1), dtype=torch.int32)
+                    (n_samples_in_batch, 2, 1), dtype=torch.int32
+                )
             torch.cuda.empty_cache()
 
             acquired_batch = [
@@ -757,33 +928,43 @@ if __name__ == "__main__":
                     "prompt": batch["prompt"][j],
                     "row_id": batch["row_id"][j],
                     "batch_id": i,
-
-                    "response_text_1": batch["completions"][a]["response_text"][j],
-                    "model_1": batch["completions"][a]["model"][j],
-                    "score_1": batch["completions"][a]["overall_score"][j],
+                    "response_text_1": batch["completions"][j][a]["response_text"],
+                    "model_1": batch["completions"][j][a]["model"],
+                    "score_1": batch["completions"][j][a]["overall_score"],
                     # (max_length,)
                     "input_ids_1": b_acquired_input_ids[j, 0],
                     # (max_length,)
                     "attention_mask_1": b_acquired_attention_mask[j, 0],
-
-                    "response_text_2": batch["completions"][b]["response_text"][j],
-                    "model_2": batch["completions"][b]["model"][j],
-                    "score_2": batch["completions"][b]["overall_score"][j],
+                    "features_1": batch["completions"][j][a]["features"]
+                    if args.use_features
+                    else None,  # (feature_size,)
+                    "response_text_2": batch["completions"][j][b]["response_text"],
+                    "model_2": batch["completions"][j][b]["model"],
+                    "score_2": batch["completions"][j][b]["overall_score"],
                     # (max_length,)
                     "input_ids_2": b_acquired_input_ids[j, 1],
                     # (max_length,)
                     "attention_mask_2": b_acquired_attention_mask[j, 1],
+                    "features_2": batch["completions"][j][b]["features"]
+                    if args.use_features
+                    else None,  # (feature_size,)
                 }
                 for j, (a, b) in enumerate(b_acquired_idxs)
             ]
 
             # Call oracle to determine which is chosen and which is rejected
             annotated_batch_local = oracle(acquired_batch)
+            # print("HEEEREEEE:")
+            # print(annotated_batch_local[0].keys())
+            # print("END OF HEREEEEE")
 
             chosen_idxs = []
             rejected_idxs = []
             for j, sample in enumerate(annotated_batch_local):
-                if annotated_batch_local[j]["chosen_model"] == acquired_batch[j]["model_1"]:
+                if (
+                    annotated_batch_local[j]["chosen_model"]
+                    == acquired_batch[j]["model_1"]
+                ):
                     chosen_idxs.append(b_acquired_idxs[j, 0].item())
                     rejected_idxs.append(b_acquired_idxs[j, 1].item())
                 else:
@@ -797,16 +978,15 @@ if __name__ == "__main__":
                 # Shape: (n_samples_in_batch, n_completions_per_sample, 1)
                 rewards_std = (rewards[:, :, 2:3] - rewards[:, :, 1:2]) / 2
                 # Shape: (n_samples_in_batch, n_completions_per_sample, 2)
-                rewards_for_kpi = torch.cat(
-                    [rewards_mean, rewards_std], dim=-1)
+                rewards_for_kpi = torch.cat([rewards_mean, rewards_std], dim=-1)
 
                 acquisition_kpis = acquisition_function_KPIs(
-                    rewards_for_kpi, torch.tensor(chosen_idxs)[:, None], torch.tensor(
-                        rejected_idxs)[:, None]
+                    rewards_for_kpi,
+                    torch.tensor(chosen_idxs)[:, None],
+                    torch.tensor(rejected_idxs)[:, None],
                 )
 
-                local_acquisition_KPIs_sample = [{}
-                                                 for _ in range(len(chosen_idxs))]
+                local_acquisition_KPIs_sample = [{} for _ in range(len(chosen_idxs))]
                 local_acquisition_KPIs_batch = [{}]
                 for k, v in acquisition_kpis.items():
                     if isinstance(v, list):
@@ -815,8 +995,12 @@ if __name__ == "__main__":
                     else:
                         local_acquisition_KPIs_batch[0][k] = v
                 for j in range(len(local_acquisition_KPIs_sample)):
-                    local_acquisition_KPIs_sample[j]["prompt_id"] = annotated_batch_local[j]["prompt_id"]
-                    local_acquisition_KPIs_sample[j]["row_id"] = annotated_batch_local[j]["row_id"]
+                    local_acquisition_KPIs_sample[j]["prompt_id"] = (
+                        annotated_batch_local[j]["prompt_id"]
+                    )
+                    local_acquisition_KPIs_sample[j]["row_id"] = annotated_batch_local[
+                        j
+                    ]["row_id"]
                 ######################################
 
             accelerator.wait_for_everyone()
@@ -824,9 +1008,9 @@ if __name__ == "__main__":
 
             if args.report_to == "wandb":
                 acquisition_kpis_sample_tmp = gather_object(
-                    local_acquisition_KPIs_sample)
-                acquisition_kpis_batch_tmp = gather_object(
-                    local_acquisition_KPIs_batch)
+                    local_acquisition_KPIs_sample
+                )
+                acquisition_kpis_batch_tmp = gather_object(local_acquisition_KPIs_batch)
 
             annotated_batch.extend(annotated_batch_tmp)
             if args.report_to == "wandb":
@@ -834,10 +1018,17 @@ if __name__ == "__main__":
                 acquisition_kpis_batch.extend(acquisition_kpis_batch_tmp)
 
         annotated_batch = list(
-            {str(x["prompt_id"])+"_"+str(x["row_id"].item()): x for x in annotated_batch}.values())
+            {
+                str(x["prompt_id"]) + "_" + str(x["row_id"]): x for x in annotated_batch
+            }.values()
+        )
         if args.report_to == "wandb":
             acquisition_kpis_sample = list(
-                {str(x["prompt_id"])+"_"+str(x["row_id"].item()): x for x in acquisition_kpis_sample}.values())
+                {
+                    str(x["prompt_id"]) + "_" + str(x["row_id"]): x
+                    for x in acquisition_kpis_sample
+                }.values()
+            )
 
             for x in acquisition_kpis_sample:
                 if "row_id" in x:
@@ -847,27 +1038,31 @@ if __name__ == "__main__":
         for x in annotated_batch:
             x["chosen"] = [
                 {"content": x["prompt"], "role": "user"},
-                {"content": x["chosen"], "role": "assistant"}
+                {"content": x["chosen"], "role": "assistant"},
             ]
             x["rejected"] = [
                 {"content": x["prompt"], "role": "user"},
-                {"content": x["rejected"], "role": "assistant"}
+                {"content": x["rejected"], "role": "assistant"},
             ]
 
         # Update dataset to be saved, then save to disk
         if accelerator.is_main_process:
-            output_dataset.extend([
-                {
-                    k: v
-                    for k, v in x.items()
-                    if not k.startswith("input_ids") and not k.startswith("attention_mask")
-                } for x in annotated_batch
-            ])
+            output_dataset.extend(
+                [
+                    {
+                        k: v
+                        for k, v in x.items()
+                        if not k.startswith("input_ids")
+                        and not k.startswith("attention_mask")
+                    }
+                    for x in annotated_batch
+                ]
+            )
             if i % 100 == 0:
                 logger.info(
-                    f"Saving {len(output_dataset)} samples to {args.output_path}")
-                Dataset.from_list(output_dataset).save_to_disk(
-                    args.output_path)
+                    f"Saving {len(output_dataset)} samples to {args.output_path}"
+                )
+                Dataset.from_list(output_dataset).save_to_disk(args.output_path)
                 # end = time.time()
                 # logger.info(f"- Preprocessing took {end - start:.2f}s")
                 # start = time.time()
@@ -875,7 +1070,8 @@ if __name__ == "__main__":
         if args.report_to == "wandb":
             # processing the acquisition KPIs
             acquisition_kpis_batch_copy = {
-                k: 0 for k in acquisition_kpis_batch[0].keys()}
+                k: 0 for k in acquisition_kpis_batch[0].keys()
+            }
             for k in acquisition_kpis_batch[0].keys():
                 for j in range(total_processes):
                     acquisition_kpis_batch_copy[k] += acquisition_kpis_batch[j][k]
@@ -894,22 +1090,44 @@ if __name__ == "__main__":
             )
             for j, sample_kpis in enumerate(acquisition_kpis_sample):
                 sample_kpis_no_id = {
-                    k: v for k, v in sample_kpis.items() if k != "prompt_id"}
-                wandb.log(sample_kpis_no_id,
-                          step=args.outer_loop_batch_size * i + j + 1)
-            wandb.log(acquisition_kpis_batch, step=(
-                i+1) * args.outer_loop_batch_size)
+                    k: v for k, v in sample_kpis.items() if k != "prompt_id"
+                }
+                wandb.log(
+                    sample_kpis_no_id, step=args.outer_loop_batch_size * i + j + 1
+                )
+            wandb.log(acquisition_kpis_batch, step=(i + 1) * args.outer_loop_batch_size)
             wandb.finish()
 
         if args.acquisition_function_type in ["random", "ultrafeedback"]:
             continue
 
         # TODO: can be moved into a separate function
-        batch_ready_to_train = [{
-            # "chosen": x["chosen"], "rejected": x["rejected"],
-            "input_ids_chosen": x["input_ids_chosen"], "attention_mask_chosen": x["attention_mask_chosen"],
-            "input_ids_rejected": x["input_ids_rejected"], "attention_mask_rejected": x["attention_mask_rejected"],
-        } for x in annotated_batch]
+        if args.use_features:
+            batch_ready_to_train = [
+                {
+                    "chosen": x["chosen"],
+                    "rejected": x["rejected"],
+                    "input_ids_chosen": x["input_ids_chosen"],
+                    "attention_mask_chosen": x["attention_mask_chosen"],
+                    "input_ids_rejected": x["input_ids_rejected"],
+                    "attention_mask_rejected": x["attention_mask_rejected"],
+                    "features_chosen": x["features_chosen"],
+                    "features_rejected": x["features_rejected"],
+                }
+                for x in annotated_batch
+            ]
+        else:
+            batch_ready_to_train = [
+                {
+                    "chosen": x["chosen"],
+                    "rejected": x["rejected"],
+                    "input_ids_chosen": x["input_ids_chosen"],
+                    "attention_mask_chosen": x["attention_mask_chosen"],
+                    "input_ids_rejected": x["input_ids_rejected"],
+                    "attention_mask_rejected": x["attention_mask_rejected"],
+                }
+                for x in annotated_batch
+            ]
 
         # filtering rows whose input_ids counter don't exceed max_length
         # just like it is done in RewardTrainer of the trl library.
@@ -949,14 +1167,19 @@ if __name__ == "__main__":
             )
 
         if enn_config.get("regularization_weight_decay_type") == "linear":
-            updated_lambda_regularizer = initial_lambda_regularizer * \
-                args.outer_loop_batch_size / \
-                ((i + 1) * args.outer_loop_batch_size)
+            updated_lambda_regularizer = (
+                initial_lambda_regularizer
+                * args.outer_loop_batch_size
+                / ((i + 1) * args.outer_loop_batch_size)
+            )
         elif enn_config.get("regularization_weight_decay_type") == "exponential":
-            updated_lambda_regularizer = initial_lambda_regularizer * \
-                (enn_config.get("exponential_decay_base") ** i)
+            updated_lambda_regularizer = initial_lambda_regularizer * (
+                enn_config.get("exponential_decay_base") ** i
+            )
 
-        uq_pipeline.trainer.args.regularization_towards_initial_weights = updated_lambda_regularizer
+        uq_pipeline.trainer.args.regularization_towards_initial_weights = (
+            updated_lambda_regularizer
+        )
 
         # logger.info(
         #     f"Updated lambda regularizer: {updated_lambda_regularizer}")
@@ -967,9 +1190,10 @@ if __name__ == "__main__":
         # I have rm_training_batch_size samples per step.
         # So I will have to sample max_training_steps * rm_training_batch_size samples.
         subset_size = min(
-            len(replay_buffer), args.rm_training_batch_size * enn_config.get("max_training_steps", 10))
-        random_subset = random.sample(
-            replay_buffer, subset_size)
+            len(replay_buffer),
+            args.rm_training_batch_size * enn_config.get("max_training_steps", 10),
+        )
+        random_subset = random.sample(replay_buffer, subset_size)
 
         # Creating a new trainer, to initialize the training dataset the right way.
         # tmpTrainer = ENNRewardModelTrainer(
@@ -983,35 +1207,36 @@ if __name__ == "__main__":
         # copy.deepcopy(
         #     tmpTrainer.train_dataset)
 
-        if accelerator.is_main_process and i == 0:
-            # with open("open_textered2.txt", "w") as f:
-            train_ds = uq_pipeline.trainer.train_dataset[0]
-            # f.write(f"Chosen: {train_ds['chosen']}\n")
-            # f.write("=====" * 5 + "\n")
-            logger.info(f"Input IDs Chosen: {train_ds['input_ids_chosen']}\n")
-            logger.info("=====" * 5)
-            logger.info(tokenizer.decode(train_ds["input_ids_chosen"]))
-            logger.info("=====" * 5)
-            # logger.info(tmpTrainer.train_dataset[0]["chosen"])
-            # logger.info("=====" * 5)
-            # logger.info(tmpTrainer.train_dataset[0]["input_ids_chosen"])
-            # logger.info("=====" * 5)
-            # logger.info(tokenizer.decode(
-            #     tmpTrainer.train_dataset[0]["input_ids_chosen"]))
+        # if accelerator.is_main_process and i == 0:
+        #     # with open("open_textered2.txt", "w") as f:
+        #     train_ds = uq_pipeline.trainer.train_dataset[0]
+        #     # f.write(f"Chosen: {train_ds['chosen']}\n")
+        #     # f.write("=====" * 5 + "\n")
+        #     logger.info(f"Input IDs Chosen: {train_ds['input_ids_chosen']}\n")
+        #     logger.info("=====" * 5)
+        #     logger.info(tokenizer.decode(train_ds["input_ids_chosen"]))
+        #     logger.info("=====" * 5)
+        # logger.info(tmpTrainer.train_dataset[0]["chosen"])
+        # logger.info("=====" * 5)
+        # logger.info(tmpTrainer.train_dataset[0]["input_ids_chosen"])
+        # logger.info("=====" * 5)
+        # logger.info(tokenizer.decode(
+        #     tmpTrainer.train_dataset[0]["input_ids_chosen"]))
 
         # if hasattr(uq_pipeline.trainer, "train_dataloader"):
         #     uq_pipeline.trainer.train_dataloader = None  # Force dataloader rebuild
         # exit()
         # logger.info(
         #     f"Starting Training of the UQ model on {len(random_subset)} samples from the replay buffer")
+        start = time.time()
         uq_pipeline.trainer.train()
         # tmpTrainer.train()
 
         global_step_offset += uq_pipeline.trainer.state.global_step
         # global_step_offset += tmpTrainer.state.global_step
 
-        # end = time.time()
-        # logger.info(f"- Training took {end - start:.2f}s")
+        end = time.time()
+        logger.info(f"- Training took {end - start:.2f}s")
         # logger.info(f"Done with batch {i}\n")
         torch.cuda.empty_cache()
         if accelerator.is_main_process and args.report_to == "wandb":
@@ -1019,7 +1244,7 @@ if __name__ == "__main__":
 
     if accelerator.is_main_process:
         logger.info(
-            f"Saving the final: {len(output_dataset)} samples to {args.output_path}")
+            f"Saving the final: {len(output_dataset)} samples to {args.output_path}"
+        )
         if len(output_dataset) > 0:
-            Dataset.from_list(output_dataset).save_to_disk(
-                args.output_path)
+            Dataset.from_list(output_dataset).save_to_disk(args.output_path)

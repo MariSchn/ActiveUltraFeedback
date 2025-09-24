@@ -8,10 +8,10 @@ import regex as re
 def init_oracle(oracle_name: str):
     """
     Parses the oracle class name and returns the corresponding oracle class.
-    
+
     Args:
         oracle_name (str): The name of the oracle class to parse.
-        
+
     Returns:
         BaseOracle: The corresponding oracle class.
     """
@@ -33,7 +33,9 @@ class BaseOracle(ABC):
         pass
 
     @abstractmethod
-    def __call__(self, prompts_with_completions: list[dict[str, str]]) -> list[dict[str, str]]:
+    def __call__(
+        self, prompts_with_completions: list[dict[str, str]]
+    ) -> list[dict[str, str]]:
         """
         This function should be overridden by subclasses to implement the specific oracle logic.
         The oracle takes prompts with two completions and selects which completion is the chosen and which is the rejected one.
@@ -69,7 +71,9 @@ class RandomOracle(BaseOracle):
     def __init__(self):
         super().__init__()
 
-    def __call__(self, prompts_with_completions: list[dict[str, str]]) -> list[dict[str, str]]:
+    def __call__(
+        self, prompts_with_completions: list[dict[str, str]]
+    ) -> list[dict[str, str]]:
         """
         Rnadomly selects among the two passed completions which one is the chosen and which one is the rejected one.
 
@@ -98,18 +102,20 @@ class RandomOracle(BaseOracle):
             chosen_int, rejected_int = 1, 2
             if random.random() > 0.5:
                 chosen_int, rejected_int = rejected_int, chosen_int
-            out.append({
-                "prompt": x["prompt"],
-                "prompt_id": x["prompt_id"],
-                "row_id": x["row_id"],
-                "batch_id": x["batch_id"],
-                "chosen": x[f"response_text_{chosen_int}"],
-                "chosen_model": x[f"model_{chosen_int}"],
-                "chosen_score": x[f"overall_score_{chosen_int}"],
-                "rejected": x[f"response_text_{rejected_int}"],
-                "rejected_model": x[f"model_{rejected_int}"],
-                "rejected_score": x[f"overall_score_{rejected_int}"],
-            })
+            out.append(
+                {
+                    "prompt": x["prompt"],
+                    "prompt_id": x["prompt_id"],
+                    "row_id": x["row_id"],
+                    "batch_id": x["batch_id"],
+                    "chosen": x[f"response_text_{chosen_int}"],
+                    "chosen_model": x[f"model_{chosen_int}"],
+                    "chosen_score": x[f"overall_score_{chosen_int}"],
+                    "rejected": x[f"response_text_{rejected_int}"],
+                    "rejected_model": x[f"model_{rejected_int}"],
+                    "rejected_score": x[f"overall_score_{rejected_int}"],
+                }
+            )
         return out
 
 
@@ -147,7 +153,9 @@ class UltraFeedbackOracle(BaseOracle):
             print(f"Could not parse score from {score_str}")
             return 0
 
-    def __call__(self, prompts_with_completions: list[dict[str, str]]) -> list[dict[str, str]]:
+    def __call__(
+        self, prompts_with_completions: list[dict[str, str]]
+    ) -> list[dict[str, str]]:
         """
         Selects among the two passed completions which one is the chosen and which one is the rejected one.
 
@@ -183,20 +191,24 @@ class UltraFeedbackOracle(BaseOracle):
             chosen_int, rejected_int = 1, 2
             if self.parse_score_str(x["score_1"]) < self.parse_score_str(x["score_2"]):
                 chosen_int, rejected_int = 2, 1
-            out.append({
-                "prompt": x["prompt"],
-                "prompt_id": x["prompt_id"],
-                "row_id": x["row_id"],
-                "batch_id": x["batch_id"],
-                "chosen": x[f"response_text_{chosen_int}"],
-                "chosen_model": x[f"model_{chosen_int}"],
-                "chosen_score": x[f"score_{chosen_int}"],
-                "input_ids_chosen": x[f"input_ids_{chosen_int}"],
-                "attention_mask_chosen": x[f"attention_mask_{chosen_int}"],
-                "rejected": x[f"response_text_{rejected_int}"],
-                "rejected_model": x[f"model_{rejected_int}"],
-                "rejected_score": x[f"score_{rejected_int}"],
-                "input_ids_rejected": x[f"input_ids_{rejected_int}"],
-                "attention_mask_rejected": x[f"attention_mask_{rejected_int}"],
-            })
+            out.append(
+                {
+                    "prompt": x["prompt"],
+                    "prompt_id": x["prompt_id"],
+                    "row_id": x["row_id"],
+                    "batch_id": x["batch_id"],
+                    "chosen": x[f"response_text_{chosen_int}"],
+                    "chosen_model": x[f"model_{chosen_int}"],
+                    "chosen_score": x[f"score_{chosen_int}"],
+                    "input_ids_chosen": x[f"input_ids_{chosen_int}"],
+                    "attention_mask_chosen": x[f"attention_mask_{chosen_int}"],
+                    "features_chosen": x[f"features_{chosen_int}"],
+                    "rejected": x[f"response_text_{rejected_int}"],
+                    "rejected_model": x[f"model_{rejected_int}"],
+                    "rejected_score": x[f"score_{rejected_int}"],
+                    "input_ids_rejected": x[f"input_ids_{rejected_int}"],
+                    "attention_mask_rejected": x[f"attention_mask_{rejected_int}"],
+                    "features_rejected": x[f"features_{rejected_int}"],
+                }
+            )
         return out
