@@ -4,11 +4,11 @@
 #SBATCH --job-name=dpo
 #SBATCH --output=logs/dpo/O-%x.%j
 #SBATCH --error=logs/dpo/E-%x.%j
-#SBATCH --nodes=2
+#SBATCH --nodes=8
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=4
 #SBATCH --cpus-per-task=288
-#SBATCH --time=05:00:00             # maximum execution time (HH:MM:SS)
+#SBATCH --time=03:00:00             # maximum execution time (HH:MM:SS)
 
 export HF_HOME=$SCRATCH/hf_home
 export VLLM_CACHE_DIR=$SCRATCH/vllm_cache
@@ -30,7 +30,10 @@ CMD="accelerate launch \
     --main_process_port $MAIN_PROCESS_PORT \
     -m activeuf.dpo.training \
     --config_path $SCRATCH/ActiveUltraFeedback/activeuf/dpo/training.yaml \
-    --slurm_job_id $SLURM_JOB_ID"
+    --slurm_job_id $SLURM_JOB_ID \
+    --dataset_path /iopsstor/scratch/cscs/dmelikidze/datasets/7_preference_datasets/ultrafeedback_llama_3.3_70b_ultrafeedback \
+    --beta 0.1"
+
 echo $CMD
 
 START=$(date +%s)
