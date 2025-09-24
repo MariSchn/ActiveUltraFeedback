@@ -176,6 +176,12 @@ class LoopArguments:
         default=False,
         metadata={"help": "Whether to only generate features and not train the model."},
     )
+    log_kpis: bool = field(
+        default=False,
+        metadata={
+            "help": "Whether to log key performance indicators (KPIs) during training."
+        },
+    )
 
 
 global_step_offset = 0
@@ -630,7 +636,7 @@ if __name__ == "__main__":
         processing_class=uq_pipeline.model.tokenizer,
         train_dataset=Dataset.from_list(dummy_data),
     )
-    if accelerator.is_main_process and args.report_to == "wandb":
+    if accelerator.is_main_process and args.report_to == "wandb" and args.log_kpis:
         uq_pipeline.trainer.add_callback(
             WandbStepLoggerCallback(get_global_step_offset)
         )
@@ -701,8 +707,19 @@ if __name__ == "__main__":
                 ), "Features are not of the same shape!"
         print("Assertions passed.")
 
-        # saving the dataset with features
-        feature_dataset_path = args.completions_dataset_path + "_with_features"
+        def sanitize_path_component(s):
+            # Replace slashes and spaces with underscores, remove trailing underscores
+            return s.rstrip("/").replace("/", "_").replace(".", "_").replace(" ", "_")
+
+        base_path = str(args.completions_dataset_path).rstrip("/")
+
+        # Sanitize base model name or path
+        model_name = sanitize_path_component(
+            uq_pipeline.model_config.base_model_name_or_path
+        )
+
+        # Compose the new dataset path
+        feature_dataset_path = f"{base_path}_features_{model_name}"
         if accelerator.is_main_process:
             if not os.path.exists(feature_dataset_path):
                 dataset.save_to_disk(feature_dataset_path)
@@ -752,44 +769,63 @@ if __name__ == "__main__":
         annotated_batch = []
         acquisition_kpis_sample = []
         acquisition_kpis_batch = []
+
         # By default this loop is executed once. That is batch_loader.batch_size == len(batch_loader)
         if accelerator.is_main_process:
             logger.info(f"Processing batch {i} out of {num_batches}")
 
+        start = time.time()
         for batch in batch_loader:
             n_samples_in_batch = len(batch["prompt_id"])
             n_completions_per_sample = len(batch["completions"][0])
 
+            end = time.time()
+            logger.info(f"- Batch extraction took {end - start:.2f}s")
+
+            start = time.time()
             if args.acquisition_function_type not in ["random", "ultrafeedback"]:
-                messages = []
-                for sample_idx in range(n_samples_in_batch):
-                    for completion in batch["completions"][sample_idx]:  # LOOK HERE!
-                        messages.append(
-                            [
-                                {
-                                    "role": "user",
-                                    "content": batch["prompt"][sample_idx],
-                                },
-                                {
-                                    "role": "assistant",
-                                    "content": completion["response_text"],
-                                },
-                            ]
-                        )
+                if args.use_features:
+                    inputs = {
+                        "input_ids": torch.zeros(
+                            (n_samples_in_batch * n_completions_per_sample, 1),
+                            dtype=torch.long,
+                        ).to(model.device),
+                        "attention_mask": torch.zeros(
+                            (n_samples_in_batch * n_completions_per_sample, 1),
+                            dtype=torch.long,
+                        ).to(model.device),
+                    }
+                else:
+                    messages = []
+                    for sample_idx in range(n_samples_in_batch):
+                        for completion in batch["completions"][
+                            sample_idx
+                        ]:  # LOOK HERE!
+                            messages.append(
+                                [
+                                    {
+                                        "role": "user",
+                                        "content": batch["prompt"][sample_idx],
+                                    },
+                                    {
+                                        "role": "assistant",
+                                        "content": completion["response_text"],
+                                    },
+                                ]
+                            )
 
-                messages_str = tokenizer.apply_chat_template(  # Should I keep here generation_prompt=True or something? or maybe its true by default.
-                    messages, tokenize=False
-                )
-                inputs = tokenizer(
-                    messages_str,
-                    padding="longest",
-                    max_length=args.max_length,
-                    truncation=True,
-                    return_tensors="pt",
-                ).to(model.device)
-
-            # end = time.time()
-            # logger.info(f"- Preprocessing took {end - start:.2f}s")
+                    messages_str = tokenizer.apply_chat_template(  # Should I keep here generation_prompt=True or something? or maybe its true by default.
+                        messages, tokenize=False
+                    )
+                    inputs = tokenizer(
+                        messages_str,
+                        padding="longest",
+                        max_length=args.max_length,
+                        truncation=True,
+                        return_tensors="pt",
+                    ).to(model.device)
+            end = time.time()
+            logger.info(f"- Tokenization took {end - start:.2f}s")
 
             # Get reward and uncertainty (lower and upper bounds)
             start = time.time()
@@ -860,7 +896,7 @@ if __name__ == "__main__":
             logger.info(f"- Uncertainty quantification took {end - start:.2f}s")
 
             # Select the completions that should be used for the binarized sample
-            # start = time.time()
+            start = time.time()
 
             if args.acquisition_function_type in ["ultrafeedback", "random"]:
                 rewards = torch.zeros(
@@ -878,9 +914,10 @@ if __name__ == "__main__":
                 acquisition_function(*rewards.unbind(-1))
             )
 
-            # end = time.time()
-            # logger.info(f"- Acquisition function took {end - start:.2f}s")
+            end = time.time()
+            logger.info(f"- Acquisition function took {end - start:.2f}s")
 
+            start = time.time()
             # (n_samples_in_batch, 2, max_length)
             if args.acquisition_function_type not in ["random", "ultrafeedback"]:
                 temp = b_acquired_idxs.unsqueeze(-1).expand(
@@ -951,13 +988,19 @@ if __name__ == "__main__":
                 }
                 for j, (a, b) in enumerate(b_acquired_idxs)
             ]
+            end = time.time()
+            logger.info(f"- Preparing batch for oracle: {end - start:.2f}s")
 
+            start = time.time()
             # Call oracle to determine which is chosen and which is rejected
             annotated_batch_local = oracle(acquired_batch)
             # print("HEEEREEEE:")
             # print(annotated_batch_local[0].keys())
             # print("END OF HEREEEEE")
+            end = time.time()
+            logger.info(f"- Oracle annotation took {end - start:.2f}s")
 
+            start = time.time()
             chosen_idxs = []
             rejected_idxs = []
             for j, sample in enumerate(annotated_batch_local):
@@ -1017,6 +1060,10 @@ if __name__ == "__main__":
                 acquisition_kpis_sample.extend(acquisition_kpis_sample_tmp)
                 acquisition_kpis_batch.extend(acquisition_kpis_batch_tmp)
 
+            end = time.time()
+            logger.info(f"- Gathering data from processes took {end - start:.2f}s")
+
+        start = time.time()
         annotated_batch = list(
             {
                 str(x["prompt_id"]) + "_" + str(x["row_id"]): x for x in annotated_batch
@@ -1054,6 +1101,7 @@ if __name__ == "__main__":
                         for k, v in x.items()
                         if not k.startswith("input_ids")
                         and not k.startswith("attention_mask")
+                        and not k.startswith("features")
                     }
                     for x in annotated_batch
                 ]
@@ -1079,7 +1127,7 @@ if __name__ == "__main__":
                 acquisition_kpis_batch_copy[k] /= len(acquisition_kpis_batch)
             acquisition_kpis_batch = acquisition_kpis_batch_copy
 
-        if accelerator.is_main_process and args.report_to == "wandb":
+        if accelerator.is_main_process and args.report_to == "wandb" and args.log_kpis:
             wandb.init(
                 project=args.wandb_project,
                 name=acquisition_KPI_run,
@@ -1194,6 +1242,7 @@ if __name__ == "__main__":
             args.rm_training_batch_size * enn_config.get("max_training_steps", 10),
         )
         random_subset = random.sample(replay_buffer, subset_size)
+        print("dataset size: ", len(random_subset), accelerator.is_main_process)
 
         # Creating a new trainer, to initialize the training dataset the right way.
         # tmpTrainer = ENNRewardModelTrainer(
@@ -1228,6 +1277,9 @@ if __name__ == "__main__":
         # exit()
         # logger.info(
         #     f"Starting Training of the UQ model on {len(random_subset)} samples from the replay buffer")
+        end = time.time()
+        logger.info(f"- Preparing for training took {end - start:.2f}s")
+
         start = time.time()
         uq_pipeline.trainer.train()
         # tmpTrainer.train()
@@ -1238,8 +1290,9 @@ if __name__ == "__main__":
         end = time.time()
         logger.info(f"- Training took {end - start:.2f}s")
         # logger.info(f"Done with batch {i}\n")
+
         torch.cuda.empty_cache()
-        if accelerator.is_main_process and args.report_to == "wandb":
+        if accelerator.is_main_process and args.report_to == "wandb" and args.log_kpis:
             wandb.finish()
 
     if accelerator.is_main_process:
