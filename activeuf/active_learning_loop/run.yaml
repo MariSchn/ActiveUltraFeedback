@@ -1,0 +1,41 @@
+inputs_path: datasets/combined_annotations_llama
+base_output_dir: datasets
+base_logs_dir: logs
+base_wandb_project: loop
+
+seed: 42
+
+acquisition_function: random
+acquisition_function_config:
+  dts:
+    beta: 1
+    max_iterations: 30
+  ids:
+    argmax_tol: 1e-4
+    decision_buffer: 0.0
+    use_candidate_set: false
+  rucb:
+    beta: 1
+    argmax_tol: 1e-4
+    decision_buffer: 0.0
+    use_candidate_set: false # TODO: ask martin why rucb takes max_iterations as input
+
+reward_model: enn
+reward_model_config:
+  enn:
+    base_model_name_or_path: "unsloth/Qwen2.5-1.5B-Instruct"
+    freeze_base_model: true
+    feature_extraction_layer: "last_hidden_state"
+    num_train_epochs: 1
+    save_strategy: "no"
+    report_to: "none"
+    disable_tqdm: true
+    logging_strategy: "no"
+    logging_steps: 1
+    lr_scheduler_type: "constant"
+    learning_rate: 5e-6
+    regularization_towards_initial_weights: 10
+    regularization_weight_decay_type: "linear"
+    exponential_decay_base: 0.95
+    max_training_steps: 10
+    initialization_xavier_gain: 2.0
