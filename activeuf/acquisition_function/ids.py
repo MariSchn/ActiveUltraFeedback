@@ -6,7 +6,7 @@ from activeuf.acquisition_function.base import BaseAcquisitionFunction
 
 class InformationDirectedSampling(BaseAcquisitionFunction):
     def __init__(self, beta=1.0, argmax_tol=1e-4, decision_buffer=0.0,
-                 prob_grid_size=100, rho2=1.0):
+                 prob_grid_size=100, rho2=1.0, **kwargs):
         super().__init__()
         self.beta = beta
         self.argmax_tol = argmax_tol
