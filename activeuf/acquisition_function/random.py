@@ -9,6 +9,11 @@ class RandomAcquisitionFunction(BaseAcquisitionFunction):
     Randomly selects and returns two indices per prompt
     """
 
+    def __init__(self, seed: int = None, **kwargs):
+        if seed:
+            self.seed = seed
+            np.random.seed(seed)
+
     def __call__(
         self,
         rewards: torch.Tensor,
