@@ -20,9 +20,6 @@ class LoopArguments:
         default=None,
         metadata={"help": "Path to the full completions dataset."}
     )
-    base_output_path: str | None = field(
-        default=None, metadata={"help": "Path to save the annotated dataset."}
-    )
     oracle_name: str = field(
         default="ultrafeedback",
         metadata={
@@ -30,9 +27,6 @@ class LoopArguments:
             "choices": ["random", "ultrafeedback"],
         },
     )
-
-    # active learning-related configs
-    ## acquisition function-specific configs
     acquisition_function: str = field(
         default="random",
         metadata={
@@ -40,56 +34,21 @@ class LoopArguments:
             "choices": ["random", "dts", "infomax", "maxminlcb", "infogain"],
         },
     )
-    acquisition_function_config: dict | None = field(
+    reward_model: str | None = field(
         default=None,
         metadata={
-            "help": "Configs relevant for the chosen acquisition function",
-        },
+            "help": "The reward model (if any) that should be trained via the loop.",
+            "choices": ["enn"],
+        }
     )
 
-    ## reward model-related configs
-    base_model_name_or_path: str | None = field(
-        default=None, metadata={"help": "Base model name or path for the reward model."}
-    )
-    max_length: int = field(
-        default=2048, 
-        metadata={"help": "Max length for the tokenizer."}
-    )
-
-    ## reward model training configs
-    max_training_steps: int = field(
-        default=128, metadata={"help": "Maximum number of training steps."}
-    )
-    outer_loop_batch_size: int = field(
-        default=64, metadata={"help": "Number of prompts to involve per reward model training call."}
-    )
-    rm_training_batch_size: int = field(
-        # Must be equal to the total number of GPUs, otherwise OOM ERRORS! Change it to 4 when running on a single node.
-        default=8,
-        metadata={"help": "Number of preference samples to train on simultaneously."},
-    )
-    replay_buffer_size: int = field(
-        default=8,
-        metadata={
-            "help": "Supplement the new set of preference samples with this many previous preference samples, and train on them simultaneously."
-        },
-    )
-    use_features: bool = field(
-        default=False,
-        metadata={
-            "help": "Whether to precompute or load cached last layer embeddings of the model and use them."
-        },
-    )
-
-    # reproducibility-related configs
+    # global configs
     seed: int = field(
         default=None, metadata={"help": "Random seed for reproducibility."}
     )
-    logs_path: str | None = field(
-        default=None, metadata={"help": "Path to save the logs for this script."}
-    )
-    args_path: str | None = field(
-        default=None, metadata={"help": "Path to save the args for this script."}
+    max_length: int = field(
+        default=4096, 
+        metadata={"help": "Max length for the tokenizer."}
     )
     report_to: str | None = field(
         default=None,
@@ -98,7 +57,60 @@ class LoopArguments:
             "choices": ["wandb", "tensorboard", "none"],
         },
     )
+    debug: bool = field(
+        default=False, 
+        metadata={"help": "Set True when debugging the script for speed."},
+    )
+    outer_loop_batch_size: int = field(
+        default=32, 
+        metadata={"help": "Number of prompts that should be processed before reward trainer is called"},
+    )
+
+    timestamp: str | None = field(
+        default=None,
+        metadata={"help": "Timestamp at which this run was init."}
+    )
+
+    # active learning-related configs
+    ## acquisition function
+    acquisition_function_config: dict[str, dict] | None = field(
+        default=None,
+        metadata={
+            "help": "Configs relevant for the chosen acquisition function",
+        },
+    )
+
+    ## reward model
+    reward_model_config: dict[str, dict] | None = field(
+        default=None,
+        metadata={
+            "help": "Configs relevant for the possible reward models",
+        },
+    )
+    reward_trainer_config: dict[str, dict] | None = field(
+        default=None,
+        metadata={
+            "help": "Configs relevant for the possible reward trainers",
+        },
+    )
+
+    # reproducibility-related configs
+    logs_path: str | None = field(
+        default=None, metadata={"help": "Path to save the logs for this script."}
+    )
+    args_path: str | None = field(
+        default=None, metadata={"help": "Path to save the args for this script."}
+    )
+    wandb_dir: str | None = field(
+        default=None, metadata={"help": "Path to local wandb records"}
+    )
     wandb_project: str | None = field(
+        default=None, metadata={"help": "WandB project name for logging."}
+    )
+    enn_training_wandb_id: str | None = field(
+        default=None, metadata={"help": "WandB project name for logging."}
+    )
+    acquisition_kpi_wandb_id: str | None = field(
         default=None, metadata={"help": "WandB project name for logging."}
     )
 
@@ -113,12 +125,6 @@ class LoopArguments:
         },
     )
 
-    # misc configs
-    debug: bool = field(
-        default=False, 
-        metadata={"help": "Set True when debugging the script for speed."},
-    )
-
 def extract_annotator_name(dataset_path: str) -> str:
     return path.basename(dataset_path.rstrip("/")).split("_")[-1]
 
@@ -129,23 +135,23 @@ def get_args() -> argparse.Namespace:
     # load the YAML of values with which the namespace should be populated
     with open(args.config_path, "r") as f:
         config = yaml.safe_load(f)
-    
-    for key, val in config.items():
-        setattr(args, key, val)
+        for key, val in config.items():
+            if hasattr(args, key):
+                setattr(args, key, val)
 
     # create output path that reflects acquisition function, annotator used to determine response quality, oracle that will determine chosen vs rejected, and current timestamp
     # similarly define args and logs paths
-    timestamp = get_timestamp(more_detailed=True)
+    args.timestamp = get_timestamp(more_detailed=True)
     args.output_path = path.join(
         config["base_output_dir"], 
         "_".join([
             args.acquisition_function,
             extract_annotator_name(args.inputs_path),
             args.oracle_name,
-            timestamp,
+            args.timestamp,
     ]))
-    args.args_path = path.join(config["base_logs_dir"], f"{args.output_path}.args")
-    args.logs_path = path.join(config["base_logs_dir"], f"{args.output_path}.log")
+    args.args_path = path.join(config["base_logs_dir"], f"{args.timestamp}.args")
+    args.logs_path = path.join(config["base_logs_dir"], f"{args.timestamp}.log")
 
     # set wandb project name based on acquisition function
     if args.report_to == "wandb":
@@ -153,11 +159,26 @@ def get_args() -> argparse.Namespace:
             print(
                 f"Warning: WandB reporting is not supported for acquisition_function={args.acquisition_function}."
             )
-            # TODO: ask davit why these lines
-            # args.max_length = 1
-            # args.outer_loop_batch_size = 8192
-            # enn["base_model_name_or_path"] = "unsloth/Qwen2.5-1.5B-Instruct"
         else:
-            args.wandb_project = f"{args.base_wandb_project}_{args.acquisition_function}"
+            args.wandb_project = f"{config.base_wandb_project}_{args.acquisition_function}"
+
+        args.wandb_dir = path.join(config['base_wandb_dir'], f"job_{args.timestamp}")
+        args.enn_training_wandb_id = f"loop_enn_{args.timestamp}"
+        args.acquisition_kpi_wandb_id = f"loop_KPI_{args.timestamp}"
+
+    # change some args for efficiency reasons
+    if args.acquisition_function in ["random", "ultrafeedback"]:
+        print(
+            f"Because acquisition function={args.acquisition_function}, we set max_length=1 and outer_loop_batch_size=8192 for efficiency"
+        )
+        args.max_length = 1
+        args.outer_loop_batch_size = 8192
+
+    try:
+        reward_trainer_config = args.reward_trainer_config[args.reward_model]
+        assert "output_dir" not in args.reward_trainer_config
+        reward_trainer_config["output_dir"] = f"{config['base_trainer_dir']}/{args.timestamp}"
+    except:
+        pass
 
     return args
