@@ -1,6 +1,7 @@
 from datetime import datetime
 from dotenv import load_dotenv
 import huggingface_hub
+import inspect
 import logging
 import wandb
 import os
@@ -66,6 +67,12 @@ def set_seed(seed: int) -> None:
     torch.backends.cudnn.benchmark = False
     os.environ["PYTHONHASHSEED"] = str(seed)
 
+def filter_dict(dict_to_filter, func):
+    sig = inspect.signature(func)
+    valid_keys = {param.name for param in sig.parameters.values()
+                  if param.kind in {inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                                    inspect.Parameter.KEYWORD_ONLY}}
+    return {key: dict_to_filter[key] for key in valid_keys if key in dict_to_filter}
 
 def sample_principle(source: str) -> str:
     principle_pool = PROMPT_SOURCE2PRINCIPLES.get(source, [DEFAULT_PRINCIPLE])
