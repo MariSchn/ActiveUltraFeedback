@@ -1,11 +1,20 @@
+from datasets import Dataset
+
+from rewarduq.models.reward_head_ensemble import (
+    RewardHeadEnsembleModel as ENNRewardModel,
+    RewardHeadEnsembleModelConfig as ENNRewardModelConfig,
+    RewardHeadEnsembleTrainer as ENNRewardModelTrainer,
+    RewardHeadEnsembleTrainerConfig as ENNRewardModelTrainerConfig,
+    RewardHeadEnsemblePipeline as ENNRewardModelPipeline,
+)
+
+from activeuf.utils import filter_dict
+
 def custom_collate_fn(batch):
-    return {
-        "prompt_id": [x["prompt_id"] for x in batch],
-        "prompt": [x["prompt"] for x in batch],
-        "source": [x["source"] for x in batch],
-        "completions": [x["completions"] for x in batch],
-        "row_id": [x["row_id"] for x in batch],
-    }
+    out = {}
+    for key in ["prompt_id", "prompt", "source", "completions", "row_id"]:
+        out[key] = [x[key] for x in batch]
+    return out
 
 def compute_acquisition_function_KPIs(rewards, chosen_idxs, rejected_idxs):
     """
@@ -56,3 +65,37 @@ def compute_acquisition_function_KPIs(rewards, chosen_idxs, rejected_idxs):
         "rejected_uncertainty_per_sample": rejected_rewards[:, 1].tolist(),
     }
     return kpis
+
+def init_model_tokenizer_trainer(args, batch_size):
+    trainer_config = ENNRewardModelTrainerConfig(
+        per_device_train_batch_size=batch_size,
+        **filter_dict(args.reward_trainer_config[args.reward_model], ENNRewardModelTrainerConfig),
+    )
+
+    if args.previous_checkpoint_path:
+        model = ENNRewardModel.from_pretrained(args.previous_checkpoint_path)
+        tokenizer = model.tokenizer
+    else:
+        reward_model_pipeline = ENNRewardModelPipeline(
+            ENNRewardModelConfig(**args.reward_model_config[args.reward_model]),
+            trainer_config,
+        )
+        model = reward_model_pipeline.model
+        tokenizer = model.tokenizer
+
+    # TODO understand what's going on here
+    # Initialize trainer with an empty Dataset having the required keys. So we have access to the uq_pipeline.trainer before entering the loop.
+    trainer = ENNRewardModelTrainer(
+        args=trainer_config,
+        model=model,
+        processing_class=tokenizer,
+        train_dataset=Dataset.from_list([{
+            "input_ids_chosen": [],
+            "attention_mask_chosen": [],
+            "input_ids_rejected": [],
+            "attention_mask_rejected": [],
+            "features_chosen": [],
+            "features_rejected": [],
+    }]))
+
+    return model, tokenizer, trainer
