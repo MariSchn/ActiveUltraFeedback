@@ -2,6 +2,7 @@ import argparse
 import os
 import re
 import yaml
+import torch
 
 # from trl import DPOConfig
 from trl.data_utils import apply_chat_template, extract_prompt
@@ -16,6 +17,7 @@ from activeuf.configs import *
 from activeuf.utils import *
 from activeuf.dpo.trainer import NormedDPOConfig, NormedDPOTrainer
 
+import wandb
 
 """
 run command example:
@@ -38,6 +40,15 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--dataset_path", type=str, help="Path to the training dataset")
     parser.add_argument("--beta", type=float, help="DPO beta parameter", default=0.1)
+    parser.add_argument(
+        "--learning_rate", type=float, help="Learning rate for training", required=False
+    )
+    parser.add_argument(
+        "--seed", type=int, help="Random seed for reproducibility", required=False
+    )
+    parser.add_argument(
+        "--num_epochs", type=int, help="Number of training epochs", required=False
+    )
     return parser.parse_args()
 
 
@@ -69,6 +80,12 @@ if __name__ == "__main__":
     with open(args.config_path, "r") as f:
         config = yaml.safe_load(f)
     config["slurm_job_id"] = args.slurm_job_id
+    if args.learning_rate:
+        config["training"]["learning_rate"] = args.learning_rate
+    if args.seed:
+        config["seed"] = args.seed
+    if args.num_epochs:
+        config["training"]["num_train_epochs"] = args.num_epochs
 
     lora_config = config.get("lora", {})
     training_config = config.get("training", {})
@@ -183,6 +200,13 @@ if __name__ == "__main__":
 
     dataset = dataset.select_columns(["chosen", "rejected"])
 
+    # Manual shuffling of the dataset:
+    dataset = dataset.shuffle(seed=config.get("seed"))
+
+    if accelerator.is_main_process:
+        print(dataset[0]["chosen"][0])
+        print(dataset[6464]["chosen"][0])
+
     # create lora version of model
     model = AutoModelForCausalLM.from_pretrained(
         model_path, trust_remote_code=True, torch_dtype=torch_dtype
@@ -193,18 +217,8 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Failed to apply PEFT model: {e}")
         print("Falling back to manually identifying target modules\n")
-
-        target_modules = []
-        if "llama" in model_path.lower():
-            for name, _ in model.named_modules():
-                if any(_ in name for _ in ["query", "key", "value"]):
-                    target_modules.append(name)
-            peft_config.target_modules = target_modules
-        else:
-            print(
-                f"Target module patterns for {model_path} must be implemented manually"
-            )
-            raise
+        # re-raise to avoid silent failures unless you want to implement further fallbacks
+        raise
 
     # create DPO trainer
     trainer_config = NormedDPOConfig(
@@ -213,6 +227,8 @@ if __name__ == "__main__":
         dataset_num_proc=accelerator.num_processes,
         **training_config,
     )
+    # DPO config, dataset loading. it doesnt know if tis evals or training.
+    # we should shuffle.
     trainer = NormedDPOTrainer(
         model=model,
         args=trainer_config,
