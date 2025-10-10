@@ -37,6 +37,7 @@ class BaseOracle(ABC):
         self, prompts_with_completions: list[dict[str, str]]
     ) -> list[dict[str, str]]:
         """
+        OUTDATED
         This function should be overridden by subclasses to implement the specific oracle logic.
         The oracle takes prompts with two completions and selects which completion is the chosen and which is the rejected one.
 
@@ -75,6 +76,7 @@ class RandomOracle(BaseOracle):
         self, prompts_with_completions: list[dict[str, str]]
     ) -> list[dict[str, str]]:
         """
+        OUTDATED
         Rnadomly selects among the two passed completions which one is the chosen and which one is the rejected one.
 
         Args:
@@ -157,6 +159,7 @@ class UltraFeedbackOracle(BaseOracle):
         self, prompts_with_completions: list[dict[str, str]]
     ) -> list[dict[str, str]]:
         """
+        OUTDATED
         Selects among the two passed completions which one is the chosen and which one is the rejected one.
 
         Args:
@@ -188,27 +191,30 @@ class UltraFeedbackOracle(BaseOracle):
         """
         out = []
         for x in prompts_with_completions:
-            chosen_int, rejected_int = 1, 2
-            if self.parse_score_str(x["score_1"]) < self.parse_score_str(x["score_2"]):
-                chosen_int, rejected_int = 2, 1
-            out.append(
-                {
-                    "prompt": x["prompt"],
-                    "prompt_id": x["prompt_id"],
-                    "row_id": x["row_id"],
-                    "batch_id": x["batch_id"],
-                    "chosen": x[f"response_text_{chosen_int}"],
-                    "chosen_model": x[f"model_{chosen_int}"],
-                    "chosen_score": x[f"score_{chosen_int}"],
-                    "input_ids_chosen": x[f"input_ids_{chosen_int}"],
-                    "attention_mask_chosen": x[f"attention_mask_{chosen_int}"],
-                    "features_chosen": x[f"features_{chosen_int}"],
-                    "rejected": x[f"response_text_{rejected_int}"],
-                    "rejected_model": x[f"model_{rejected_int}"],
-                    "rejected_score": x[f"score_{rejected_int}"],
-                    "input_ids_rejected": x[f"input_ids_{rejected_int}"],
-                    "attention_mask_rejected": x[f"attention_mask_{rejected_int}"],
-                    "features_rejected": x[f"features_{rejected_int}"],
-                }
-            )
+            chosen_int, rejected_int = "1", "2"
+            if self.parse_score_str(x["1_score"]) < self.parse_score_str(x["1_score"]):
+                chosen_int, rejected_int = "2", "1"
+
+            y = {}
+            for key, val in x.items():
+                detected_nums = [c for c in key if c.isnumeric()]
+                assert len(detected_nums) <= 1, f"Unknown key {key} detected"
+
+                if not detected_nums:
+                    y[key] = val
+                elif "response_text" in key:
+                    if key.endswith(chosen_int):
+                        y["chosen"] = val
+                    elif key.endswith(rejected_int):
+                        y["rejected"] = val
+                    else:
+                        raise ValueError(f"Unknown key {key} detected")
+                else:
+                    assert detected_nums[0] in [chosen_int, rejected_int], f"Unknown key {key} detected"
+
+                    new_key = key.replace(chosen_int, "chosen")
+                    new_key = new_key.replace(rejected_int, "rejected")
+                    y[new_key] = val
+
+            out.append(y)
         return out
