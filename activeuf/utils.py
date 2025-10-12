@@ -53,13 +53,12 @@ def get_logger(name: str, logs_path: str = "app.log") -> logging.Logger:
 def setup(login_to_hf: bool = False, login_to_wandb: bool = False) -> None:
     # load env variables
     load_dotenv(PUBLIC_ENV_PATH)
+    load_dotenv(LOCAL_ENV_PATH)
 
     if login_to_hf:
-        load_dotenv(LOCAL_ENV_PATH)
         huggingface_hub.login(os.getenv("HF_TOKEN"))
 
     if login_to_wandb:
-        load_dotenv(LOCAL_ENV_PATH)
         wandb.login(key=os.getenv("WANDB_TOKEN"))
 
 
@@ -68,8 +67,8 @@ def set_seed(seed: int) -> None:
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = False  # False
+    torch.backends.cudnn.benchmark = True  # maybe TRUE
     os.environ["PYTHONHASHSEED"] = str(seed)
 
 
