@@ -63,10 +63,12 @@ def convert_to_ultrafeedback(sample):
     return {
         "prompt": sample["prompt"],
         "prompt_id": sample["prompt_id"],
-        "chosen": chosen_completion["response_text"],
-        "chosen_model": chosen_completion["model"],
         "rejected": rejected_completions["response_text"],
         "rejected_model": rejected_completions["model"],
+        "rejected_score": rejected_completions["overall_score"],
+        "chosen": chosen_completion["response_text"],
+        "chosen_model": chosen_completion["model"],
+        "chosen_score": chosen_completion["overall_score"],
     }
 
 def convert_to_random(sample):
@@ -93,8 +95,10 @@ def convert_to_random(sample):
         "prompt_id": sample["prompt_id"],
         "chosen": chosen_completion["response_text"],
         "chosen_model": chosen_completion["model"],
+        "chosen_score": chosen_completion["overall_score"],
         "rejected": rejected_completion["response_text"],
         "rejected_model": rejected_completion["model"],
+        "rejected_score": rejected_completion["overall_score"],
     }
 
 

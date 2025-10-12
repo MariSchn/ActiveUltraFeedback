@@ -12,6 +12,7 @@ from activeuf.configs import *
 from activeuf.schemas import *
 from activeuf.utils import *
 from activeuf.oracle.prompts import *
+import os
 
 # these are not system prompts, these are user prompts.
 ASPECT2ANNOTATION_PROMPT = {
@@ -70,48 +71,97 @@ Example run command:
 def parse_args() -> argparse.Namespace:
     # Parse arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset_path", type=str, required=True,
-                        help="The path to the dataset with completions to be annotated")
-    parser.add_argument("--model_name", type=str, required=True,
-                        help="The Huggingface path or API of the model to use for completions (e.g. HuggingFaceTB/SmolLM2-135M-Instruct, gpt-4)")
+    parser.add_argument(
+        "--dataset_path",
+        type=str,
+        required=True,
+        help="The path to the dataset with completions to be annotated",
+    )
+    parser.add_argument(
+        "--model_name",
+        type=str,
+        required=True,
+        help="The Huggingface path or API of the model to use for completions (e.g. HuggingFaceTB/SmolLM2-135M-Instruct, gpt-4)",
+    )
 
-    parser.add_argument("--seed", type=int, default=SEED,
-                        help="Seed for random sampling")
-    parser.add_argument("--max_num_gpus", type=int, default=MAX_NUM_GPUS,
-                        help="The maximum number of GPUs to use")
-    parser.add_argument("--model_class", type=str, default=DEFAULT_MODEL_CLASS,
-                        help="The class which is used to perform inference (e.g. transformers, pipeline, vllm)")
+    parser.add_argument(
+        "--seed", type=int, default=SEED, help="Seed for random sampling"
+    )
+    parser.add_argument(
+        "--max_num_gpus",
+        type=int,
+        default=MAX_NUM_GPUS,
+        help="The maximum number of GPUs to use",
+    )
+    parser.add_argument(
+        "--num_nodes",
+        type=int,
+        default=1,
+        help="The number of nodes to use",
+    )
+    parser.add_argument(
+        "--model_class",
+        type=str,
+        default=DEFAULT_MODEL_CLASS,
+        help="The class which is used to perform inference (e.g. transformers, pipeline, vllm)",
+    )
 
-    parser.add_argument("--max_tokens", type=int, default=ANNOTATION_MAX_TOKENS,
-                        help="The maximum number of tokens for LLM responses")
-    parser.add_argument("--temperature", type=float,
-                        default=ANNOTATION_TEMPERATURE, help="The temperature for sampling")
-    parser.add_argument("--top_p", type=float,
-                        default=ANNOTATION_TOP_P, help="The top_p for sampling")
+    parser.add_argument(
+        "--max_tokens",
+        type=int,
+        default=ANNOTATION_MAX_TOKENS,
+        help="The maximum number of tokens for LLM responses",
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=ANNOTATION_TEMPERATURE,
+        help="The temperature for sampling",
+    )
+    parser.add_argument(
+        "--top_p", type=float, default=ANNOTATION_TOP_P, help="The top_p for sampling"
+    )
 
-    parser.add_argument("--download_dir", type=str,
-                        help="The path to the Huggingface cache directory. If not set, the default Huggingface cache directory is used.")
-    parser.add_argument("--output_path", type=str,
-                        help="Where to export the annotated dataset")
-    parser.add_argument("--debug", action="store_true",
-                        help="If set, will only annotate the first few samples")
+    parser.add_argument(
+        "--download_dir",
+        type=str,
+        help="The path to the Huggingface cache directory. If not set, the default Huggingface cache directory is used.",
+    )
+    parser.add_argument(
+        "--output_path", type=str, help="Where to export the annotated dataset"
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="If set, will only annotate the first few samples",
+    )
 
-    parser.add_argument("--model_to_annotate", type=str, required=True,
-                        help="The model whose completions to annotate")
-    parser.add_argument("--batch_size_to_annotate", type=int, default=50,
-                        help="The number of completions to annotate in one batch")
+    parser.add_argument(
+        "--model_to_annotate",
+        type=str,
+        required=True,
+        help="The model whose completions to annotate",
+    )
+    parser.add_argument(
+        "--batch_size_to_annotate",
+        type=int,
+        default=50,
+        help="The number of completions to annotate in one batch",
+    )
 
     args = parser.parse_args()
 
     args.output_path = os.path.join(
-        args.output_path, args.model_to_annotate.split("/")[-1])
+        args.output_path, args.model_to_annotate.split("/")[-1]
+    )
 
     return args
 
 
 def calculate_probabilities(raw_output, tokenizer, target_words):
-    target_token_ids = [tokenizer.encode(t, add_special_tokens=False)[
-        0] for t in target_words]
+    target_token_ids = [
+        tokenizer.encode(t, add_special_tokens=False)[0] for t in target_words
+    ]
 
     word_probabilities = []
 
@@ -127,12 +177,46 @@ def calculate_probabilities(raw_output, tokenizer, target_words):
         def get_logprob_value(lp):
             return lp.logprob if hasattr(lp, "logprob") else lp
 
-        exp_values = [np.exp(get_logprob_value(lp))
-                      for lp in token_logprobs.values()]
+        exp_values = [np.exp(get_logprob_value(lp)) for lp in token_logprobs.values()]
 
         total = sum(exp_values)
-        prob_dict = {k: float(v) / total for k,
-                     v in zip(token_logprobs.keys(), exp_values)}
+        prob_dict = {
+            k: float(v) / total for k, v in zip(token_logprobs.keys(), exp_values)
+        }
+
+        word_probabilities.append(prob_dict)
+
+    return word_probabilities
+
+def calculate_probabilities_openai(raw_output, target_words):
+    """
+    Calculates the probabilities of target words from OpenAI API outputs.
+    """
+    word_probabilities = []
+
+    for output in raw_output:
+        first_token_logprobs = output.choices[0].logprobs.content[0].top_logprobs
+
+        token_logprobs = {}
+        for token_logprob in first_token_logprobs:
+            token_logprobs[token_logprob.token] = token_logprob.logprob
+
+        # Find logprobs for our target words
+        target_logprobs = {}
+        for word in target_words:
+            logprob = token_logprobs.get(word, -float("inf"))
+            target_logprobs[word] = logprob
+
+        exp_values = [np.exp(lp) for lp in target_logprobs.values()]
+        total = sum(exp_values)
+
+        if total == 0:
+            # Avoid division by zero if no target words were found
+            prob_dict = {k: 0.0 for k in target_logprobs.keys()}
+        else:
+            prob_dict = {
+                k: float(v) / total for k, v in zip(target_logprobs.keys(), exp_values)
+            }
 
         word_probabilities.append(prob_dict)
 
@@ -152,22 +236,24 @@ def load_dataset_my_way(dataset_path, output_path):
     except ValueError:
         dataset = load_from_disk(dataset_path)
 
-    already_processed_dataset = Dataset.from_dict(
-        {k: [] for k in dataset.features})
+    already_processed_dataset = Dataset.from_dict({k: [] for k in dataset.features})
     if os.path.exists(output_path):
         print(
-            f"Output path {output_path} already exists. Filtering out already processed rows.")
+            f"Output path {output_path} already exists. Filtering out already processed rows."
+        )
         try:
             already_processed_dataset = load_from_disk(output_path)
         except Exception as e:
             already_processed_dataset = Dataset.from_dict(
-                {k: [] for k in dataset.features})
+                {k: [] for k in dataset.features}
+            )
 
         original_dataset_size = len(dataset)
-        dataset = dataset.select(
-            range(len(already_processed_dataset), len(dataset)))
+        dataset = dataset.select(range(len(already_processed_dataset), len(dataset)))
 
-        print(f"{original_dataset_size - len(dataset)} rows were already processed. proceeding with {len(dataset)} rows.")
+        print(
+            f"{original_dataset_size - len(dataset)} rows were already processed. proceeding with {len(dataset)} rows."
+        )
 
     return dataset, already_processed_dataset
 
@@ -179,7 +265,7 @@ if __name__ == "__main__":
     print(args)
 
     logger.info("Logging into HuggingFace")
-    # setup(login_to_hf=True)
+    setup(login_to_hf=True)
 
     if args.seed:
         logger.info(f"Setting random seed to {args.seed}")
@@ -188,20 +274,28 @@ if __name__ == "__main__":
     logger.info(f"Loading {args.dataset_path}")
 
     dataset, already_processed_dataset = load_dataset_my_way(
-        args.dataset_path, args.output_path)
+        args.dataset_path, args.output_path
+    )
 
     output_dataset = already_processed_dataset.to_list()
 
     if args.debug:
-        logger.info(
-            "Debug mode: only annotating completions for the first few prompts")
+        logger.info("Debug mode: only annotating completions for the first few prompts")
         dataset = dataset.select(range(100))
     logger.info(f"{len(dataset)}")
 
+    print("HF_HOME:", os.environ.get("HF_HOME"))
+    print("HF_CACHE:", os.environ.get("HF_CACHE"))
+
     logger.info(f"Using {args.model_name} for annotation")
-    model = LLM(model=args.model_name,
-                tensor_parallel_size=torch.cuda.device_count())
+    model, _ = load_model(
+        model_name=args.model_name,
+        model_class=args.model_class,
+        max_num_gpus=4,
+        num_nodes=args.num_nodes
+    )
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+
 
     sampling_params = SamplingParams(
         max_tokens=64,  # args.max_tokens,
@@ -246,19 +340,28 @@ if __name__ == "__main__":
                                     prompt=prompt_completion["prompt"],
                                     completion=completion["response_text"],
                                 ),
-                            }
+                            },
                         ]
                         batch_messages.append(messages)
-                        batch_metadata.append({
-                            "prompt_id": prompt_completion["prompt_id"],
-                            "model": args.model_to_annotate,
-                            "aspect": aspect,
-                        })
+                        batch_metadata.append(
+                            {
+                                "prompt_id": prompt_completion["prompt_id"],
+                                "model": args.model_to_annotate,
+                                "aspect": aspect,
+                            }
+                        )
         _, all_raw_objects = get_response_texts(
-            model, tokenizer, batch_messages, sampling_params)
+            model, tokenizer, batch_messages, sampling_params
+        )
 
-        all_probabilities = calculate_probabilities(
-            all_raw_objects, tokenizer, target_words=["1", "2", "3", "4", "5"])
+        if args.model_class == "vllm_server":
+            all_probabilities = calculate_probabilities_openai(
+                all_raw_objects, target_words=["1", "2", "3", "4", "5"]
+            )
+        else:
+            all_probabilities = calculate_probabilities(
+                all_raw_objects, tokenizer, target_words=["1", "2", "3", "4", "5"]
+            )
 
         # Build aspect_scores for this batch
         batch_outputs = []
@@ -266,21 +369,28 @@ if __name__ == "__main__":
             new_row = {
                 "prompt_id": batch_metadata[i * n_aspects]["prompt_id"],
                 "model": batch_metadata[i * n_aspects]["model"],
-                "annotation": {}
+                "annotation": {},
             }
 
             for j in range(n_aspects - 1):
-                if batch_metadata[i * n_aspects + j]["prompt_id"] != batch_metadata[i * n_aspects + j + 1]["prompt_id"]:
+                if (
+                    batch_metadata[i * n_aspects + j]["prompt_id"]
+                    != batch_metadata[i * n_aspects + j + 1]["prompt_id"]
+                ):
                     raise ValueError(
-                        "Aspects are not in the same order for all completions in the batch")
+                        "Aspects are not in the same order for all completions in the batch"
+                    )
             if i != len(batch_dataset) - 1:
-                if batch_metadata[i * n_aspects]["prompt_id"] == batch_metadata[(i + 1) * n_aspects]["prompt_id"]:
+                if (
+                    batch_metadata[i * n_aspects]["prompt_id"]
+                    == batch_metadata[(i + 1) * n_aspects]["prompt_id"]
+                ):
                     raise ValueError(
-                        "Aspects are not in the same order for all completions in the batch 2")
+                        "Aspects are not in the same order for all completions in the batch 2"
+                    )
 
             for j in range(n_aspects):
-                new_row["annotation"][aspects[j]
-                                      ] = all_probabilities[i * n_aspects + j]
+                new_row["annotation"][aspects[j]] = all_probabilities[i * n_aspects + j]
             batch_outputs.append(new_row)
 
         output_dataset.extend(batch_outputs)

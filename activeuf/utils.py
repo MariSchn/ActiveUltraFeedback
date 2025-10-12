@@ -67,18 +67,18 @@ def set_seed(seed: int) -> None:
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = False  # False
+    torch.backends.cudnn.benchmark = True  # maybe TRUE
     os.environ["PYTHONHASHSEED"] = str(seed)
 
 
 def sample_principle(source: str) -> str:
-    principle_pool = PROMPT_SOURCE2PRINCIPLES.get(source, [DEFAULT_PRINCIPLE])
+    principle_pool = PROMPT_SOURCE2PRINCIPLES.get(source, DEFAULT_PRINCIPLES)
     principle = random.choice(principle_pool)
 
-    if principle == "honesty":
-        if "verbalized_calibration" in PRINCIPLES and np.random.rand() < 0.9:
-            principle = "verbalized_calibration"
+    # if principle == "honesty":
+    #     if "verbalized_calibration" in PRINCIPLES and np.random.rand() < 0.9:
+    #         principle = "verbalized_calibration"
 
     return principle
 
@@ -231,7 +231,13 @@ def load_model(
                 command += f" --pipeline-parallel-size {num_nodes}"
                 command += f" --data-parallel-size {data_parallel_size}"
                 command += " --trust-remote-code"
-                command += " --dtype auto"
+                command += (
+                    " --dtype auto"
+                    if "deepseek" in model_name.lower()
+                    else " --dtype bfloat16"
+                )
+                command += " --port 8000"  # Default port
+
                 command += (
                     f" --max-model-len {max_model_len}" if max_model_len > 0 else ""
                 )

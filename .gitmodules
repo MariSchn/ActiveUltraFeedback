@@ -14,3 +14,6 @@
 	path = resources/olmes
 	url = https://github.com/swiss-ai/olmes.git
 	ignore = all
+[submodule "resources/alpaca_eval"]
+	path = resources/alpaca_eval
+	url = https://github.com/tatsu-lab/alpaca_eval.git

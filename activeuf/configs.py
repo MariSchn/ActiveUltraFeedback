@@ -15,7 +15,7 @@ DEFAULT_MODEL_CLASS = "vllm"
 
 VLLM_SERVER_BASE_URL = "http://localhost:8000"  # URL of the vLLM server
 PING_DELAY = 30        # Delay between pings to the server to check if it is already running
-MAX_PING_RETRIES = 30  # Number of retries to check if the server is running
+MAX_PING_RETRIES = 100  # Number of retries to check if the server is running
 
 # ====================================
 #               DATASETS
@@ -71,7 +71,7 @@ COMPLETION_MODEL_NAMES = {
 
     # ===== MoE MODELS =====
     "meta-llama/Llama-4-Scout-17B-16E-Instruct",     # 109B (17B Active)
-    "meta-llama/Llama-4-Maverick-17B-128E-Instruct",  # 402B (17B Active)
+    "meta-llama/Llama-4-Maverick-17B-128E-Instruct", # 402B (17B Active)
 
     "Qwen/Qwen3-30B-A3B",                            # 30B  (03B Active)
     "Qwen/Qwen3-235B-A22B",                          # 235B (22B Active)
@@ -96,7 +96,11 @@ PRINCIPLES = [
     "honesty",
     "truthfulness",
 ]
-DEFAULT_PRINCIPLE = "helpfulness"
+DEFAULT_PRINCIPLES = [
+    "helpfulness",
+    "honesty",
+    "truthfulness",
+]
 
 # System prompts to be used when generating completions
 PRINCIPLE2SYSTEM_PROMPTS = {
@@ -136,12 +140,7 @@ MAX_API_RETRY = 10
 MAX_PARSE_RETRY = 10
 
 # Aspects to be used to annotate the generated completions
-ASPECTS = [
-    "instruction_following",
-    "helpfulness",
-    "honesty",
-    "truthfulness"
-]
+ASPECTS = ["instruction_following", "helpfulness", "honesty", "truthfulness"]
 
 # Map an aspect to the corresponding system prompt (template) that is used to annotate the generated completions
 # ASPECT2ANNOTATION_PROMPT = {

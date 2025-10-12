@@ -195,6 +195,8 @@ olmes --model "$MODEL_NAME" --task "$TASK_NAME" \
 
 echo "✅ Completed evaluation for task: $TASK_NAME, model: $MODEL_NAME"
 echo "📁 Results in: $OUTPUT_DIR"
+echo "✅ Completed evaluation for task: $TASK_NAME, model: $MODEL_NAME"
+echo "📁 Results in: $OUTPUT_DIR"
 
 
 
