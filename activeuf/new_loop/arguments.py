@@ -169,6 +169,8 @@ def get_args() -> argparse.Namespace:
         else:
             args.wandb_project = config["base_wandb_project"]
             args.wandb_dir = path.join(config["base_wandb_dir"], args.run_id)
+            args.kpi_run_id = f"kpi_{args.run_id}"
+            args.trainer_run_id = f"trainer_{args.run_id}"
     args.output_path = path.join(config["base_output_dir"], args.run_id)
     args.args_path = path.join(config["base_logs_dir"], f"{args.run_id}.args")
     args.logs_path = path.join(config["base_logs_dir"], f"{args.run_id}.log")
