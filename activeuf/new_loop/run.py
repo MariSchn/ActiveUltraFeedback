@@ -5,9 +5,9 @@ from datasets import Dataset, load_from_disk
 import json
 import os
 import random
-import regex as re
 import time
 import torch
+from transformers import TrainerCallback
 from torch.utils.data import DataLoader
 import wandb
 
@@ -20,6 +20,21 @@ from activeuf.utils import get_logger, set_seed
 # RUN
 # python -m activeuf.new_loop.run --config_path activeuf/new_loop/run.yaml
 
+global_step_offset = 0
+def get_global_step_offset():
+    return global_step_offset
+
+class WandbStepLoggerCallback(TrainerCallback):
+    def __init__(self, step_offset_getter):
+        self.step_offset_getter = step_offset_getter
+
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        if logs:
+            absolute_step = self.step_offset_getter() + state.global_step
+            if "loss_individual" in logs.keys():
+                absolute_step += 1
+            wandb.log(logs, step=absolute_step)
+
 if __name__ == "__main__":
     args = get_args()
     logger = get_logger(__name__, args.logs_path)
@@ -31,10 +46,6 @@ if __name__ == "__main__":
         with open(args.args_path, "w") as f_out:
             json.dump(vars(args), f_out)
         
-    # setup wandb
-    if args.report_to == "wandb" and accelerator.is_main_process:
-        os.environ.setdefault("WANDB_DIR", args.wandb_dir)
-    
     # GPU cleanup
     torch.cuda.empty_cache()
     torch.cuda.reset_peak_memory_stats()
@@ -59,6 +70,14 @@ if __name__ == "__main__":
         args, n_processes
     )
     initial_regularization = float(trainer.args.regularization_towards_initial_weights)
+
+    # setup wandb
+    if accelerator.is_main_process and args.report_to == "wandb":
+        os.environ.setdefault("WANDB_DIR", args.wandb_dir)
+
+        if trainer is not None:
+            trainer.add_callback(WandbStepLoggerCallback(get_global_step_offset))
+    
 
     # wait for everyone to finish loading the models
     accelerator.wait_for_everyone()
@@ -88,6 +107,7 @@ if __name__ == "__main__":
         drop_last=False,
     )
     for outer_batch_idx, outer_batch in enumerate(outer_dataloader):
+        reward_model.eval()
         if accelerator.is_main_process:
             logger.info(f"Step {outer_batch_idx+1} / {len(outer_dataloader)}")
 
@@ -157,7 +177,7 @@ if __name__ == "__main__":
                 logger.info("Reporting KPIs to WandB")
                 wandb.init(
                     project=args.wandb_project,
-                    id=args.run_id,
+                    id=args.kpi_run_id,
                     config=vars(args),
                     resume=(outer_batch_idx > 0),
                     allow_val_change=True,
@@ -173,13 +193,38 @@ if __name__ == "__main__":
         if trainer is None:
             logger.info("Skipping reward model training")
             continue
+
+        if accelerator.is_main_process and args.report_to == "wandb":
+            wandb.init(
+                project=args.wandb_project,
+                id=args.trainer_run_id,
+                config=vars(args),
+                resume=get_global_step_offset()>0,
+                allow_val_change=True,
+            )
         
         logger.info(f"Adding fresh batch to replay buffer, then subsampling {trainsize} for training")
         # TODO: discuss -- shouldn't input_ids be unnecessary?
-        replay_buffer.extend([{
-            "features_chosen": x["features_chosen"],
-            "features_rejected": x["features_rejected"],
-        } for x in annotated_batch])
+        messages_batch = tokenizer.apply_chat_template(
+            [x[key] for x in annotated_batch for key in ["chosen", "rejected"]],
+            tokenize=False,
+        )
+        inputs_batch = tokenizer(
+            messages_batch,
+            padding="longest",
+            max_length=args.max_length,
+            truncation=True, 
+            return_tensors="pt",
+        ).to(reward_model.device)
+        for idx, x in enumerate(annotated_batch):
+            replay_buffer.append({
+                "input_ids_chosen": inputs_batch["input_ids"][2*idx],
+                "attention_mask_chosen": inputs_batch["attention_mask"][2*idx],
+                "input_ids_rejected": inputs_batch["input_ids"][2*idx+1],
+                "attention_mask_rejected": inputs_batch["attention_mask"][2*idx+1],
+                "features_chosen": x["features_chosen"],
+                "features_rejected": x["features_rejected"],
+            })
         trainer.train_dataset = Dataset.from_list(random.sample(
             replay_buffer, min(len(replay_buffer), trainsize),
         ))
@@ -197,9 +242,11 @@ if __name__ == "__main__":
         trainer.train()
         logger.info(f"Reward model training took {time.time() - start:.2f}s")
         
+        # cleanup
         torch.cuda.empty_cache()
-        
-        # TODO: log to wandb
+        global_step_offset += trainer.state.global_step
+        if accelerator.is_main_process and args.report_to == "wandb":
+            wandb.finish()
 
     if accelerator.is_main_process and len(output) > 0:
         logger.info(f"Saving generated dataset to {args.output_path}")
