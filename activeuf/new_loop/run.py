@@ -4,6 +4,7 @@ from collections import deque
 from datasets import Dataset, load_from_disk
 import json
 import os
+import regex as re
 import time
 import torch
 from torch.utils.data import DataLoader
@@ -112,6 +113,14 @@ def get_acquired(samples, acquired_idxs, tokenizer = None):
         })
     return acquired
 
+def restructure_sample_for_rewardtrainer(x: dict) -> dict:
+    for key in ["chosen", "rejected"]:
+        x[key] = [
+            {"content": x["prompt"], "role": "user"},
+            {"content": x[key], "role": "assistant"},
+        ]
+    return x
+
 if __name__ == "__main__":
     args = get_args()
     logger = get_logger(__name__, args.logs_path)
@@ -175,22 +184,25 @@ if __name__ == "__main__":
     output = []
     replay_buffer = deque(maxlen=reward_trainer_config["replay_buffer_size"])
     dataset = dataset.shuffle(seed=args.seed)
-    n_batches = len(dataset) // args.outer_loop_batch_size
+    outer_dataloader = DataLoader(
+        dataset, 
+        batch_size=args.outer_loop_batch_size,
+        collate_fn=lambda x: x,
+        shuffle=False,
+        drop_last=False,
+    )
 
     logger.info(f"Starting dataset generation loop")
-    for batch_idx in range(n_batches):
+    for outer_batch_idx, outer_batch in enumerate(outer_dataloader):
         if accelerator.is_main_process:
-            logger.info(f"Step {batch_idx+1} / {n_batches}")
+            logger.info(f"Step {outer_batch_idx+1} / {len(outer_dataloader)}")
 
-        subset = dataset.select(range(
-            batch_idx * args.outer_loop_batch_size, 
-            min( (batch_idx+1) * args.outer_loop_batch_size, len(dataset))
-        ))
         dataloader = DataLoader(
-            subset,
-            batch_size=len(subset) // n_processes,
+            outer_batch,
+            batch_size=max(1, len(outer_batch) // n_processes),
             collate_fn=custom_collate,
             shuffle=False,
+            drop_last=False,
         )
         dataloader = accelerator.prepare(dataloader)
 
@@ -199,8 +211,11 @@ if __name__ == "__main__":
             samples_local = custom_decollate(collated_minibatch)
 
             start = time.time()
-            reward_model.eval()
-            rewards_local = compute_rewards(samples_local, reward_model)
+            if args.acquisition_function == "random":
+                rewards_local = compute_rewards(samples_local)
+            else:
+                reward_model.eval()
+                rewards_local = compute_rewards(samples_local, reward_model)
             logger.info(f"- Reward computation took {time.time() - start:.2f}s")
 
             start = time.time()
@@ -221,17 +236,26 @@ if __name__ == "__main__":
             annotated_local = oracle(acquired_local)
             logger.info(f"- Oracle annotation took {time.time() - start:.2f}s")
 
-            # TODO: wandb KPI reporting
+            # TODO: KPI reporting
 
             start = time.time()
             accelerator.wait_for_everyone()
             annotated_minibatch = gather_object(annotated_local)
-            print(f"- Gathering annotations took {time.time() - start:.2f}s")
-
-
-            print(annotated_minibatch[0].keys())
             annotated_batch += annotated_minibatch
-        
+            logger.info(f"- Gathering data from processes took {time.time() - start:.2f}s")
+
+        # restructure data for reward trainer
+        annotated_batch = [
+            restructure_sample_for_rewardtrainer(x) for x in annotated_batch
+        ]
+
+        if accelerator.is_main_process:
+            output += [{
+                k: v for k, v in x.items()
+                if not re.search(r"features|input_ids|attention_mask", k)
+            } for x in annotated_batch]
+            print(f"- Acquired {len(annotated_batch)} samples, total {len(output)}")
+
     
     if accelerator.is_main_process and len(output) > 0:
         logger.info(f"Saving generated dataset to {args.output_path}")
