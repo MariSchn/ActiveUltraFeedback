@@ -67,7 +67,15 @@ class LoopArguments:
     )
     compute_reward_batch_size: int = field(
         default=8,
-        metadata={"help": "Number of completions per reward computation forward pass"}
+        metadata={"help": "Number of completions per reward computation forward pass"},
+    )
+    save_every_n_outer_batches: int = field(
+        default=100,
+        metadata={"help": "How often (in outer loop batches) the intermediate dataset should be saved to disk."},
+    )
+    replay_buffer_size: int = field(
+        default=3200,
+        metadata={"help": "Size of the replay buffer that stores previous chosen/rejected pairs for training the reward model."},
     )
 
     timestamp: str | None = field(
@@ -111,11 +119,8 @@ class LoopArguments:
     wandb_project: str | None = field(
         default=None, metadata={"help": "WandB project name for logging."}
     )
-    enn_training_wandb_id: str | None = field(
-        default=None, metadata={"help": "WandB project name for logging."}
-    )
-    acquisition_kpi_wandb_id: str | None = field(
-        default=None, metadata={"help": "WandB project name for logging."}
+    wandb_run_id: str | None = field(
+        default=None, metadata={"help": "WandB run id for logging."}
     )
 
     # configs for starting from a previous point to save time 
@@ -129,8 +134,11 @@ class LoopArguments:
         },
     )
 
+# TODO: make more robust, this is ridiculous
 def extract_annotator_name(dataset_path: str) -> str:
-    return path.basename(dataset_path.rstrip("/")).split("_")[-1]
+    for key in ["llama", "qwen"]:
+        if key in path.basename(dataset_path):
+            return key
 
 def get_args() -> argparse.Namespace:
     parser = HfArgumentParser(LoopArguments)
@@ -143,45 +151,32 @@ def get_args() -> argparse.Namespace:
             if hasattr(args, key):
                 setattr(args, key, val)
 
-    # create output path that reflects acquisition function, annotator used to determine response quality, oracle that will determine chosen vs rejected, and current timestamp
-    # similarly define args and logs paths
+    # create wandb configs that reflects acquisition function, annotator used to determine response quality, oracle that will determine chosen vs rejected, and current timestamp
+    # similarly define output path, args path, logs path
     args.timestamp = get_timestamp(more_detailed=True)
-    args.output_path = path.join(
-        config["base_output_dir"], 
-        "_".join([
-            args.acquisition_function,
-            extract_annotator_name(args.inputs_path),
-            args.oracle_name,
-            args.timestamp,
-    ]))
-    args.args_path = path.join(config["base_logs_dir"], f"{args.timestamp}.args")
-    args.logs_path = path.join(config["base_logs_dir"], f"{args.timestamp}.log")
+    args.run_id = "_".join([
+        args.acquisition_function,
+        args.reward_model if args.reward_model is not None else "none",
+        extract_annotator_name(args.inputs_path),
+        args.oracle_name,
+        args.timestamp,
+    ])
 
-    # set wandb project name based on acquisition function
     if args.report_to == "wandb":
-        if args.acquisition_function in ["random", "ultrafeedback"]:
-            print(
-                f"Warning: WandB reporting is not supported for acquisition_function={args.acquisition_function}."
-            )
+        if args.reward_model is None:
+            # because no reward model is involved, there is nothing to report to wandb
+            args.report_to = None
         else:
-            args.wandb_project = f"{config["base_wandb_project"]}_{args.acquisition_function}"
-
-        args.wandb_dir = path.join(config['base_wandb_dir'], f"job_{args.timestamp}")
-        args.enn_training_wandb_id = f"loop_enn_{args.timestamp}"
-        args.acquisition_kpi_wandb_id = f"loop_KPI_{args.timestamp}"
-
-    # change some args for efficiency reasons
-    if args.acquisition_function in ["random", "ultrafeedback"]:
-        print(
-            f"Because acquisition function={args.acquisition_function}, we set max_length=1 and outer_loop_batch_size=8192 for efficiency"
-        )
-        args.max_length = 1
-        args.outer_loop_batch_size = 8192
+            args.wandb_project = config["base_wandb_project"]
+            args.wandb_dir = path.join(config["base_wandb_dir"], args.run_id)
+    args.output_path = path.join(config["base_output_dir"], args.run_id)
+    args.args_path = path.join(config["base_logs_dir"], f"{args.run_id}.args")
+    args.logs_path = path.join(config["base_logs_dir"], f"{args.run_id}.log")
 
     try:
         reward_trainer_config = args.reward_trainer_config[args.reward_model]
         assert "output_dir" not in args.reward_trainer_config
-        reward_trainer_config["output_dir"] = f"{config['base_trainer_dir']}/{args.timestamp}"
+        reward_trainer_config["output_dir"] = f"{config['base_trainer_dir']}/{args.run_id}"
     except:
         pass
 
