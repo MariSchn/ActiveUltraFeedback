@@ -60,7 +60,7 @@ reward_trainer_config:
     exponential_decay_base: 0.95
     regularization_weight_decay_type: linear # or constant? that's the default value
 
-base_output_dir: datasets
+base_output_dir: datasets/loop/
 base_trainer_dir: trainer_output
 base_logs_dir: logs
 base_wandb_dir: wandb
