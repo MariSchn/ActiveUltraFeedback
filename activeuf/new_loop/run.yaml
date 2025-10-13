@@ -1,7 +1,6 @@
 inputs_path: datasets/combined_annotations_llama_features
 oracle_name: ultrafeedback
 acquisition_function: dts
-compute_rewards: auto
 reward_model: enn
 
 previous_checkpoint_path: null
@@ -13,6 +12,8 @@ seed: &a 42
 max_length: &b 4096
 outer_loop_batch_size: 32
 compute_reward_batch_size: 8
+save_every_n_outer_batches: 100
+replay_buffer_size: 3200 # factor, it's 100 times better. 1000 times  (100 * outerloopbatchsize) 10, 100, 1000
 
 acquisition_function_config:
   random:
@@ -54,14 +55,13 @@ reward_trainer_config:
     bf16: true
     max_length: *b
 
-    replay_buffer_size: 3200 # factor, it's 100 times better. 1000 times  (100 * outerloopbatchsize) 10, 100, 1000
     effective_batch_size: 32
     max_training_steps: 10
     exponential_decay_base: 0.95
     regularization_weight_decay_type: linear # or constant? that's the default value
 
 base_output_dir: datasets/loop/
-base_trainer_dir: trainer_output
-base_logs_dir: logs
-base_wandb_dir: wandb
+base_trainer_dir: trainer_output/loop
+base_logs_dir: logs/loop
+base_wandb_dir: wandb/loop
 base_wandb_project: loop
