@@ -140,7 +140,6 @@ def compute_rewards(samples, reward_model, compute_reward_batch_size) -> torch.t
 
     features_yielder = get_features_yielder()
     rewards_batch = []
-    reward_model.eval()
     while True:
         features_mbatch = []
         for _ in range(compute_reward_batch_size):
