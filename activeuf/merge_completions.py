@@ -86,6 +86,11 @@ if __name__ == "__main__":
     logger.info(f"Saving merged dataset to {args.output_path}")
     merged.save_to_disk(args.output_path)
 
+    # Export first sample
+    first_sample_path = path.join(args.output_path, "first_sample.json")
+    with open(first_sample_path, "w") as f_out:
+        json.dump(merged[0], f_out, indent=2)
+
     # Export args
     args_path = path.join(args.output_path, "args.json")
     with open(args_path, "w") as f_out:
