@@ -1,5 +1,7 @@
 from datasets import Dataset
 import torch
+from transformers import TrainerCallback
+import wandb
 
 from rewarduq.models.reward_head_ensemble import (
     RewardHeadEnsembleModel as ENNRewardModel,
@@ -79,9 +81,16 @@ def compute_acquisition_function_KPIs(rewards, chosen_idxs, rejected_idxs):
     }
     return kpis
 
-def init_reward_model_tokenizer_trainer_trainsize(args: dict, n_processes: int): 
+TRAINER_WANDB_STEP = 0
+class WandbStepLoggerCallback(TrainerCallback):
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        if logs:
+            wandb.log(logs, step=TRAINER_WANDB_STEP)
+
+def init_reward_model_trainer(args: dict, n_processes: int): 
     if args.reward_model is None:
-        reward_model, tokenizer, trainer, trainsize = None, None, None, None
+        reward_model, trainer, trainsize, initial_regularization = None, None, None, None
+
     elif args.reward_model == "enn":
         trainer_config_dict = args.reward_trainer_config[args.reward_model]
         trainer_config_dict["learning_rate"] = float(trainer_config_dict["learning_rate"])
@@ -104,8 +113,7 @@ def init_reward_model_tokenizer_trainer_trainsize(args: dict, n_processes: int):
             reward_model = reward_model_pipeline.model
             tokenizer = reward_model.tokenizer
 
-        # TODO understand what's going on here
-        # Initialize trainer with an empty Dataset having the required keys. So we have access to the uq_pipeline.trainer before entering the loop.
+        # initialize trainer with an empty Dataset having the required keys. So we have access to the uq_pipeline.trainer before entering the loop.
         trainer = ENNRewardModelTrainer(
             args=trainer_config,
             model=reward_model,
@@ -118,10 +126,12 @@ def init_reward_model_tokenizer_trainer_trainsize(args: dict, n_processes: int):
                 "features_chosen": [],
                 "features_rejected": [],
         }]))
+
+        initial_regularization = float(trainer.args.regularization_towards_initial_weights)
     else:
         raise NotImplementedError(f"Reward model {args.reward_model} not implemented.")
 
-    return reward_model, tokenizer, trainer, trainsize
+    return reward_model, trainer, trainsize, initial_regularization
 
 def compute_rewards(samples, reward_model, compute_reward_batch_size) -> torch.tensor:
     n_samples = len(samples)
