@@ -1,8 +1,8 @@
 from accelerate import Accelerator
 from accelerate.utils import gather_object
-from collections import defaultdict, deque
+from collections import deque
+from dataclasses import asdict
 from datasets import Dataset, load_from_disk
-import json
 import os
 import random
 import time
@@ -11,24 +11,33 @@ from torch.utils.data import DataLoader
 import wandb
 
 from activeuf.acquisition_function import init_acquisition_function
-from activeuf.new_loop.arguments import get_args
+from activeuf.new_loop.arguments import get_loop_args
 from activeuf.new_loop import utils as loop_utils
 from activeuf.oracle.oracles import init_oracle
-from activeuf.utils import get_logger, set_seed
+from activeuf.utils import get_logger, set_seed, convert_dataclass_instance_to_yaml_str
 
 # RUN
-# python -m activeuf.new_loop.run --config_path activeuf/new_loop/run.yaml
+# accelerate launch --config_file=activeuf/new_loop/accelerate.yaml -m activeuf.new_loop.run --config_path activeuf/new_loop/run.yaml
 
 if __name__ == "__main__":
-    # prepare args and logger
-    args = get_args()
-    logger = get_logger(__name__, args.logs_path)
-    with open(args.args_path, "w") as f_out:
-        json.dump(vars(args), f_out)
-        
-    # env setup
     accelerator = Accelerator()
     n_processes = accelerator.num_processes
+
+    # prepare (and export) args
+    args = get_loop_args()
+    acquisition_function_args = getattr(
+        args.acquisition_function, args.acquisition_function_type
+    )
+    if hasattr(args, args.reward_model_type):
+        reward_args = getattr(args, args.reward_model_type)
+    else:
+        reward_args = None
+    if accelerator.is_main_process:
+        with open(args.args_path, "w") as f_out:
+            print(convert_dataclass_instance_to_yaml_str(args), file=f_out)
+        
+    # env setup
+    logger = get_logger(__name__, args.logs_path, accelerator)
 
     torch.cuda.empty_cache()
     torch.cuda.reset_peak_memory_stats()
@@ -37,42 +46,53 @@ if __name__ == "__main__":
         logger.info(f"Setting random seed to {args.seed}")
         set_seed(args.seed)
 
-    logger.info(f"Preparing acquisition function ({args.acquisition_function})")
+    if accelerator.is_main_process:
+        os.environ.setdefault("WANDB_DIR", args.wandb_dir)
+        wandb.init(
+            project=args.wandb_project, id=args.run_id, config=vars(args),
+        )
+
+    logger.info(f"Preparing acquisition function ({args.acquisition_function_type})")
     acquisition_function = init_acquisition_function(
-        args.acquisition_function,
-        **args.acquisition_function_config.get(args.acquisition_function, {})
+        args.acquisition_function_type, **asdict(acquisition_function_args)
     )
 
     logger.info(f"Preparing oracle ({args.oracle_name})")
     oracle = init_oracle(args.oracle_name)
 
-    logger.info(f"Preparing reward model, tokenizer, and trainer ({args.reward_model})")
-    reward_model, trainer, trainsize, initial_regularization = loop_utils.init_reward_model_trainer(
-        args, n_processes
+    logger.info(f"Preparing reward model, tokenizer, and trainer ({args.reward_model_type})")
+    model, trainer = loop_utils.init_model_trainer(
+        args.reward_model_type, reward_args, n_processes
     )
-    if accelerator.is_main_process and args.report_to == "wandb":
-        os.environ.setdefault("WANDB_DIR", args.wandb_dir)
-        trainer.add_callback(loop_utils.WandbStepLoggerCallback())
-
-    # wait for everyone to finish loading the models
-    accelerator.wait_for_everyone()
+    if accelerator.is_main_process and trainer is not None:
+        trainer.add_callback(loop_utils.WandbStepLoggerCallback(accelerator))
 
     logger.info(f"Loading prompts from {args.inputs_path}")
     dataset = load_from_disk(args.inputs_path)
     if args.debug:
-        dataset = dataset.select(range(200))
-    if "row_id" not in dataset.column_names:
-        dataset = dataset.add_column("row_id", list(range(len(dataset))))    
-    if "features" not in dataset[0]["completions"][0]:
-        logger.info("Please precompute features before running this script")
-        exit(1)
+        dataset = dataset.select(range(1000))  
+    if os.path.exists(args.features_path):
+        logger.info(f"Loading precomputed features from {args.features_path}")
+        features = torch.load(args.features_path)
+    else:
+        logger.info("Computing features with specified reward model")
+        features = loop_utils.compute_features_for_dataset(
+            dataset, model, args.max_length, accelerator
+        )
+        if accelerator.is_main_process:
+            logger.info(f"Saving computed features to {args.features_path}")
+            torch.save(features, args.features_path)
+    dataset = loop_utils.add_features_to_dataset(features, dataset)
     dataset = dataset.shuffle(seed=args.seed)
     logger.info(f"# Prompts: {len(dataset)}")
 
     # prepare output container and trainer replay buffer
+    accelerator.wait_for_everyone()
     output = []
-    replay_buffer = deque(maxlen=args.replay_buffer_size)
-
+    expected_output_size = len(dataset)
+    replay_buffer = deque(
+        maxlen=args.outer_loop_batch_size * args.replay_buffer_factor)
+    
     logger.info(f"Starting dataset generation loop")
     outer_dataloader = DataLoader(
         dataset, 
@@ -82,13 +102,15 @@ if __name__ == "__main__":
         drop_last=False,
     )
     for outer_batch_idx, outer_batch in enumerate(outer_dataloader):
-        reward_model.eval()
+        if model is not None:
+            model.eval()
+
         if accelerator.is_main_process:
             logger.info(f"Step {outer_batch_idx+1} / {len(outer_dataloader)}")
 
         dataloader = DataLoader(
             outer_batch,
-            batch_size=max(1, len(outer_batch) // n_processes),
+            batch_size=max(1, -(len(outer_batch) // -n_processes)),
             collate_fn=loop_utils.custom_collate,
             shuffle=False,
             drop_last=False,
@@ -97,14 +119,13 @@ if __name__ == "__main__":
         dataloader = accelerator.prepare(dataloader)
 
         annotated_batch = []
-        kpi_samplewise_batch = []
-        kpi_batch = defaultdict(list)
+        kpis_batch = []
         for collated_minibatch in dataloader:
             samples_local = loop_utils.custom_decollate(collated_minibatch)
 
             start = time.time()
             rewards_local = loop_utils.compute_rewards(
-                samples_local, reward_model, args.compute_reward_batch_size)
+                samples_local, model, reward_args.compute_reward_batch_size)
             logger.info(f"- Reward computation took {time.time() - start:.2f}s")
 
             start = time.time()
@@ -125,7 +146,7 @@ if __name__ == "__main__":
             logger.info(f"- Oracle annotation took {time.time() - start:.2f}s")
 
             start = time.time()
-            kpi_samplewise_local, kpi_minibatchwise_local = loop_utils.compute_kpi(
+            kpis_local = loop_utils.compute_kpis(
                 rewards_local, acquired_idxs_local,
             )
             logger.info(f"- KPI computation took {time.time() - start:.2f}s")
@@ -133,10 +154,16 @@ if __name__ == "__main__":
             start = time.time()
             accelerator.wait_for_everyone()
             annotated_batch += gather_object(annotated_local)
-            kpi_samplewise_batch += gather_object(kpi_samplewise_local)
-            for key, val in gather_object(kpi_minibatchwise_local).items():
-                kpi_batch[key].append(val)
+            kpis_batch += gather_object(kpis_local)
 
+            # put batch-level KPIs alongside KPIs for most recent sample in batch
+            for idx, kpi in enumerate(kpis_batch):
+                if idx == len(kpis_batch) - 1:
+                    for key, val in kpi.copy().items():
+                        key2 = key.replace("per_sample", "per_batch")
+                        if not key2.startswith("mean_"):
+                            key2 = f"mean_{key2}"
+                        kpi[key2] = sum(kpi2[key] for kpi2 in kpis_batch) / len(kpis_batch)
             logger.info(f"- Gathering data from processes took {time.time() - start:.2f}s")
 
         if accelerator.is_main_process:
@@ -151,42 +178,21 @@ if __name__ == "__main__":
                 logger.info(f"Writing output dataset to {args.output_path}")
                 Dataset.from_list(output).save_to_disk(args.output_path)
 
-            if args.report_to == "wandb":
-                logger.info("Reporting KPIs to WandB")
-                wandb.init(
-                    project=args.wandb_project,
-                    id=args.kpi_run_id,
-                    config=vars(args),
-                    resume=(outer_batch_idx > 0),
-                    allow_val_change=True,
-                )
-                for idx, kpi in enumerate(kpi_samplewise_batch):
-                    if idx == len(kpi_samplewise_batch) - 1:
-                        # log batch-level metrics alongside last sample
-                        for key, val in kpi_batch.items():
-                            kpi[key] = sum(val) / len(val)
-                    wandb.log(kpi)
-
-                # set trainer wandb step to be the same as the step used for the most recent log
-                loop_utils.TRAINER_WANDB_STEP = wandb.run.step - 1
-                wandb.finish()
-
         if trainer is None:
+            if accelerator.is_main_process:
+                logger.info("Reporting KPIs to WandB")
+                for kpis in kpis_batch:
+                    wandb.log(kpis)
+
             logger.info("Skipping reward model training")
             continue
-
-        if accelerator.is_main_process and args.report_to == "wandb":
-            wandb.init(
-                project=args.wandb_project,
-                id=args.trainer_run_id,
-                config=vars(args),
-                resume=outer_batch_idx > 0,
-                allow_val_change=True,
-            )
+        else:
+            loop_utils.LOGS_CACHE += kpis_batch
         
+        trainsize = reward_args.effective_batch_size * trainer.args.max_steps
         logger.info(f"Adding fresh batch to replay buffer, then subsampling {trainsize} for training")
         # features are precomputed, so input_ids and attention_mask are not needed and we can just feed a dummy tensor to make trainer happy
-        dummy_tensor = torch.zeros((1,), dtype=torch.long).to(reward_model.device)
+        dummy_tensor = torch.zeros((1,), dtype=torch.long).to(model.device)
         for idx, x in enumerate(annotated_batch):
             replay_buffer.append({
                 "input_ids_chosen": dummy_tensor,
@@ -199,25 +205,23 @@ if __name__ == "__main__":
         trainer.train_dataset = Dataset.from_list(random.sample(
             replay_buffer, min(len(replay_buffer), trainsize),
         ))
-
-        logger.info(f"Updating regularization")
-        trainer.args.regularization_towards_initial_weights = loop_utils.update_regularization(
-            initial_regularization, 
-            outer_batch_idx, 
-            args.outer_loop_batch_size,
-            args.reward_trainer_config[args.reward_model],
+        trainer.args.regularization_towards_initial_weights = loop_utils.get_new_regularization(
+            n_done=len(output),
+            n_total=expected_output_size,
+            **asdict(reward_args.regularization),
         )
 
-        reward_model.train()
+        model.train()
         start = time.time()
         trainer.train()
         logger.info(f"Reward model training took {time.time() - start:.2f}s")
 
         # cleanup
         torch.cuda.empty_cache()
-        if accelerator.is_main_process and args.report_to == "wandb":
-            wandb.finish()
+
+    if accelerator.is_main_process:
+        wandb.finish()
 
     if accelerator.is_main_process and len(output) > 0:
-        logger.info(f"Saving generated dataset to {args.output_path}")
+        logger.info(f"Writing output dataset to {args.output_path}")
         Dataset.from_list(output).save_to_disk(args.output_path)
