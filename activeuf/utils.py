@@ -1,3 +1,4 @@
+from dataclasses import asdict, is_dataclass, fields
 from datetime import datetime
 from dotenv import load_dotenv
 import huggingface_hub
@@ -9,9 +10,10 @@ import asyncio
 import requests
 import httpx
 import time
-from typing import Union, Any, Tuple, List
+from typing import Any, Union
 from tqdm import tqdm
 from tqdm.asyncio import tqdm as async_tqdm
+import yaml
 
 import numpy as np
 import random
@@ -24,6 +26,22 @@ from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer, Pipeline
 from activeuf.configs import *
 from activeuf.schemas import *
 
+def ensure_dataclass(cls, d):
+    if not is_dataclass(cls):
+        return d  # primitive type, leave as is
+    kwargs = {}
+    for f in fields(cls):
+        if f.name not in d:
+            continue
+        value = d[f.name]
+        if is_dataclass(f.type) and isinstance(value, dict):
+            kwargs[f.name] = ensure_dataclass(f.type, value)
+        else:
+            kwargs[f.name] = value
+    return cls(**kwargs)
+
+def convert_dataclass_instance_to_yaml_str(instance) -> str:
+    return yaml.dump(asdict(instance))
 
 def get_timestamp(more_detailed=False) -> str:
     now = datetime.now()
@@ -31,19 +49,31 @@ def get_timestamp(more_detailed=False) -> str:
         return now.strftime("%Y%m%d-%H%M%S") + f"-{now.microsecond // 1000:03d}"
     return now.strftime("%Y%m%d-%H%M%S")
 
-
-def get_logger(name: str, logs_path: str = "app.log") -> logging.Logger:
+def get_logger(name, logs_path="app.log", accelerator=None) -> logging.Logger:
     logger = logging.getLogger(name)
-    if not logger.handlers:
-        logger.setLevel(logging.INFO)
-        handler = logging.FileHandler(logs_path)
-        formatter = logging.Formatter(
-            "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
-        )
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-    return logger
+    logger.propagate = False  # prevent double logging
 
+    if logger.hasHandlers():
+        logger.handlers.clear()
+
+    logger.setLevel(logging.INFO)
+
+    formatter = logging.Formatter(
+        "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
+    )
+
+    # Console handler for all ranks
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+
+    # File handler only for main process
+    if accelerator is None or accelerator.is_main_process:
+        file_handler = logging.FileHandler(logs_path)
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+
+    return logger
 
 def setup(login_to_hf: bool = False, login_to_wandb: bool = False) -> None:
     # load env variables
@@ -56,7 +86,6 @@ def setup(login_to_hf: bool = False, login_to_wandb: bool = False) -> None:
     if login_to_wandb:
         load_dotenv(LOCAL_ENV_PATH)
         wandb.login(key=os.getenv("WANDB_TOKEN"))
-
 
 def set_seed(seed: int) -> None:
     random.seed(seed)
@@ -84,10 +113,8 @@ def sample_principle(source: str) -> str:
 
     return principle
 
-
 def sample_system_prompt(principle: str) -> str:
     return random.choice(PRINCIPLE2SYSTEM_PROMPTS[principle])
-
 
 def load_model(
         model_name: str,
