@@ -1,0 +1,16 @@
+seed: 42
+debug: false
+
+inputs_path: datasets/combined_with_small_qwen_3_235b
+batch_size: 64
+max_length: 4096
+
+enn:
+  model:
+    base_model_name_or_path: Skywork/Skywork-Reward-V2-Qwen3-4B
+    num_heads: 20
+    head_num_layers: 2
+    head_hidden_dim: 128
+    head_initialization_xavier_gain: 1.0
+    freeze_base_model: true
+    feature_extraction_layer: last_hidden_state
