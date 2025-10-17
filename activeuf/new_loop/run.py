@@ -75,13 +75,8 @@ if __name__ == "__main__":
         logger.info(f"Loading precomputed features from {args.features_path}")
         features = torch.load(args.features_path)
     else:
-        logger.info("Computing features with specified reward model")
-        features = loop_utils.compute_features_for_dataset(
-            dataset, model, args.max_length, accelerator
-        )
-        if accelerator.is_main_process:
-            logger.info(f"Saving computed features to {args.features_path}")
-            torch.save(features, args.features_path)
+        logger.info(f"Precompute features before running this script")
+        exit(1)
     dataset = loop_utils.add_features_to_dataset(features, dataset)
     dataset = dataset.shuffle(seed=args.seed)
     logger.info(f"# Prompts: {len(dataset)}")
