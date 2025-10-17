@@ -3,9 +3,9 @@
 #SBATCH --job-name=compute_base_model_features
 #SBATCH -D .
 #SBATCH -A a-infra01-1
-#SBATCH --output=./logs/loop/O-%x.%j
-#SBATCH --error=./logs/loop/E-%x.%j
-#SBATCH --time=8:00:00
+#SBATCH --output=./logs/O-%x.%j
+#SBATCH --error=./logs/E-%x.%j
+#SBATCH --time=10:00:00
 #SBATCH --environment=activeuf_dev
 #SBATCH --partition=normal
 
