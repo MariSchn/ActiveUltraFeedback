@@ -248,6 +248,10 @@ def load_dataset_my_way(dataset_path, output_path):
                 {k: [] for k in dataset.features}
             )
 
+        if len(already_processed_dataset) == len(dataset):
+            print("All rows were already processed. Exiting.")
+            exit(0)
+
         original_dataset_size = len(dataset)
         dataset = dataset.select(range(len(already_processed_dataset), len(dataset)))
 
