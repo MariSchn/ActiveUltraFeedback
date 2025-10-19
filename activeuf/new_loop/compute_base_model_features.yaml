@@ -4,6 +4,7 @@ debug: false
 inputs_path: datasets/combined_with_small_qwen_3_235b
 batch_size: 64
 max_length: 4096
+n_batches_per_checkpoint: 500
 
 enn:
   model:

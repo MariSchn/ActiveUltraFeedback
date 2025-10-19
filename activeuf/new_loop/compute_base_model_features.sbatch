@@ -9,8 +9,6 @@
 #SBATCH --environment=activeuf_dev
 #SBATCH --partition=normal
 
-NCCL_DEBUG=ERROR
-
 python -m pip install -e resources/rewarduq
 
 accelerate launch \

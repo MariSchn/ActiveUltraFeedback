@@ -1,17 +1,18 @@
 from argparse import ArgumentParser
 from accelerate import Accelerator
-from accelerate.utils import gather_object
 from datasets import Dataset, load_from_disk
 from functools import partial
+import os
 import yaml
 
 import torch
 from torch.utils.data import DataLoader
+import time
 from tqdm import tqdm
 
 from rewarduq.models.reward_head_ensemble import RewardHeadEnsembleModel, RewardHeadEnsembleModelConfig
 
-from activeuf.utils import set_seed, get_timestamp
+from activeuf.utils import set_seed
 
 # accelerate launch --config_file=activeuf/new_loop/accelerate.yaml -m activeuf.new_loop.compute_base_model_features --config_path activeuf/new_loop/compute_base_model_features.yaml
 
@@ -42,12 +43,14 @@ if __name__ == "__main__":
     config_path = cli_parser.parse_args().config_path
     with open(config_path, "r") as f:
         args = yaml.safe_load(f)
-    args["timestamp"] = get_timestamp(more_detailed=True)
 
-    args_path = f"{args['inputs_path'].rstrip('/')}_features-{args['timestamp']}.args"
+    args_path = f"{args['inputs_path'].rstrip('/')}-features.args"
+    out_dir = f"{args['inputs_path'].rstrip('/')}-features"
     if accelerator.is_main_process:
         with open(args_path, "w") as f_out:
             print(yaml.dump(args), file=f_out)
+
+        os.mkdir(out_dir)
 
     torch.cuda.empty_cache()
     torch.cuda.reset_peak_memory_stats()
@@ -58,10 +61,13 @@ if __name__ == "__main__":
     model = RewardHeadEnsembleModel(RewardHeadEnsembleModelConfig(
         **{k: v for k, v in args['enn']["model"].items() if not k.startswith("__")}))
     model.eval()
+    tokenizer = model.tokenizer
+    feature_dim = model.base_model_.config.hidden_size
+    model = accelerator.prepare(model)
 
     dataset = load_from_disk(args['inputs_path'])
     if args['debug']:
-        dataset = dataset.select(range(500))
+        dataset = dataset.select(range(1000))
     n_response_texts_per_prompt = len(dataset[0]["completions"])
         
     n = len(dataset)
@@ -71,7 +77,8 @@ if __name__ == "__main__":
     start = accelerator.process_index * per_proc
     end = min(start + per_proc, n)
     _dataset = dataset.select(range(start, end))
-
+    
+    print(f"Pretokenizing everything")
     _flattened_inputs = []
     for x in tqdm(_dataset, disable=not accelerator.is_main_process):
         messages = [
@@ -80,9 +87,9 @@ if __name__ == "__main__":
                 {"role": "assistant", "content": completion["response_text"]},
             ] for completion in x["completions"]
         ]
-        messages_str = model.tokenizer.apply_chat_template(messages, tokenize=False)
+        messages_str = tokenizer.apply_chat_template(messages, tokenize=False)
 
-        inputs = model.tokenizer(
+        inputs = tokenizer(
             messages_str,
             padding="do_not_pad",
             truncation=True,
@@ -105,24 +112,43 @@ if __name__ == "__main__":
         num_workers=0,
         drop_last=False,
         shuffle=False,
-        collate_fn=partial(collate_fn, tokenizer=model.tokenizer)
+        collate_fn=partial(collate_fn, tokenizer=tokenizer)
     )
-    model = accelerator.prepare(model)
+    n_batches = len(dataloader)
 
-    accelerator.wait_for_everyone()
-    outputs = []
-    for temp_ids, inputs in tqdm(dataloader, disable=not accelerator.is_main_process):
+    temp_ids_local = []
+    features_buffer_local = torch.empty(
+        (args['n_batches_per_checkpoint'] * args['batch_size'], feature_dim), 
+        device=accelerator.device,
+    )
+    offset = 0
+
+    start = time.time()
+    for batch_idx, (temp_ids, inputs) in enumerate(dataloader, 1):
         inputs = {k: v.to(accelerator.device) for k, v in inputs.items()}
         with torch.no_grad():
-            features = model(output_only_features=True, **inputs).cpu()
-        outputs += list(zip(temp_ids, features))
+            features = model(output_only_features=True, **inputs)
 
-    accelerator.wait_for_everyone()
-    outputs = gather_object(outputs)
-    outputs.sort(key=lambda x: x[0])
+        temp_ids_local.extend(temp_ids)
+        features_buffer_local[offset:offset+len(features)] = features
+        offset += len(features)
 
-    features = torch.stack([x[1] for x in outputs], dim=0)
-    features = features.view(n, n_response_texts_per_prompt, -1)
-    if accelerator.is_main_process:
-        features_path = f"{args['inputs_path'].rstrip('/')}-features-{args['timestamp']}.pt"
-        torch.save(features, features_path)
+        if batch_idx % args['n_batches_per_checkpoint'] == 0 or batch_idx == n_batches:
+            elapsed = time.time() - start
+            avg_time_per_batch = elapsed / batch_idx
+            remaining_batches = n_batches - batch_idx
+            eta = remaining_batches * avg_time_per_batch
+            print(
+                f"[Rank {accelerator.process_index}] "
+                f"{batch_idx}/{n_batches} ({batch_idx/n_batches:.2%}) batches "
+                f"done in {elapsed/60:.1f} min, ETA ≈ {eta/60:.1f} min",
+                flush=True,
+            )
+
+            temp_path = os.path.join(out_dir, f"{accelerator.process_index}-{batch_idx}.pt")
+            torch.save(
+                {"temp_ids": temp_ids_local, "features": features_buffer_local[:offset].cpu()}, 
+                temp_path,
+            )
+            temp_ids_local = []
+            offset = 0
