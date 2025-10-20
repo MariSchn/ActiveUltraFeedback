@@ -4,12 +4,12 @@ base_logs_dir: logs/loop
 base_wandb_dir: wandb/loop
 base_wandb_project: loop
 
-inputs_path: datasets/combined_annotations_llama
-features_path: null
+inputs_path: datasets/combined_with_small_qwen_3_235b
+features_path: datasets/combined_with_small_qwen_3_235b-features.pt
 oracle_name: ultrafeedback
 acquisition_function_type: dts
 reward_model_type: enn
-debug: true
+debug: false
 
 seed: &a 42
 max_length: &b 4096

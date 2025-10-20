@@ -5,9 +5,9 @@
 #SBATCH -A a-infra01-1
 #SBATCH --output=./logs/loop/O-%x.%j
 #SBATCH --error=./logs/loop/E-%x.%j
-#SBATCH --time=01:00:00
+#SBATCH --time=04:00:00
 #SBATCH --environment=activeuf_dev
-#SBATCH --partition=debug
+#SBATCH --partition=normal
 
 python -m pip install -e resources/rewarduq
 

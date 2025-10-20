@@ -1,10 +1,6 @@
-from accelerate.utils import gather_object
 from dataclasses import asdict
 from datasets import Dataset
-from functools import partial
 import torch
-from torch.utils.data import DataLoader
-from tqdm import tqdm
 from transformers import TrainerCallback
 import wandb
 
@@ -19,127 +15,38 @@ from rewarduq.models.reward_head_ensemble import (
 from activeuf.new_loop.arguments import ENNConfig
 
 ######################################
-# FEATURE COMPUTATION UTILS
-######################################
-
-def collate_fn(batch: list[dict], tokenizer, max_length) -> tuple[list[int], dict]:
-    temp_ids = []
-    messages = []
-    for x in batch:
-        temp_ids.append(x["temp_id"])
-        messages.extend([
-            [
-                {"role": "user", "content": x["prompt"]},
-                {"role": "assistant", "content": completion["response_text"]},
-            ]
-            for completion in x["completions"]
-        ])
-    messages_str = tokenizer.apply_chat_template(messages, tokenize=False)
-
-    return temp_ids, tokenizer(
-        messages_str, 
-        padding="max_length",
-        max_length=max_length,
-        truncation=True,
-        return_tensors="pt",
-    )
-
-def compute_features_for_dataset(dataset, model, max_length, accelerator) -> list[torch.Tensor]:
-    # create a temporary column to keep track of original order after gathering from multiple processes
-    assert "temp_id" not in dataset.column_names
-    dataset = dataset.add_column("temp_id", list(range(len(dataset))))
-
-    # use dataloader to manage loading across accelerator properly # TODO: get rid of hardcoding maybe
-    dataloader = DataLoader(
-        dataset,
-        batch_size=4,
-        shuffle=False,
-        num_workers=4,
-        drop_last=False,
-        collate_fn=partial(collate_fn, tokenizer=model.tokenizer, max_length=max_length),
-    )
-    model, dataloader = accelerator.prepare(model, dataloader)
-    model.eval()
-
-    # do the actual computation
-    outputs = []
-    for temp_ids, inputs in tqdm(dataloader, disable=not accelerator.is_main_process):
-        inputs = {k: v.to(accelerator.device) for k, v in inputs.items()}
-        with torch.no_grad():
-            features = model(output_only_features=True, **inputs).cpu()
-        features = features.view(len(temp_ids), -1, features.size(-1))
-        outputs += list(zip(temp_ids, features))
-
-    # outputs = []
-    # for i in tqdm(range(accelerator.process_index, len(dataset), accelerator.num_processes), disable=not accelerator.is_main_process):
-    #     x = dataset[i]
-    #     messages = [
-    #         [
-    #             {"role": "user", "content": x["prompt"]},
-    #             {"role": "assistant", "content": completion["response_text"]},
-    #         ]
-    #         for completion in x["completions"]
-    #     ]
-    #     messages_str = model.tokenizer.apply_chat_template(messages, tokenize=False)
-    #     inputs = model.tokenizer(
-    #         messages_str, 
-    #         padding="max_length",
-    #         max_length=max_length,
-    #         truncation=True,
-    #         return_tensors="pt",
-    #     ).to(accelerator.device)
-
-    #     with torch.no_grad():
-    #         x_features = model(output_only_features=True, **inputs)
-            
-    #     outputs.append((x["temp_id"], x_features))
-
-    # gather data from processes and sort by temp id to assure original order
-    accelerator.wait_for_everyone()
-    outputs = gather_object(outputs)
-    outputs.sort(key=lambda x: x[0])
-
-    # sanity checks 
-    # TODO: this check fails, which is bad
-    assert [temp_id for temp_id, _ in outputs] == list(range(len(dataset)))
-
-    # cleanup and return dataset
-    dataset = dataset.remove_columns("temp_id")
-    return [features for _, features in outputs]
-
-def add_features_to_dataset(features, dataset) -> Dataset:
-    def assign_features(x, x_features):
-        for j, completion in enumerate(x["completions"]):
-            completion["features"] = x_features[j]
-        return x
-    
-    return dataset.map(
-        lambda x, i: assign_features(x, features[i]),
-        with_indices=True,
-        num_proc=20,
-    )
-
-######################################
 # OUTER/INNER LOOP UTILS
 ######################################
 
+
 def custom_collate(batch):
     out = {}
-    for key in ["prompt_id", "prompt", "source", "completions"]:#, "row_id"]:
+    for key in [
+        "prompt_id",
+        "prompt",
+        "source",
+        "completions",
+        "features",
+    ]:  # , "row_id"]:
         out[key] = [x[key] for x in batch]
     return out
+
 
 def custom_decollate(collated_batch):
     out = []
     for i in range(len(collated_batch["prompt_id"])):
-        out.append({
-            "prompt_id": collated_batch["prompt_id"][i],
-            "prompt": collated_batch["prompt"][i],
-            "source": collated_batch["source"][i],
-            # "row_id": collated_batch["row_id"][i],
-            "completions": collated_batch["completions"][i],
-        })
+        out.append(
+            {
+                "prompt_id": collated_batch["prompt_id"][i],
+                "prompt": collated_batch["prompt"][i],
+                "source": collated_batch["source"][i],
+                # "row_id": collated_batch["row_id"][i],
+                "features": collated_batch["features"][i],
+                "completions": collated_batch["completions"][i],
+            }
+        )
     return out
+
 
 def compute_acquisition_function_KPIs(rewards, chosen_idxs, rejected_idxs):
     """
@@ -191,7 +98,10 @@ def compute_acquisition_function_KPIs(rewards, chosen_idxs, rejected_idxs):
     }
     return kpis
 
+
 LOGS_CACHE = []
+
+
 class WandbStepLoggerCallback(TrainerCallback):
     def __init__(self, accelerator):
         self.accelerator = accelerator
@@ -212,13 +122,18 @@ class WandbStepLoggerCallback(TrainerCallback):
                 wandb.log(_logs)
             LOGS_CACHE = []
 
-def init_model_trainer(reward_model_type: str, reward_args: ENNConfig | None, n_processes: int): 
+
+def init_model_trainer(
+    reward_model_type: str, reward_args: ENNConfig | None, n_processes: int
+):
     if reward_model_type == "none":
         model, trainer = None, None
 
     elif reward_model_type == "enn":
         trainer_config = ENNRewardModelTrainerConfig(
-            per_device_train_batch_size=-(reward_args.effective_batch_size // -n_processes),
+            per_device_train_batch_size=-(
+                reward_args.effective_batch_size // -n_processes
+            ),
             **asdict(reward_args.trainer),
         )
 
@@ -229,7 +144,8 @@ def init_model_trainer(reward_model_type: str, reward_args: ENNConfig | None, n_
             tokenizer = model.tokenizer
         else:
             pipeline = ENNRewardModelPipeline(
-                ENNRewardModelConfig(**asdict(reward_args.model)), trainer_config,
+                ENNRewardModelConfig(**asdict(reward_args.model)),
+                trainer_config,
             )
             model = pipeline.model
             tokenizer = model.tokenizer
@@ -239,23 +155,29 @@ def init_model_trainer(reward_model_type: str, reward_args: ENNConfig | None, n_
             args=trainer_config,
             model=model,
             processing_class=tokenizer,
-            train_dataset=Dataset.from_list([{
-                "input_ids_chosen": [],
-                "attention_mask_chosen": [],
-                "input_ids_rejected": [],
-                "attention_mask_rejected": [],
-                "features_chosen": [],
-                "features_rejected": [],
-        }]))
+            train_dataset=Dataset.from_list(
+                [
+                    {
+                        "input_ids_chosen": [],
+                        "attention_mask_chosen": [],
+                        "input_ids_rejected": [],
+                        "attention_mask_rejected": [],
+                        "features_chosen": [],
+                        "features_rejected": [],
+                    }
+                ]
+            ),
+        )
     else:
         raise NotImplementedError(f"{reward_model_type=} not implemented.")
 
     return model, trainer
 
+
 def compute_rewards(samples, model, compute_reward_batch_size) -> torch.tensor:
     n_samples = len(samples)
     n_completions_per_sample = len(samples[0]["completions"])
- 
+
     if model is None:
         return torch.zeros(
             (n_samples, n_completions_per_sample, 3),
@@ -264,8 +186,10 @@ def compute_rewards(samples, model, compute_reward_batch_size) -> torch.tensor:
 
     def get_features_yielder():
         for sample in samples:
-            for completion in sample["completions"]:
-                yield torch.tensor(completion["features"])
+            for i in range(n_completions_per_sample):
+                yield torch.tensor(sample["features"][i])
+            # for completion in sample["completions"]:
+            #     yield torch.tensor(completion["features"])
 
     features_yielder = get_features_yielder()
     rewards_batch = []
@@ -290,51 +214,62 @@ def compute_rewards(samples, model, compute_reward_batch_size) -> torch.tensor:
 
     return rewards_batch
 
+
 def get_acquired(samples, acquired_idxs):
     acquired = []
     for sample, (a, b) in zip(samples, acquired_idxs):
         completions = sample["completions"]
 
-        acquired.append({
-            "prompt_id": sample["prompt_id"],
-            "prompt": sample["prompt"],
-            "source": sample["source"],
-            # "row_id": sample["row_id"],
-
-            "response_text_1": completions[a]["response_text"],
-            "features_1": completions[a]["features"],
-            "1_model": completions[a]["model"],
-            "1_score": completions[a]["overall_score"],
-
-            "response_text_2": completions[b]["response_text"],
-            "features_2": completions[b]["features"],
-            "2_model": completions[b]["model"],
-            "2_score": completions[b]["overall_score"],
-        })
+        acquired.append(
+            {
+                "prompt_id": sample["prompt_id"],
+                "prompt": sample["prompt"],
+                "source": sample["source"],
+                # "row_id": sample["row_id"],
+                "response_text_1": completions[a]["response_text"],
+                "features_1": sample["features"][a],
+                # "features_1": completions[a]["features"],
+                "1_model": completions[a]["model"],
+                "1_score": completions[a]["overall_score"],
+                "response_text_2": completions[b]["response_text"],
+                "features_2": sample["features"][b],
+                # "features_2": completions[b]["features"],
+                "2_model": completions[b]["model"],
+                "2_score": completions[b]["overall_score"],
+            }
+        )
     return acquired
+
 
 def compute_kpis(rewards, acquired_idxs) -> list[dict]:
     _rewards, _lower_bounds, _upper_bounds = rewards.unbind(-1)
     _uncertainty = (_upper_bounds - _lower_bounds) / 2  # TODO: why divide by 2?
     _chosen_idxs, _rejected_idxs = acquired_idxs.unbind(-1)
-                                    
+
     index = torch.arange(_rewards.size(0))
     mean_rewards_per_sample = _rewards.mean(dim=1)
     mean_uncertainty_per_sample = _uncertainty.mean(dim=1)
 
     kpis = []
     for i in range(_rewards.size(0)):
-        kpis.append({
-            "mean_rewards_per_sample": mean_rewards_per_sample[i].item(),
-            "mean_uncertainty_per_sample": mean_uncertainty_per_sample[i].item(),
-
-            "chosen_rewards_per_sample": _rewards[index, _chosen_idxs][i].item(),
-            "rejected_rewards_per_sample": _rewards[index, _rejected_idxs][i].item(),
-
-            "chosen_uncertainty_per_sample": _uncertainty[index, _chosen_idxs][i].item(),
-            "rejected_uncertainty_per_sample": _uncertainty[index, _chosen_idxs][i].item()
-        })
+        kpis.append(
+            {
+                "mean_rewards_per_sample": mean_rewards_per_sample[i].item(),
+                "mean_uncertainty_per_sample": mean_uncertainty_per_sample[i].item(),
+                "chosen_rewards_per_sample": _rewards[index, _chosen_idxs][i].item(),
+                "rejected_rewards_per_sample": _rewards[index, _rejected_idxs][
+                    i
+                ].item(),
+                "chosen_uncertainty_per_sample": _uncertainty[index, _chosen_idxs][
+                    i
+                ].item(),
+                "rejected_uncertainty_per_sample": _uncertainty[index, _chosen_idxs][
+                    i
+                ].item(),
+            }
+        )
     return kpis
+
 
 def restructure_sample(x: dict) -> dict:
     for key in ["chosen", "rejected"]:
@@ -344,6 +279,7 @@ def restructure_sample(x: dict) -> dict:
         ]
     return x
 
+
 def get_new_regularization(
     n_done: int,
     n_total: int,
@@ -352,7 +288,7 @@ def get_new_regularization(
     exponential_decay_base: float = None,
 ) -> float:
     if decay_type == "linear":
-        return initial_value * (1.0 - n_done/n_total)
+        return initial_value * (1.0 - n_done / n_total)
     elif decay_type == "exponential":
         return initial_value * (exponential_decay_base**n_done)
     else:

@@ -2,7 +2,7 @@ from accelerate import Accelerator
 from accelerate.utils import gather_object
 from collections import deque
 from dataclasses import asdict
-from datasets import Dataset, load_from_disk
+from datasets import concatenate_datasets, Dataset, load_from_disk
 import os
 import random
 import time
@@ -17,6 +17,7 @@ from activeuf.oracle.oracles import init_oracle
 from activeuf.utils import get_logger, set_seed, convert_dataclass_instance_to_yaml_str
 
 # RUN
+# python -m pip install -e resources/rewarduq
 # accelerate launch --config_file=activeuf/new_loop/accelerate.yaml -m activeuf.new_loop.run --config_path activeuf/new_loop/run.yaml
 
 if __name__ == "__main__":
@@ -35,7 +36,7 @@ if __name__ == "__main__":
     if accelerator.is_main_process:
         with open(args.args_path, "w") as f_out:
             print(convert_dataclass_instance_to_yaml_str(args), file=f_out)
-        
+
     # env setup
     logger = get_logger(__name__, args.logs_path, accelerator)
 
@@ -49,7 +50,9 @@ if __name__ == "__main__":
     if accelerator.is_main_process:
         os.environ.setdefault("WANDB_DIR", args.wandb_dir)
         wandb.init(
-            project=args.wandb_project, id=args.run_id, config=vars(args),
+            project=args.wandb_project,
+            id=args.run_id,
+            config=vars(args),
         )
 
     logger.info(f"Preparing acquisition function ({args.acquisition_function_type})")
@@ -60,7 +63,9 @@ if __name__ == "__main__":
     logger.info(f"Preparing oracle ({args.oracle_name})")
     oracle = init_oracle(args.oracle_name)
 
-    logger.info(f"Preparing reward model, tokenizer, and trainer ({args.reward_model_type})")
+    logger.info(
+        f"Preparing reward model, tokenizer, and trainer ({args.reward_model_type})"
+    )
     model, trainer = loop_utils.init_model_trainer(
         args.reward_model_type, reward_args, n_processes
     )
@@ -70,14 +75,17 @@ if __name__ == "__main__":
     logger.info(f"Loading prompts from {args.inputs_path}")
     dataset = load_from_disk(args.inputs_path)
     if args.debug:
-        dataset = dataset.select(range(1000))  
-    if os.path.exists(args.features_path):
-        logger.info(f"Loading precomputed features from {args.features_path}")
-        features = torch.load(args.features_path)
-    else:
-        logger.info(f"Precompute features before running this script")
-        exit(1)
-    dataset = loop_utils.add_features_to_dataset(features, dataset)
+        dataset = dataset.select(range(1000))
+
+    assert os.path.exists(
+        args.features_path
+    ), "Precompute features before running this script"
+    logger.info(f"Loading precomputed features from {args.features_path}")
+    features = torch.load(args.features_path)
+    features = Dataset.from_dict({"features": features[: len(dataset)]})
+    print(1)
+
+    dataset = concatenate_datasets([dataset, features], axis=1)
     dataset = dataset.shuffle(seed=args.seed)
     logger.info(f"# Prompts: {len(dataset)}")
 
@@ -85,12 +93,11 @@ if __name__ == "__main__":
     accelerator.wait_for_everyone()
     output = []
     expected_output_size = len(dataset)
-    replay_buffer = deque(
-        maxlen=args.outer_loop_batch_size * args.replay_buffer_factor)
-    
+    replay_buffer = deque(maxlen=args.outer_loop_batch_size * args.replay_buffer_factor)
+
     logger.info(f"Starting dataset generation loop")
     outer_dataloader = DataLoader(
-        dataset, 
+        dataset,
         batch_size=args.outer_loop_batch_size,
         collate_fn=lambda x: x,
         shuffle=False,
@@ -120,7 +127,8 @@ if __name__ == "__main__":
 
             start = time.time()
             rewards_local = loop_utils.compute_rewards(
-                samples_local, model, reward_args.compute_reward_batch_size)
+                samples_local, model, reward_args.compute_reward_batch_size
+            )
             logger.info(f"- Reward computation took {time.time() - start:.2f}s")
 
             start = time.time()
@@ -130,8 +138,7 @@ if __name__ == "__main__":
             logger.info(f"- Acquisition function took {time.time() - start:.2f}s")
 
             start = time.time()
-            acquired_local = loop_utils.get_acquired(
-                samples_local, acquired_idxs_local)
+            acquired_local = loop_utils.get_acquired(samples_local, acquired_idxs_local)
             logger.info(f"- Preparing acquired batch took {time.time() - start:.2f}s")
 
             start = time.time()
@@ -142,7 +149,8 @@ if __name__ == "__main__":
 
             start = time.time()
             kpis_local = loop_utils.compute_kpis(
-                rewards_local, acquired_idxs_local,
+                rewards_local,
+                acquired_idxs_local,
             )
             logger.info(f"- KPI computation took {time.time() - start:.2f}s")
 
@@ -158,13 +166,17 @@ if __name__ == "__main__":
                         key2 = key.replace("per_sample", "per_batch")
                         if not key2.startswith("mean_"):
                             key2 = f"mean_{key2}"
-                        kpi[key2] = sum(kpi2[key] for kpi2 in kpis_batch) / len(kpis_batch)
-            logger.info(f"- Gathering data from processes took {time.time() - start:.2f}s")
+                        kpi[key2] = sum(kpi2[key] for kpi2 in kpis_batch) / len(
+                            kpis_batch
+                        )
+            logger.info(
+                f"- Gathering data from processes took {time.time() - start:.2f}s"
+            )
 
         if accelerator.is_main_process:
             # remove features from being saved to disk
             output += [
-                {key: val for key, val in x.items() if "features" not in key} 
+                {key: val for key, val in x.items() if "features" not in key}
                 for x in annotated_batch
             ]
             logger.info(f"Current output dataset size: {len(output)}")
@@ -183,27 +195,36 @@ if __name__ == "__main__":
             continue
         else:
             loop_utils.LOGS_CACHE += kpis_batch
-        
+
         trainsize = reward_args.effective_batch_size * trainer.args.max_steps
-        logger.info(f"Adding fresh batch to replay buffer, then subsampling {trainsize} for training")
+        logger.info(
+            f"Adding fresh batch to replay buffer, then subsampling {trainsize} for training"
+        )
         # features are precomputed, so input_ids and attention_mask are not needed and we can just feed a dummy tensor to make trainer happy
         dummy_tensor = torch.zeros((1,), dtype=torch.long).to(model.device)
         for idx, x in enumerate(annotated_batch):
-            replay_buffer.append({
-                "input_ids_chosen": dummy_tensor,
-                "attention_mask_chosen": dummy_tensor,
-                "input_ids_rejected": dummy_tensor,
-                "attention_mask_rejected": dummy_tensor,
-                "features_chosen": x["features_chosen"],
-                "features_rejected": x["features_rejected"],
-            })
-        trainer.train_dataset = Dataset.from_list(random.sample(
-            replay_buffer, min(len(replay_buffer), trainsize),
-        ))
-        trainer.args.regularization_towards_initial_weights = loop_utils.get_new_regularization(
-            n_done=len(output),
-            n_total=expected_output_size,
-            **asdict(reward_args.regularization),
+            replay_buffer.append(
+                {
+                    "input_ids_chosen": dummy_tensor,
+                    "attention_mask_chosen": dummy_tensor,
+                    "input_ids_rejected": dummy_tensor,
+                    "attention_mask_rejected": dummy_tensor,
+                    "features_chosen": x["features_chosen"],
+                    "features_rejected": x["features_rejected"],
+                }
+            )
+        trainer.train_dataset = Dataset.from_list(
+            random.sample(
+                replay_buffer,
+                min(len(replay_buffer), trainsize),
+            )
+        )
+        trainer.args.regularization_towards_initial_weights = (
+            loop_utils.get_new_regularization(
+                n_done=len(output),
+                n_total=expected_output_size,
+                **asdict(reward_args.regularization),
+            )
         )
 
         model.train()
