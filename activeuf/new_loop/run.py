@@ -2,7 +2,7 @@ from accelerate import Accelerator
 from accelerate.utils import gather_object
 from collections import deque
 from dataclasses import asdict
-from datasets import concatenate_datasets, Dataset, load_from_disk
+from datasets import Dataset, load_from_disk
 import os
 import random
 import time
@@ -74,18 +74,9 @@ if __name__ == "__main__":
 
     logger.info(f"Loading prompts from {args.inputs_path}")
     dataset = load_from_disk(args.inputs_path)
+    assert "features" in dataset.column_names, "Dataset must have precomputed features"
     if args.debug:
-        dataset = dataset.select(range(1000))
-
-    assert os.path.exists(
-        args.features_path
-    ), "Precompute features before running this script"
-    logger.info(f"Loading precomputed features from {args.features_path}")
-    features = torch.load(args.features_path)
-    features = Dataset.from_dict({"features": features[: len(dataset)]})
-    print(1)
-
-    dataset = concatenate_datasets([dataset, features], axis=1)
+        dataset = dataset.select(range(500))
     dataset = dataset.shuffle(seed=args.seed)
     logger.info(f"# Prompts: {len(dataset)}")
 
