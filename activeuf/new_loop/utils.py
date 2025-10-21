@@ -27,7 +27,7 @@ def custom_collate(batch):
         "source",
         "completions",
         "features",
-    ]:  # , "row_id"]:
+    ]:
         out[key] = [x[key] for x in batch]
     return out
 
@@ -40,7 +40,6 @@ def custom_decollate(collated_batch):
                 "prompt_id": collated_batch["prompt_id"][i],
                 "prompt": collated_batch["prompt"][i],
                 "source": collated_batch["source"][i],
-                # "row_id": collated_batch["row_id"][i],
                 "features": collated_batch["features"][i],
                 "completions": collated_batch["completions"][i],
             }
@@ -258,7 +257,7 @@ def compute_kpis(rewards, acquired_idxs) -> list[dict]:
                 "chosen_uncertainty_per_sample": _uncertainty[index, _chosen_idxs][
                     i
                 ].item(),
-                "rejected_uncertainty_per_sample": _uncertainty[index, _chosen_idxs][
+                "rejected_uncertainty_per_sample": _uncertainty[index, _rejected_idxs][
                     i
                 ].item(),
             }

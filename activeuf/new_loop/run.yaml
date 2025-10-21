@@ -6,13 +6,13 @@ base_wandb_project: loop
 
 inputs_path: datasets/combined_with_small_qwen_3_235b-features
 oracle_name: ultrafeedback
-acquisition_function_type: dts
+acquisition_function_type: infomax
 reward_model_type: enn
-debug: false
+debug: true
 
 seed: &a 42
 max_length: &b 4096
-outer_loop_batch_size: 16
+outer_loop_batch_size: 32
 save_every_n_outer_batches: 100
 replay_buffer_factor: 100
 
@@ -62,6 +62,7 @@ enn:
     max_length: *b
     center_rewards_coefficient: 0.01
     regularization_towards_initial_weights: *c
+    precompute_features: true
     bf16: true
     disable_tqdm: true
     report_to: none
