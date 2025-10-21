@@ -70,6 +70,59 @@ def process_dataset(dataset):
     return train_dataset
 
 
+def dataname_handler(dir_name, has_seeds=True):
+    parts = dir_name.split("/")
+    name_we_need = ""
+    if has_seeds:
+        judge_index = -4
+        if "llama_3.3_70b" in parts[judge_index]:
+            name_we_need += "llama70B_"
+        elif "qwen_3_235b" in parts[judge_index]:
+            name_we_need += "qwen235B_"
+        elif "rm" in parts[judge_index]:
+            name_we_need += "rm8Bsky_"
+        else:
+            raise ValueError("Unknown judge model in path: ", parts[judge_index])
+
+        prompt_index = -5
+        if "ultrafeedback_with_small" in parts[prompt_index]:
+            name_we_need += "allenai_"
+        elif "skywork_with_small" in parts[prompt_index]:
+            name_we_need += "skywork_"
+        elif "combined_with_small" in parts[prompt_index]:
+            name_we_need += "combined_"
+        else:
+            raise ValueError("Unknown prompt source in path: ", parts[prompt_index])
+
+        name_we_need += parts[-1] + "_"
+        name_we_need += parts[-2]
+
+    else:
+        judge_index = -2
+        if "llama_3.3_70b" in parts[judge_index]:
+            name_we_need += "llama70B_"
+        elif "qwen_3_235b" in parts[judge_index]:
+            name_we_need += "qwen235B_"
+        elif "rm" in parts[judge_index]:
+            name_we_need += "rm8Bsky_"
+        else:
+            raise ValueError("Unknown judge model in path: ", parts[judge_index])
+
+        prompt_index = -3
+        if "ultrafeedback_with_small" in parts[prompt_index]:
+            name_we_need += "allenai_"
+        elif "skywork_with_small" in parts[prompt_index]:
+            name_we_need += "skywork_"
+        elif "combined_with_small" in parts[prompt_index]:
+            name_we_need += "combined_"
+        else:
+            raise ValueError("Unknown prompt source in path: ", parts[prompt_index])
+
+        name_we_need += parts[-1]
+
+    return name_we_need
+
+
 if __name__ == "__main__":
     accelerator = Accelerator()
     torch.cuda.empty_cache()
@@ -94,13 +147,18 @@ if __name__ == "__main__":
         # Replace / and . with _
         return re.sub(r"[/.]", "_", name)
 
-    dataset_base = os.path.basename(args.dataset_path.rstrip("/"))
-    dataset_base = sanitize_name(dataset_base)
-
-    # prepare output dir based on SLURM job id and run name
-    run_name = (
-        f"{args.slurm_job_id}-{dataset_base}-beta{str(args.beta).replace('.', '')}"
+    dataset_base = dataname_handler(
+        args.dataset_path.rstrip("/"), has_seeds=(100 <= args.seed <= 104)
     )
+    # print(dataset_base)
+    # dataset_base = os.path.basename(args.dataset_path.rstrip("/"))
+    # dataset_base = sanitize_name(dataset_base)
+
+    # print(dataset_base)
+    # prepare output dir based on SLURM job id and run name
+    run_name = f"{args.slurm_job_id}-{dataset_base}"
+    # print(run_name)
+    # exit()
     output_dir = os.path.join(config["base_output_dir"], run_name)
     if accelerator.is_main_process:
         print(f"Output dir: {output_dir}")
@@ -169,7 +227,11 @@ if __name__ == "__main__":
     # remove samples where prompt+chosen or prompt+rejected exceeds max length
     if training_config["max_length"]:
         temp = dataset.map(extract_prompt)
-        temp = temp.map(apply_chat_template, fn_kwargs={"tokenizer": tokenizer})
+        temp = temp.map(
+            apply_chat_template,
+            fn_kwargs={"tokenizer": tokenizer},
+            keep_in_memory=True,
+        )
         temp = temp.map(
             lambda _: NormedDPOTrainer.tokenize_row(
                 _,
