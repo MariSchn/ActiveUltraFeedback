@@ -33,8 +33,15 @@ if __name__ == "__main__":
 
     n_completions_per_prompt = max(temp_ids[:, 1]) + 1
     features = features.view(-1, n_completions_per_prompt, features.size(-1))
-    features = Dataset.from_dict({"features": features})
+    features = features.numpy()
 
     dataset = load_from_disk(args.inputs_path).select(range(len(features)))
-    dataset = dataset.add_column("features", features["features"])
+
+    # dataset = dataset.add_column("features", features)
+    def add_features(batch, batch_idxs):
+        batch["features"] = features[batch_idxs].tolist()
+        return batch
+
+    dataset = dataset.map(add_features, with_indices=True, batched=True, num_proc=10)
+
     dataset.save_to_disk(args.inputs_path + "-features")
