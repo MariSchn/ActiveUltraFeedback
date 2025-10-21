@@ -188,8 +188,6 @@ def compute_rewards(samples, model, compute_reward_batch_size) -> torch.tensor:
         for sample in samples:
             for i in range(n_completions_per_sample):
                 yield torch.tensor(sample["features"][i])
-            # for completion in sample["completions"]:
-            #     yield torch.tensor(completion["features"])
 
     features_yielder = get_features_yielder()
     rewards_batch = []
@@ -225,15 +223,12 @@ def get_acquired(samples, acquired_idxs):
                 "prompt_id": sample["prompt_id"],
                 "prompt": sample["prompt"],
                 "source": sample["source"],
-                # "row_id": sample["row_id"],
                 "response_text_1": completions[a]["response_text"],
                 "features_1": sample["features"][a],
-                # "features_1": completions[a]["features"],
                 "1_model": completions[a]["model"],
                 "1_score": completions[a]["overall_score"],
                 "response_text_2": completions[b]["response_text"],
                 "features_2": sample["features"][b],
-                # "features_2": completions[b]["features"],
                 "2_model": completions[b]["model"],
                 "2_score": completions[b]["overall_score"],
             }
