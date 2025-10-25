@@ -139,9 +139,6 @@ class LoopConfig:
     inputs_path: str = field(
         metadata={"help": "Path to the dataset with prompts and response texts."}
     )
-    features_path: str | None = field(
-        metadata={"help": "Path to the precomputed features for the dataset."}
-    )
     oracle_name: str = field(
         metadata={
             "help": "Oracle scorer for response texts.",
@@ -221,8 +218,6 @@ def get_loop_args() -> argparse.Namespace:
     )
 
     # setup paths
-    if args.features_path is None:
-        args.features_path = f"{args.inputs_path.rstrip('/')}_features-{args.run_id}.pt"
     args.output_path = path.join(config_dict["base_output_dir"], args.run_id)
     args.args_path = path.join(config_dict["base_logs_dir"], f"{args.run_id}.args")
     args.logs_path = path.join(config_dict["base_logs_dir"], f"{args.run_id}.log")

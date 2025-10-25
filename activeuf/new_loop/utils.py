@@ -27,7 +27,7 @@ def custom_collate(batch):
         "source",
         "completions",
         "features",
-    ]:  # , "row_id"]:
+    ]:
         out[key] = [x[key] for x in batch]
     return out
 
@@ -40,7 +40,6 @@ def custom_decollate(collated_batch):
                 "prompt_id": collated_batch["prompt_id"][i],
                 "prompt": collated_batch["prompt"][i],
                 "source": collated_batch["source"][i],
-                # "row_id": collated_batch["row_id"][i],
                 "features": collated_batch["features"][i],
                 "completions": collated_batch["completions"][i],
             }
@@ -188,8 +187,6 @@ def compute_rewards(samples, model, compute_reward_batch_size) -> torch.tensor:
         for sample in samples:
             for i in range(n_completions_per_sample):
                 yield torch.tensor(sample["features"][i])
-            # for completion in sample["completions"]:
-            #     yield torch.tensor(completion["features"])
 
     features_yielder = get_features_yielder()
     rewards_batch = []
@@ -225,17 +222,14 @@ def get_acquired(samples, acquired_idxs):
                 "prompt_id": sample["prompt_id"],
                 "prompt": sample["prompt"],
                 "source": sample["source"],
-                # "row_id": sample["row_id"],
                 "response_text_1": completions[a]["response_text"],
                 "features_1": sample["features"][a],
-                # "features_1": completions[a]["features"],
-                "model_1": completions[a]["model"],
-                "score_1": completions[a]["overall_score"],
+                "1_model": completions[a]["model"],
+                "1_score": completions[a]["overall_score"],
                 "response_text_2": completions[b]["response_text"],
                 "features_2": sample["features"][b],
-                # "features_2": completions[b]["features"],
-                "model_2": completions[b]["model"],
-                "score_2": completions[b]["overall_score"],
+                "2_model": completions[b]["model"],
+                "2_score": completions[b]["overall_score"],
             }
         )
     return acquired
@@ -263,7 +257,7 @@ def compute_kpis(rewards, acquired_idxs) -> list[dict]:
                 "chosen_uncertainty_per_sample": _uncertainty[index, _chosen_idxs][
                     i
                 ].item(),
-                "rejected_uncertainty_per_sample": _uncertainty[index, _chosen_idxs][
+                "rejected_uncertainty_per_sample": _uncertainty[index, _rejected_idxs][
                     i
                 ].item(),
             }

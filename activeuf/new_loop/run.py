@@ -2,7 +2,7 @@ from accelerate import Accelerator
 from accelerate.utils import gather_object
 from collections import deque
 from dataclasses import asdict
-from datasets import concatenate_datasets, Dataset, load_from_disk
+from datasets import Dataset, load_from_disk
 import os
 import random
 import time
@@ -26,9 +26,12 @@ if __name__ == "__main__":
 
     # prepare (and export) args
     args = get_loop_args()
-    acquisition_function_args = getattr(
-        args.acquisition_function, args.acquisition_function_type
-    )
+    try:
+        acquisition_function_args = asdict(
+            getattr(args.acquisition_function, args.acquisition_function_type)
+        )
+    except:
+        acquisition_function_args = {}
     if hasattr(args, args.reward_model_type):
         reward_args = getattr(args, args.reward_model_type)
     else:
@@ -57,7 +60,7 @@ if __name__ == "__main__":
 
     logger.info(f"Preparing acquisition function ({args.acquisition_function_type})")
     acquisition_function = init_acquisition_function(
-        args.acquisition_function_type, **asdict(acquisition_function_args)
+        args.acquisition_function_type, **acquisition_function_args
     )
 
     logger.info(f"Preparing oracle ({args.oracle_name})")
@@ -74,18 +77,7 @@ if __name__ == "__main__":
 
     logger.info(f"Loading prompts from {args.inputs_path}")
     dataset = load_from_disk(args.inputs_path)
-    if args.debug:
-        dataset = dataset.select(range(1000))
-
-    assert os.path.exists(
-        args.features_path
-    ), "Precompute features before running this script"
-    logger.info(f"Loading precomputed features from {args.features_path}")
-    features = torch.load(args.features_path)
-    features = Dataset.from_dict({"features": features[: len(dataset)]})
-    print(1)
-
-    dataset = concatenate_datasets([dataset, features], axis=1)
+    assert "features" in dataset.column_names, "Dataset must have precomputed features"
     dataset = dataset.shuffle(seed=args.seed)
     logger.info(f"# Prompts: {len(dataset)}")
 
@@ -201,14 +193,13 @@ if __name__ == "__main__":
             f"Adding fresh batch to replay buffer, then subsampling {trainsize} for training"
         )
         # features are precomputed, so input_ids and attention_mask are not needed and we can just feed a dummy tensor to make trainer happy
-        dummy_tensor = torch.zeros((1,), dtype=torch.long).to(model.device)
         for idx, x in enumerate(annotated_batch):
             replay_buffer.append(
                 {
-                    "input_ids_chosen": dummy_tensor,
-                    "attention_mask_chosen": dummy_tensor,
-                    "input_ids_rejected": dummy_tensor,
-                    "attention_mask_rejected": dummy_tensor,
+                    "input_ids_chosen": [0],
+                    "attention_mask_chosen": [0],
+                    "input_ids_rejected": [0],
+                    "attention_mask_rejected": [0],
                     "features_chosen": x["features_chosen"],
                     "features_rejected": x["features_rejected"],
                 }
@@ -219,12 +210,8 @@ if __name__ == "__main__":
                 min(len(replay_buffer), trainsize),
             )
         )
-        trainer.args.regularization_towards_initial_weights = (
-            loop_utils.get_new_regularization(
-                n_done=len(output),
-                n_total=expected_output_size,
-                **asdict(reward_args.regularization),
-            )
+        trainer.train_dataset.set_format(
+            type="torch", columns=trainer.train_dataset.column_names
         )
 
         model.train()
