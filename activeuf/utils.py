@@ -21,10 +21,17 @@ import torch
 
 import openai
 import vllm
-from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer, Pipeline, PreTrainedModel
+from transformers import (
+    pipeline,
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    Pipeline,
+    PreTrainedModel,
+)
 
 from activeuf.configs import *
 from activeuf.schemas import *
+
 
 def ensure_dataclass(cls, d):
     if not is_dataclass(cls):
@@ -40,14 +47,17 @@ def ensure_dataclass(cls, d):
             kwargs[f.name] = value
     return cls(**kwargs)
 
+
 def convert_dataclass_instance_to_yaml_str(instance) -> str:
     return yaml.dump(asdict(instance))
+
 
 def get_timestamp(more_detailed=False) -> str:
     now = datetime.now()
     if more_detailed:
         return now.strftime("%Y%m%d-%H%M%S") + f"-{now.microsecond // 1000:03d}"
     return now.strftime("%Y%m%d-%H%M%S")
+
 
 def get_logger(name, logs_path="app.log", accelerator=None) -> logging.Logger:
     logger = logging.getLogger(name)
@@ -75,6 +85,7 @@ def get_logger(name, logs_path="app.log", accelerator=None) -> logging.Logger:
 
     return logger
 
+
 def setup(login_to_hf: bool = False, login_to_wandb: bool = False) -> None:
     # load env variables
     load_dotenv(PUBLIC_ENV_PATH)
@@ -87,21 +98,27 @@ def setup(login_to_hf: bool = False, login_to_wandb: bool = False) -> None:
         load_dotenv(LOCAL_ENV_PATH)
         wandb.login(key=os.getenv("WANDB_TOKEN"))
 
+
 def set_seed(seed: int) -> None:
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = False
+    torch.backends.cudnn.benchmark = True
     os.environ["PYTHONHASHSEED"] = str(seed)
+
 
 def filter_dict(dict_to_filter, func):
     sig = inspect.signature(func)
-    valid_keys = {param.name for param in sig.parameters.values()
-                  if param.kind in {inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                                    inspect.Parameter.KEYWORD_ONLY}}
+    valid_keys = {
+        param.name
+        for param in sig.parameters.values()
+        if param.kind
+        in {inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY}
+    }
     return {key: dict_to_filter[key] for key in valid_keys if key in dict_to_filter}
+
 
 def sample_principle(source: str) -> str:
     principle_pool = PROMPT_SOURCE2PRINCIPLES.get(source, [DEFAULT_PRINCIPLE])
@@ -113,29 +130,31 @@ def sample_principle(source: str) -> str:
 
     return principle
 
+
 def sample_system_prompt(principle: str) -> str:
     return random.choice(PRINCIPLE2SYSTEM_PROMPTS[principle])
 
+
 def load_model(
-        model_name: str,
-        model_class: str = DEFAULT_MODEL_CLASS,
-        max_num_gpus: int | None = None,
-        num_nodes: int = 1,
-        ping_delay: int = PING_DELAY,
-        max_ping_retries: int = MAX_PING_RETRIES,
-        model_kwargs: dict = {},
-    ) -> Union[
-        # model requires API calls (e.g. gpt-4) or model_class == "vllm_server"
-        tuple[str, None],
-        # model_class == "transformers"
-        tuple[AutoModelForCausalLM, AutoTokenizer],
-        # model_class == "pipeline"
-        tuple[Pipeline, None],
-        # model_class == "vllm"
-        tuple[vllm.LLM, vllm.transformers_utils.tokenizer.AnyTokenizer],
+    model_name: str,
+    model_class: str = DEFAULT_MODEL_CLASS,
+    max_num_gpus: int | None = None,
+    num_nodes: int = 1,
+    ping_delay: int = PING_DELAY,
+    max_ping_retries: int = MAX_PING_RETRIES,
+    model_kwargs: dict = {},
+) -> Union[
+    # model requires API calls (e.g. gpt-4) or model_class == "vllm_server"
+    tuple[str, None],
+    # model_class == "transformers"
+    tuple[AutoModelForCausalLM, AutoTokenizer],
+    # model_class == "pipeline"
+    tuple[Pipeline, None],
+    # model_class == "vllm"
+    tuple[vllm.LLM, vllm.transformers_utils.tokenizer.AnyTokenizer],
 ]:
     """
-    Loads a model given the name. 
+    Loads a model given the name.
 
     If the specified model is among the supported APIs, no model is actually loaded and the model name is returned.
 
@@ -146,7 +165,7 @@ def load_model(
         num_nodes (int): The number of nodes to use for loading the model. This is only used for vLLM models.
         ping_delay (int): Delay between pings to the vLLM server to check if it is already running (only used for model_class == "vllm_server").
         max_ping_retries (int): Number of retries to check if the vLLM server is running (only used for model_class == "vllm_server").
-        model_kwargs (Optional[dict]): Additional keyword arguments to pass to the model when loading it. 
+        model_kwargs (Optional[dict]): Additional keyword arguments to pass to the model when loading it.
     Returns:
         Union[Tuple[str, None], Tuple[AutoModelForCausalLM, AutoTokenizer], Tuple[Pipeline, None], Tuple[LLM, vllm.transformers_utils.tokenizer.AnyTokenizer]]: The loaded model and tokenizer (if applicable).
     """
@@ -167,13 +186,10 @@ def load_model(
             # torch_dtype="auto",
             # * Avoid sliding window attention warning (this warning only occurs for Qwen2.5 models. But the code on the model card also does not do this)
             # attn_implementation="flash_attention_2",
-            **model_kwargs
+            **model_kwargs,
         )
         # padding_side should be "left" for text generation (https://huggingface.co/docs/transformers/llm_tutorial)
-        tokenizer = AutoTokenizer.from_pretrained(
-            model_name,
-            padding_side="left"
-        )
+        tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side="left")
     elif model_class == "vllm":
         # Search over tensor_parallel_size, as number of attention heads needs to be divisible by it
         tps = tensor_parallel_size
@@ -189,25 +205,22 @@ def load_model(
                     "trust_remote_code": True,
                     "dtype": "auto",
                     "download_dir": os.getenv("HF_CACHE", None),
-                    **model_kwargs
+                    **model_kwargs,
                 }
 
                 # Specify tokenizer mode for Mistral models
                 if "mistral" in model_name.lower():
                     vllm_kwargs["tokenizer_mode"] = "mistral"
 
-                model = vllm.LLM(
-                    model_name,
-                    **vllm_kwargs
-                )
+                model = vllm.LLM(model_name, **vllm_kwargs)
             except Exception as e:
-                print(
-                    f"Failed to load model with tensor_parallel_size={tps}: {e}")
-                print(f"Retrying with tensor_parallel_size={tps-1}...")
+                print(f"Failed to load model with tensor_parallel_size={tps}: {e}")
+                print(f"Retrying with tensor_parallel_size={tps - 1}...")
                 tps -= 1
         if model is None:
             raise ValueError(
-                f"Failed to load model {model_name} with any tensor_parallel_size.")
+                f"Failed to load model {model_name} with any tensor_parallel_size."
+            )
 
         tokenizer = model.get_tokenizer()
     elif model_class == "vllm_server":
@@ -218,8 +231,11 @@ def load_model(
         while model is None and tps > 0:
             try:
                 out_file = f"./logs/server/{model_name.split('/')[-1]}_server_tps_{tps}"
-                out_file += f"_{os.getenv('SLURM_JOB_ID', '')}.out" if os.getenv(
-                    "SLURM_JOB_ID", None) else ".out"
+                out_file += (
+                    f"_{os.getenv('SLURM_JOB_ID', '')}.out"
+                    if os.getenv("SLURM_JOB_ID", None)
+                    else ".out"
+                )
 
                 command = f"vllm serve {model_name}"
                 command += " --gpu-memory-utilization 0.9"
@@ -228,10 +244,17 @@ def load_model(
                 command += f" --pipeline-parallel-size {num_nodes}"
                 command += " --trust-remote-code"
                 command += " --dtype auto"
-                command += f" --download-dir {os.getenv('HF_CACHE', None)}" if os.getenv(
-                    "HF_CACHE", None) else ""
+                command += (
+                    f" --download-dir {os.getenv('HF_CACHE', None)}"
+                    if os.getenv("HF_CACHE", None)
+                    else ""
+                )
                 command += f" --port 8000"  # Default port
-                command += " --tokenizer-mode=mistral" if "mistral" in model_name.lower() else ""
+                command += (
+                    " --tokenizer-mode=mistral"
+                    if "mistral" in model_name.lower()
+                    else ""
+                )
                 command += f" > {out_file} 2>&1"
                 command += " &"  # Run in background
 
@@ -246,46 +269,49 @@ def load_model(
                             server_ready = True
                             break
                     except Exception as e:
-                        print(f"Ping attempt {attempt+1} failed: {e}")
+                        print(f"Ping attempt {attempt + 1} failed: {e}")
                     time.sleep(ping_delay)
 
                 if not server_ready:
                     raise RuntimeError(
-                        "vLLM server did not start after maximum retries.")
+                        "vLLM server did not start after maximum retries."
+                    )
                 else:
                     print("vLLM server is ready.")
 
                 model = "http://localhost:8000"  # Return the URL of the vLLM server
-                tokenizer = None                 # No tokenizer needed for vLLM server API calls
+                tokenizer = None  # No tokenizer needed for vLLM server API calls
 
             except Exception as e:
-                print(
-                    f"Failed to load model with tensor_parallel_size={tps}: {e}")
-                print(f"Retrying with tensor_parallel_size={tps-1}...")
+                print(f"Failed to load model with tensor_parallel_size={tps}: {e}")
+                print(f"Retrying with tensor_parallel_size={tps - 1}...")
                 tps -= 1
 
         if model is None:
             raise ValueError(
-                f"Failed to load model {model_name} with any tensor_parallel_size.")
+                f"Failed to load model {model_name} with any tensor_parallel_size."
+            )
     elif model_class == "pipeline":
         model = pipeline(
             "text-generation",
             model=model_name,
             torch_dtype="auto",
             device_map="auto",
-            **model_kwargs
+            **model_kwargs,
         )
         tokenizer = None
     else:
         raise ValueError(
-            f"Invalid model_class: {model_class}. Must be one of ['transformers', 'pipeline', 'vllm']")
+            f"Invalid model_class: {model_class}. Must be one of ['transformers', 'pipeline', 'vllm']"
+        )
 
     # Check tokenizer and set padding token if needed
     if tokenizer is not None:
-        if not 'mistral' in model_name.lower() and tokenizer.chat_template is None:
+        if not "mistral" in model_name.lower() and tokenizer.chat_template is None:
             raise ValueError(
-                "Tokenizer does not have a chat template. Please use a model that supports chat templates.")
-        if not 'mistral' in model_name.lower() and tokenizer.pad_token is None:
+                "Tokenizer does not have a chat template. Please use a model that supports chat templates."
+            )
+        if not "mistral" in model_name.lower() and tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
 
             if isinstance(model, PreTrainedModel):
@@ -294,7 +320,13 @@ def load_model(
     return model, tokenizer
 
 
-async def vllm_server_inference(url: str, all_messages: list[list[dict[str, str]]], sampling_params: vllm.SamplingParams, max_api_retry: int, generate_kwargs: dict) -> list[str]:
+async def vllm_server_inference(
+    url: str,
+    all_messages: list[list[dict[str, str]]],
+    sampling_params: vllm.SamplingParams,
+    max_api_retry: int,
+    generate_kwargs: dict,
+) -> list[str]:
     """
     Helper function to perform asynchronous inference using a vLLM server.
 
@@ -311,8 +343,7 @@ async def vllm_server_inference(url: str, all_messages: list[list[dict[str, str]
     client = openai.AsyncOpenAI(
         api_key="EMPTY",
         base_url=f"{url}/v1",
-        http_client=httpx.AsyncClient(
-            verify=False, timeout=httpx.Timeout(None))
+        http_client=httpx.AsyncClient(verify=False, timeout=httpx.Timeout(None)),
     )
 
     models = await client.models.list()
@@ -339,8 +370,7 @@ async def vllm_server_inference(url: str, all_messages: list[list[dict[str, str]
                 except Exception as e:
                     print(f"An error occurred: {e}. Retrying...")
                     await asyncio.sleep(1)
-            raise RuntimeError(
-                f"Failed to get response after {max_api_retry} retries.")
+            raise RuntimeError(f"Failed to get response after {max_api_retry} retries.")
 
     tasks = [send_request(chat) for chat in all_messages]
     responses = await async_tqdm.gather(*tasks)
@@ -390,7 +420,7 @@ def get_response_texts(
                             top_p=sampling_params.top_p,
                             presence_penalty=sampling_params.presence_penalty,
                             frequency_penalty=sampling_params.frequency_penalty,
-                            **generate_kwargs
+                            **generate_kwargs,
                         )
                     except Exception as e:
                         print(e)
@@ -399,30 +429,31 @@ def get_response_texts(
                         responses.append(response)
                         break
             response_texts = [
-                response.choices[0].message.content for response in responses]
+                response.choices[0].message.content for response in responses
+            ]
         else:
             response_texts, responses = asyncio.run(
                 vllm_server_inference(
-                    model,
-                    all_messages,
-                    sampling_params,
-                    max_api_retry,
-                    generate_kwargs
+                    model, all_messages, sampling_params, max_api_retry, generate_kwargs
                 )
             )
 
     elif isinstance(model, PreTrainedModel):
         if tokenizer is None:
             raise ValueError(
-                "Tokenizer must be provided if model is an AutoModelForCausalLM (PreTrainedModel).")
+                "Tokenizer must be provided if model is an AutoModelForCausalLM (PreTrainedModel)."
+            )
 
         # ensure padding_side "left" (https://huggingface.co/docs/transformers/llm_tutorial)
         if tokenizer.padding_side != "left":
             raise ValueError(
-                "Tokenizer padding side must be 'left' for text generation.")
+                "Tokenizer padding side must be 'left' for text generation."
+            )
 
-        batches = [all_messages[i:i + batch_size]
-                   for i in range(0, len(all_messages), batch_size)]
+        batches = [
+            all_messages[i : i + batch_size]
+            for i in range(0, len(all_messages), batch_size)
+        ]
         response_texts = []
         responses = []
 
@@ -449,9 +480,10 @@ def get_response_texts(
             )
 
             # AutoModelForCausalLM does not allow to return only the generated text so manually remove the input
-            batch_outputs = batch_outputs[:, batch_inputs.input_ids.shape[1]:]
+            batch_outputs = batch_outputs[:, batch_inputs.input_ids.shape[1] :]
             batch_texts = tokenizer.batch_decode(
-                batch_outputs, skip_special_tokens=True)
+                batch_outputs, skip_special_tokens=True
+            )
 
             response_texts.extend(batch_texts)
             responses.extend(batch_outputs)
@@ -466,24 +498,27 @@ def get_response_texts(
                 # use_tqdm=False, # to avoid spamming the console with progress bars
                 # disable thinking for now
                 chat_template_kwargs={"enable_thinking": False},
-                **generate_kwargs
+                **generate_kwargs,
             )
         except Exception as e:
             print(
-                f"Failed to generate responses with vLLM: {e}\nRetrying without fixed chat template...")
+                f"Failed to generate responses with vLLM: {e}\nRetrying without fixed chat template..."
+            )
             responses = model.chat(
                 all_messages,
                 sampling_params=sampling_params,
                 # use_tqdm=False, # to avoid spamming the console with progress bars
                 # disable thinking for now
                 chat_template_kwargs={"enable_thinking": False},
-                **generate_kwargs
+                **generate_kwargs,
             )
         response_texts = [_.outputs[0].text for _ in responses]
 
     elif isinstance(model, Pipeline):
-        batches = [all_messages[i:i + batch_size]
-                   for i in range(0, len(all_messages), batch_size)]
+        batches = [
+            all_messages[i : i + batch_size]
+            for i in range(0, len(all_messages), batch_size)
+        ]
         responses = []
 
         for batch in tqdm(batches, desc="Generating responses", total=len(batches)):
@@ -494,15 +529,15 @@ def get_response_texts(
                 temperature=sampling_params.temperature,
                 top_p=sampling_params.top_p,
                 max_new_tokens=sampling_params.max_tokens,
-                **generate_kwargs
+                **generate_kwargs,
             )
 
             responses.extend(batch_outputs)
-        response_texts = [response[0]["generated_text"]
-                          for response in responses]
+        response_texts = [response[0]["generated_text"] for response in responses]
     else:
         raise ValueError(
-            f"Was not able to resolve model to be used for generation. model: {model}")
+            f"Was not able to resolve model to be used for generation. model: {model}"
+        )
 
     return response_texts, responses
 

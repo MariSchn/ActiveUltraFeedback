@@ -224,12 +224,12 @@ def get_acquired(samples, acquired_idxs):
                 "source": sample["source"],
                 "response_text_1": completions[a]["response_text"],
                 "features_1": sample["features"][a],
-                "1_model": completions[a]["model"],
-                "1_score": completions[a]["overall_score"],
+                "model_1": completions[a]["model"],
+                "score_1": completions[a]["overall_score"],
                 "response_text_2": completions[b]["response_text"],
                 "features_2": sample["features"][b],
-                "2_model": completions[b]["model"],
-                "2_score": completions[b]["overall_score"],
+                "model_2": completions[b]["model"],
+                "score_2": completions[b]["overall_score"],
             }
         )
     return acquired
@@ -237,7 +237,9 @@ def get_acquired(samples, acquired_idxs):
 
 def compute_kpis(rewards, acquired_idxs) -> list[dict]:
     _rewards, _lower_bounds, _upper_bounds = rewards.unbind(-1)
-    _uncertainty = (_upper_bounds - _lower_bounds) / 2  # TODO: why divide by 2?
+    _uncertainty = (
+        _upper_bounds - _lower_bounds
+    ) / 2  # TODO: why divide by 2? # COMMENT: because we are interested in std_dev.
     _chosen_idxs, _rejected_idxs = acquired_idxs.unbind(-1)
 
     index = torch.arange(_rewards.size(0))

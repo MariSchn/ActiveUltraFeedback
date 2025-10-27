@@ -37,6 +37,10 @@ if __name__ == "__main__":
     else:
         reward_args = None
     if accelerator.is_main_process:
+        if not os.path.exists(args.output_path):
+            os.makedirs(args.output_path)
+        if not os.path.exists(os.path.dirname(args.logs_path)):
+            os.makedirs(os.path.dirname(args.logs_path))
         with open(args.args_path, "w") as f_out:
             print(convert_dataclass_instance_to_yaml_str(args), file=f_out)
 
@@ -100,7 +104,7 @@ if __name__ == "__main__":
             model.eval()
 
         if accelerator.is_main_process:
-            logger.info(f"Step {outer_batch_idx+1} / {len(outer_dataloader)}")
+            logger.info(f"Step {outer_batch_idx + 1} / {len(outer_dataloader)}")
 
         dataloader = DataLoader(
             outer_batch,
@@ -212,6 +216,15 @@ if __name__ == "__main__":
         )
         trainer.train_dataset.set_format(
             type="torch", columns=trainer.train_dataset.column_names
+        )
+        trainer.args.regularization_towards_initial_weights = (
+            loop_utils.get_new_regularization(
+                n_done=outer_batch_idx,
+                n_total=len(outer_dataloader),
+                decay_type=args.enn.regularization.decay_type,
+                initial_value=args.enn.regularization.initial_value,
+                exponential_decay_base=args.enn.regularization.exponential_decay_base,
+            )
         )
 
         model.train()

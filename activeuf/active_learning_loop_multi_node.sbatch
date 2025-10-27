@@ -5,11 +5,11 @@
 #SBATCH -A infra01
 #SBATCH --output=logs/experiments_new/O.%j
 #SBATCH --error=logs/experiments_new/E.%j
-#SBATCH --nodes=2                   # number of nodes
+#SBATCH --nodes=8                   # number of nodes
 #SBATCH --ntasks-per-node=1         # number of MP tasks
 #SBATCH --gres=gpu:4                # number of GPUs per node
 #SBATCH --cpus-per-task=288         # number of cores per tasks
-#SBATCH --time=03:00:00             # maximum execution time (HH:MM:SS)
+#SBATCH --time=05:00:00             # maximum execution time (HH:MM:SS)
 #SBATCH --environment=activeuf_dev      # using compressed docker image as an environment
 #SBATCH --partition=normal
 
@@ -37,21 +37,18 @@ export LAUNCHER="accelerate launch \
     "
 
 export ACCELERATE_DIR="${ACCELERATE_DIR:-/accelerate}"
-export PYTHON_FILE="activeuf.active_learning_loop"
-export SCRIPT_ARGS=" \
-   --completions_dataset_path /iopsstor/scratch/cscs/dmelikidze/datasets/combined_with_small_qwen_3_235b-features \
-   --output_path=$SCRATCH/datasets/grid_search_test/ \
-    --acquisition_function_type=dts \
-    --regularization_weight_decay_type=exponential \
-    --exponential_decay_base=0.975 \
-    --regularization_towards_initial_weights=10 \
-    --outer_loop_batch_size=32 \
-    --initialization_xavier_gain=1.0 \
-    --rm_training_batch_size=32 \
-    --max_training_steps=10 \
-    --seed=4 \
-    --use_features \
-   "
+export PYTHON_FILE="activeuf.active_learning_loop3"
+if [ -z "${SCRIPT_ARGS:-}" ]; then
+    export SCRIPT_ARGS=" \
+    --completions_dataset_path /iopsstor/scratch/cscs/dmelikidze/datasets/combined_with_small_qwen_3_235b-features \
+    --output_path=$SCRATCH/datasets/testssss/ \
+        --acquisition_function_type=dts \
+        --log_kpis \
+        --report_to=wandb \
+        --use_features \
+        --debug \
+    "
+fi
         
 # This step is necessary because accelerate launch does not handle multiline arguments properly
 export CMD="$LAUNCHER $PYTHON_FILE $SCRIPT_ARGS" 

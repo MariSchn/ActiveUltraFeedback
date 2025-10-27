@@ -34,7 +34,7 @@ from rewarduq.models.reward_head_ensemble import (
 
 
 from activeuf.acquisition_function import *
-from activeuf.oracle.oracles import init_oracle
+from activeuf.oracle.oracles2 import init_oracle
 from activeuf.utils import get_logger, setup, set_seed, get_timestamp
 from activeuf.configs import *
 from activeuf.schemas import *
@@ -45,47 +45,24 @@ using an uncertainty quantification reward model, followed by an acquisition fun
 The oracle is then used to determine which completion is chosen and which is rejected.
 
 Example run command:
-With features:
 
 accelerate launch \
     --config_file=$SCRATCH/ActiveUltraFeedback/activeuf/reward_model/multi_gpu.yaml \
-    -m activeuf.active_learning_loop \
-    --completions_dataset_path /iopsstor/scratch/cscs/dmelikidze/datasets/combined_with_small_qwen_3_235b-features \
+    -m activeuf.active_learning_loop2 /iopsstor/scratch/cscs/dmelikidze/datasets/combined_with_small_qwen_3_235b-features\
+    --completions_dataset_path ${SCRATCH}/datasets/combined_annotations_llama_features/ \
     --output_path=$SCRATCH/datasets/testssss/ \
     --report_to="wandb" \
     --acquisition_function_type="dts" \
     --use_features \
     --debug
 
-Without features:
 accelerate launch \
     --config_file=$SCRATCH/ActiveUltraFeedback/activeuf/reward_model/multi_gpu.yaml \
     -m activeuf.active_learning_loop \
-    --completions_dataset_path ${SCRATCH}/datasets/5_merged_annotated_completions/combined_with_small/qwen_3_235b/ \
+    --completions_dataset_path ${SCRATCH}/datasets/combined_annotations_qwen/ \
     --output_path=$SCRATCH/datasets/testssss/ \
     --report_to="wandb" \
-    --acquisition_function_type="dts" \
-    --debug
-    
-    
-accelerate launch \
-    --config_file=$SCRATCH/ActiveUltraFeedback/activeuf/reward_model/multi_gpu.yaml \
-    -m activeuf.active_learning_loop \
-    --completions_dataset_path /iopsstor/scratch/cscs/dmelikidze/datasets/combined_annotations_llama \
-    --output_path=$SCRATCH/datasets/testssss/ \
-    --report_to="wandb" \
-    --acquisition_function_type="dts" \
-    --debug --log_kpis
-    
-accelerate launch \
-    --config_file=$SCRATCH/ActiveUltraFeedback/activeuf/reward_model/multi_gpu.yaml \
-    -m activeuf.active_learning_loop \
-    --completions_dataset_path /iopsstor/scratch/cscs/dmelikidze/datasets/combined_annotations_llama_features \
-    --output_path=$SCRATCH/datasets/testssss/ \
-    --report_to="wandb" \
-    --acquisition_function_type="dts" \
-    --debug --log_kpis --use_features
-
+    --acquisition_function_type="dts"
 """
 
 # previous run stopped at 145 -th iteration.
@@ -332,7 +309,7 @@ def custom_collate_fn(batch):
         "prompt": [x["prompt"] for x in batch],
         "source": [x["source"] for x in batch],
         "completions": [x["completions"] for x in batch],
-        "features": [x["features"] for x in batch] if "features" in batch[0] else None,
+        "row_id": [x["row_id"] for x in batch],
     }
 
 
@@ -470,7 +447,7 @@ def compute_or_load_features(
                     attention_mask=inputs["attention_mask"],
                 )
                 row_features.append(out)
-            features.append({"features": row_features})
+            features.append({"features": row_features, "row_id": row["row_id"]})
 
     accelerator.wait_for_everyone()
     features = gather_object(
@@ -478,11 +455,11 @@ def compute_or_load_features(
     )  # This is already filtered by the way we process the data.
 
     # sorting features according to row_id:
-    # features.sort(key=lambda x: x["row_id"])
+    features.sort(key=lambda x: x["row_id"])
     print(len(features))
     if accelerator.is_main_process:
-        # for j in range(len(features)):
-        #     print(features[j]["row_id"])
+        for j in range(len(features)):
+            print(features[j]["row_id"])
         torch.save(features, cache_path)
         print(f"Saved features to cache: {cache_path}")
 
@@ -556,11 +533,11 @@ if __name__ == "__main__":
 
     logger.info(f"Loading completions from {args.completions_dataset_path}")
     dataset = load_from_disk(args.completions_dataset_path)
-    # if "row_id" not in dataset.column_names:
-    #     dataset = dataset.add_column("row_id", list(range(len(dataset))))
+    if "row_id" not in dataset.column_names:
+        dataset = dataset.add_column("row_id", list(range(len(dataset))))
 
     if args.debug:
-        dataset = dataset.select(range(320))
+        dataset = dataset.select(range(37))
 
     # dataset = dataset.select(range(args.outer_loop_batch_size))
     # Unfortunately the set of prompts have duplicate prompt_ids, so we can not filter by prompt_ids.
@@ -630,7 +607,6 @@ if __name__ == "__main__":
             ),
             precompute_features=args.use_features,
             warmup_steps=0,
-            center_rewards_coefficient=0.01,
             # precompute_base_model_features=True,
             # precomputed_base_model_features_path="temp/",
             # eval_on_start=False,
@@ -688,10 +664,7 @@ if __name__ == "__main__":
     model = uq_pipeline.model
     tokenizer = model.tokenizer
 
-    if args.use_features and (
-        ("features" not in dataset["completions"][0][0].keys())
-        and ("features" not in dataset.column_names)
-    ):
+    if args.use_features and "features" not in dataset["completions"][0][0].keys():
         # Define cache path (may have to be modified as it may not generate that unique of a name).
         cache_path = get_cache_path(
             args.completions_dataset_path,
@@ -711,7 +684,7 @@ if __name__ == "__main__":
         start = time.time()
 
         def add_features_to_row(row, idx, features):
-            # assert row["row_id"] == features[idx]["row_id"], "Row IDs do not match!"
+            assert row["row_id"] == features[idx]["row_id"], "Row IDs do not match!"
 
             for j, completion in enumerate(row["completions"]):
                 completion["features"] = features[idx]["features"][j]
@@ -884,9 +857,9 @@ if __name__ == "__main__":
                 if args.use_features:
                     features_list = []
                     for sample_idx in range(n_samples_in_batch):
-                        for features in batch["features"][sample_idx]:
+                        for completion in batch["completions"][sample_idx]:
                             features_list.append(
-                                torch.tensor(features).unsqueeze(0).to(model.device)
+                                torch.tensor(completion["features"]).to(model.device)
                             )
 
                 for mb_start in range(0, total, microbatch_size):
@@ -990,7 +963,7 @@ if __name__ == "__main__":
                     "prompt_id": batch["prompt_id"][j],
                     "source": batch["source"][j],
                     "prompt": batch["prompt"][j],
-                    # "row_id": batch["row_id"][j],
+                    "row_id": batch["row_id"][j],
                     "batch_id": i,
                     "response_text_1": batch["completions"][j][a]["response_text"],
                     "model_1": batch["completions"][j][a]["model"],
@@ -999,7 +972,7 @@ if __name__ == "__main__":
                     "input_ids_1": b_acquired_input_ids[j, 0],
                     # (max_length,)
                     "attention_mask_1": b_acquired_attention_mask[j, 0],
-                    "features_1": batch["features"][j][a]
+                    "features_1": batch["completions"][j][a]["features"]
                     if args.use_features
                     else None,  # (feature_size,)
                     "response_text_2": batch["completions"][j][b]["response_text"],
@@ -1009,7 +982,7 @@ if __name__ == "__main__":
                     "input_ids_2": b_acquired_input_ids[j, 1],
                     # (max_length,)
                     "attention_mask_2": b_acquired_attention_mask[j, 1],
-                    "features_2": batch["features"][j][b]
+                    "features_2": batch["completions"][j][b]["features"]
                     if args.use_features
                     else None,  # (feature_size,)
                 }
@@ -1068,9 +1041,9 @@ if __name__ == "__main__":
                     local_acquisition_KPIs_sample[j]["prompt_id"] = (
                         annotated_batch_local[j]["prompt_id"]
                     )
-                    # local_acquisition_KPIs_sample[j]["row_id"] = annotated_batch_local[
-                    #     j
-                    # ]["row_id"]
+                    local_acquisition_KPIs_sample[j]["row_id"] = annotated_batch_local[
+                        j
+                    ]["row_id"]
                 ######################################
 
             accelerator.wait_for_everyone()
@@ -1092,16 +1065,21 @@ if __name__ == "__main__":
 
         start = time.time()
         annotated_batch = list(
-            {str(x["prompt_id"]): x for x in annotated_batch}.values()
+            {
+                str(x["prompt_id"]) + "_" + str(x["row_id"]): x for x in annotated_batch
+            }.values()
         )
         if args.report_to == "wandb":
             acquisition_kpis_sample = list(
-                {str(x["prompt_id"]): x for x in acquisition_kpis_sample}.values()
+                {
+                    str(x["prompt_id"]) + "_" + str(x["row_id"]): x
+                    for x in acquisition_kpis_sample
+                }.values()
             )
 
-            # for x in acquisition_kpis_sample:
-            #     if "row_id" in x:
-            #         del x["row_id"]
+            for x in acquisition_kpis_sample:
+                if "row_id" in x:
+                    del x["row_id"]
 
         # Restructuring "chosen", "rejected" columns according to allenai/ultrafeedback_binarized_cleaned dataset and the way they are properly handled by the trl RewardTrainer
         for x in annotated_batch:
@@ -1177,18 +1155,10 @@ if __name__ == "__main__":
                 {
                     "chosen": x["chosen"],
                     "rejected": x["rejected"],
-                    "input_ids_chosen": [0]
-                    if args.use_features
-                    else x["input_ids_chosen"],
-                    "attention_mask_chosen": [0]
-                    if args.use_features
-                    else x["attention_mask_chosen"],
-                    "input_ids_rejected": [0]
-                    if args.use_features
-                    else x["input_ids_rejected"],
-                    "attention_mask_rejected": [0]
-                    if args.use_features
-                    else x["attention_mask_rejected"],
+                    "input_ids_chosen": x["input_ids_chosen"],
+                    "attention_mask_chosen": x["attention_mask_chosen"],
+                    "input_ids_rejected": x["input_ids_rejected"],
+                    "attention_mask_rejected": x["attention_mask_rejected"],
                     "features_chosen": x["features_chosen"],
                     "features_rejected": x["features_rejected"],
                 }

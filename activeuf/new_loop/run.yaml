@@ -4,9 +4,9 @@ base_logs_dir: logs/loop
 base_wandb_dir: wandb/loop
 base_wandb_project: loop
 
-inputs_path: datasets/combined_with_small_qwen_3_235b-features
+inputs_path: /iopsstor/scratch/cscs/dmelikidze/datasets/combined_with_small_qwen_3_235b-features
 oracle_name: ultrafeedback
-acquisition_function_type: infomax
+acquisition_function_type: dts
 reward_model_type: enn
 debug: true
 
