@@ -27,9 +27,16 @@ accelerate launch \
     --slurm_job_id $SLURM_JOB_ID \
     --dataset_path allenai/ultrafeedback_binarized_cleaned \
     --beta 0.1
+    
+accelerate launch \
+    --config_file=$SCRATCH/ActiveUltraFeedback/activeuf/reward_model/multi_gpu.yaml -m activeuf.dpo.training \
+    --config_path $SCRATCH/ActiveUltraFeedback/activeuf/dpo/training.yaml \
+    --slurm_job_id $SLURM_JOB_ID \
+    --dataset_path /iopsstor/scratch/cscs/dmelikidze/datasets/active/dts_qwen_rgl100.0_wdcb0.995_obs128_rbs12800_1008156 
 """
 
 
+# TODO: slurm_job_id is redundant, it is stored inside os.environ['SLURM_JOB_ID'] already.
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -48,6 +55,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--num_epochs", type=int, help="Number of training epochs", required=False
+    )
+    parser.add_argument(
+        "--ablation_studies",
+        action="store_true",
+        help="Whether to run ablation studies",
     )
     return parser.parse_args()
 
@@ -145,18 +157,22 @@ if __name__ == "__main__":
 
     def sanitize_name(name):
         # Replace / and . with _
-        return re.sub(r"[/.]", "_", name)
+        return re.sub(r"[/.]", "-", name)
 
-    dataset_base = dataname_handler(
-        args.dataset_path.rstrip("/"), has_seeds=(100 <= args.seed <= 104)
-    )
-    # print(dataset_base)
-    # dataset_base = os.path.basename(args.dataset_path.rstrip("/"))
-    # dataset_base = sanitize_name(dataset_base)
+    if args.ablation_studies:
+        dataset_base = dataname_handler(
+            args.dataset_path.rstrip("/"), has_seeds=(100 <= args.seed <= 104)
+        )
+        # print(dataset_base)
+        # dataset_base = os.path.basename(args.dataset_path.rstrip("/"))
+        # dataset_base = sanitize_name(dataset_base)
 
-    # print(dataset_base)
-    # prepare output dir based on SLURM job id and run name
-    run_name = f"{args.slurm_job_id}-{dataset_base}"
+        # print(dataset_base)
+        # prepare output dir based on SLURM job id and run name
+        run_name = f"{args.slurm_job_id}-{dataset_base}"
+    else:
+        run_name = f"{args.slurm_job_id}-{sanitize_name(os.path.basename(args.dataset_path.rstrip('/')))}"
+
     # print(run_name)
     # exit()
     output_dir = os.path.join(config["base_output_dir"], run_name)
