@@ -48,13 +48,13 @@ Example run command:
 
 accelerate launch \
     --config_file=$SCRATCH/ActiveUltraFeedback/activeuf/reward_model/multi_gpu.yaml \
-    -m activeuf.active_learning_loop2 /iopsstor/scratch/cscs/dmelikidze/datasets/combined_with_small_qwen_3_235b-features\
-    --completions_dataset_path ${SCRATCH}/datasets/combined_annotations_llama_features/ \
+    -m activeuf.active_learning_loop3 --completions_dataset_path /iopsstor/scratch/cscs/dmelikidze/datasets/combined_with_small_qwen_3_235b-features \
     --output_path=$SCRATCH/datasets/testssss/ \
     --report_to="wandb" \
     --acquisition_function_type="dts" \
     --use_features \
-    --debug
+    --log_kpis \
+    --debug 
 
 accelerate launch \
     --config_file=$SCRATCH/ActiveUltraFeedback/activeuf/reward_model/multi_gpu.yaml \
@@ -197,6 +197,7 @@ class WandbStepLoggerCallback(TrainerCallback):
         self.step_offset_getter = step_offset_getter
 
     def on_log(self, args, state, control, logs=None, **kwargs):
+        # print("Glba")
         if logs:
             absolute_step = self.step_offset_getter() + state.global_step
             if "loss_individual" in logs.keys():
@@ -244,9 +245,7 @@ def parse_postprocess(args: argparse.Namespace) -> argparse.Namespace:
         # args.output_path = (
         #     f"{args.completions_dataset_path.rstrip('/')}_active_{args.timestamp}"
         # )
-        args.output_path = (
-            f"/iopsstor/scratch/cscs/dmelikidze/datasets/active/{args.timestamp}"
-        )
+        args.output_path = f"/iopsstor/scratch/cscs/dmelikidze/datasets/active/centered/{args.timestamp}"
 
     base_output_path = args.output_path
     suffix = 2
@@ -557,7 +556,7 @@ if __name__ == "__main__":
         dataset = dataset.add_column("row_id", list(range(len(dataset))))
 
     if args.debug:
-        dataset = dataset.select(range(10000))
+        dataset = dataset.select(range(1000))
 
     # dataset = dataset.select(range(args.outer_loop_batch_size))
     # Unfortunately the set of prompts have duplicate prompt_ids, so we can not filter by prompt_ids.

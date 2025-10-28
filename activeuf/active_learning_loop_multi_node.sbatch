@@ -46,7 +46,6 @@ if [ -z "${SCRIPT_ARGS:-}" ]; then
         --log_kpis \
         --report_to=wandb \
         --use_features \
-        --debug \
     "
 fi
         

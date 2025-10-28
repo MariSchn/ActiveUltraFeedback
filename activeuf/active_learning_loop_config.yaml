@@ -35,10 +35,10 @@ enn:
   learning_rate: 1e-4 # Ask Samuel, what was the right learning rate, he used.  Loss Curves from them. How quickly the 
   regularization_towards_initial_weights: 100 # ()
   regularization_weight_decay_type: "exponential" #exponential decay is more importnant.
-  exponential_decay_base: 0.995 #0.95 0.99
+  exponential_decay_base: 0.99 #0.95 0.99
   max_training_steps: 10 # 10 undetraining.  Underfitting more concern. 
   initialization_xavier_gain: 1.0
-  center_rewards_coefficient: 0.0
+  center_rewards_coefficient: 0.01
 
 ##
 ## 3 * 3 * 3 * 3   This is equal to 81... Keep in mind the evaluation on multiple seeds.

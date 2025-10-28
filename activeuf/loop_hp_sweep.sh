@@ -8,10 +8,12 @@ SBATCH_SCRIPT="./activeuf/active_learning_loop_multi_node.sbatch"
 DRY_RUN=${DRY_RUN:-1}
 
 # Grids
-REG_VALUES=(10 100 1000)
-EXP_VALUES=(0.975 0.99 0.995 0.999)
-OUTER_VALUES=(32 128)
-REPLAY_MULT_VALUES=(100)
+REG_VALUES=(10 100 1000) 
+EXP_VALUES=(0.975 0.99 0.995 0.9975) #(0.95 0.975 0.99 0.995 0.999)
+OUTER_VALUES=(32 256 1024) #(32 128)
+REPLAY_MULT_VALUES=(100 1000) #(100)
+
+
 
 # Annotator models -> dataset paths (edit if needed)
 declare -A DATASET_MAP
