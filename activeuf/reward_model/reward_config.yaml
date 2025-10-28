@@ -12,10 +12,10 @@ lora:
   target_module_patterns: ["query", "key", "value"]
 
 training:
-  train_batch_size: 8
-  eval_batch_size: 8
+  train_batch_size: 16
+  eval_batch_size: 16
   epochs: 2
-  grad_acc_steps: 2
+  grad_acc_steps: 1
   logging_steps: 10
   save_strategy: "no"
   save_steps: 125

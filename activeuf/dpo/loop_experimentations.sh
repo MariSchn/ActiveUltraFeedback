@@ -24,15 +24,17 @@ for DATASET_PATH in "$BASE_DATASETS_DIR"/*; do
   FINAL_DATASETS+=("$DATASET_PATH")
 done
 
+# echo "Dataset elements: ${FINAL_DATASETS[@]}"
 echo "Found ${#FINAL_DATASETS[@]} datasets to process."
 
 SUBSAMPLE_DATASETS=()
-for ((i=6; i<12 && i<${#FINAL_DATASETS[@]}; i++)); do
+for ((i=22; i<23 && i<${#FINAL_DATASETS[@]}; i++)); do
     SUBSAMPLE_DATASETS+=("${FINAL_DATASETS[$i]}")
 done
 
+echo "Subsampled dataset elements: ${SUBSAMPLE_DATASETS[@]}"
 echo "Subsampled ${#SUBSAMPLE_DATASETS[@]} datasets for training:"
-
+# exit 0
 for DATASET_PATH in "${SUBSAMPLE_DATASETS[@]}"; do
   [ -d "$DATASET_PATH" ] || continue
 
