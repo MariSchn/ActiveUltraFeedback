@@ -16,8 +16,8 @@ PYTHON_FILE="${SCRATCH}/ActiveUltraFeedback/activeuf/reward_model/reward_trainer
 REWARD_CONFIG="${SCRATCH}/ActiveUltraFeedback/activeuf/reward_model/reward_config.yaml"
 
 # Subsampling defaults (previously used 22..23)
-START_IDX=${START_IDX:-1}
-END_IDX=${END_IDX:-24}
+START_IDX=${START_IDX:-16}
+END_IDX=${END_IDX:-17}
 
 if [ ! -d "$BASE_DATASETS_DIR" ]; then
   echo "ERROR: datasets dir not found: $BASE_DATASETS_DIR" >&2
@@ -47,8 +47,8 @@ SUBSAMPLE_DATASETS=()
 for ((i=START_IDX; i<END_IDX && i<${#FINAL_DATASETS[@]}; i++)); do
     SUBSAMPLE_DATASETS+=("${FINAL_DATASETS[$i]}")
 done
-# echo "Subsampled dataset elements: ${SUBSAMPLE_DATASETS[@]}"
-# echo "Subsampled ${#SUBSAMPLE_DATASETS[@]} datasets for training:"
+echo "Subsampled dataset elements: ${SUBSAMPLE_DATASETS[@]}"
+echo "Subsampled ${#SUBSAMPLE_DATASETS[@]} datasets for training:"
 # exit 0
 
 echo "Subsampled ${#SUBSAMPLE_DATASETS[@]} datasets (indices ${START_IDX}..$((END_IDX-1)))."

@@ -34,7 +34,7 @@ done
 
 echo "Subsampled dataset elements: ${SUBSAMPLE_DATASETS[@]}"
 echo "Subsampled ${#SUBSAMPLE_DATASETS[@]} datasets for training:"
-# exit 0
+exit 0
 for DATASET_PATH in "${SUBSAMPLE_DATASETS[@]}"; do
   [ -d "$DATASET_PATH" ] || continue
 

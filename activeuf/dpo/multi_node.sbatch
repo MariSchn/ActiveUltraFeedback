@@ -8,7 +8,7 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=4
 #SBATCH --cpus-per-task=288
-#SBATCH --time=02:30:00             # maximum execution time (HH:MM:SS)
+#SBATCH --time=03:30:00             # maximum execution time (HH:MM:SS)
 
 export HF_HOME=$SCRATCH/hf_home
 export VLLM_CACHE_DIR=$SCRATCH/vllm_cache
@@ -31,10 +31,10 @@ CMD="accelerate launch \
     -m activeuf.dpo.training \
     --config_path $SCRATCH/ActiveUltraFeedback/activeuf/dpo/training.yaml \
     --slurm_job_id $SLURM_JOB_ID \
-    --dataset_path /iopsstor/scratch/cscs/dmelikidze/datasets/7_preference_datasets/ultrafeedback_with_small/qwen_3_235b/ultrafeedback \
+    --dataset_path /iopsstor/scratch/cscs/dmelikidze/datasets/centerrewards099 \
     --beta 0.1 \
     --learning_rate 2e-5 \
-    --seed 2837465910 \
+    --seed 4 \
     --num_epochs 3"
 
 echo $CMD
