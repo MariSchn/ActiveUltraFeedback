@@ -3,6 +3,7 @@ from accelerate.utils import broadcast_object_list
 from collections import deque
 from dataclasses import asdict
 from datasets import Dataset, load_from_disk
+from dotenv import load_dotenv
 import os
 import random
 import time
@@ -19,7 +20,7 @@ from activeuf.utils import get_logger, get_timestamp, set_seed, convert_dataclas
 # RUN
 # accelerate launch --config_file=activeuf/new_loop/accelerate.yaml -m activeuf.new_loop.run --config_path activeuf/new_loop/run.yaml
 
-if __name__ == "__main__":
+if __name__ == "__main__":    
     accelerator = Accelerator()
     n_processes = accelerator.num_processes
 
@@ -45,6 +46,7 @@ if __name__ == "__main__":
             print(convert_dataclass_instance_to_yaml_str(args), file=f_out)
 
     # env setup
+    load_dotenv(args.env_local_path)
     logger = get_logger(__name__, args.logs_path, accelerator)
     logger.info = loop_utils.main_process_only(logger.info, accelerator)
 

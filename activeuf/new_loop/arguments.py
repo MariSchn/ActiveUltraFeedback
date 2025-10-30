@@ -189,6 +189,7 @@ class LoopConfig:
     )
 
     # derived fields
+    env_local_path: str = ""
     timestamp: str = ""
     run_id: str = ""
     output_path: str = ""
