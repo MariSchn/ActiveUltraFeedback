@@ -5,7 +5,7 @@ torch_dtype: bfloat16
 
 model_path: allenai/Llama-3.1-Tulu-3-8B-SFT #allenai/OLMo-2-0425-1B-SFT #allenai/Llama-3.1-Tulu-3-8B-SFT #allenai/OLMo-2-0425-1B-SFT
 base_run_name: tulu8bsft-normed-preference_ultrafeedback_llama
-base_output_dir: /iopsstor/scratch/cscs/dmelikidze/models/dpo/active/
+base_output_dir: /iopsstor/scratch/cscs/dmelikidze/models/dpo/active/centered/
 
 lora:
   r: 64

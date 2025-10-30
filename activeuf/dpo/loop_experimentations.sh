@@ -7,7 +7,7 @@ set -euo pipefail
 #
 # The script only builds run names and submits jobs with --run_name set to the folder name.
 
-BASE_DATASETS_DIR="${SCRATCH:-/scratch}/datasets/active"
+BASE_DATASETS_DIR="${SCRATCH:-/scratch}/datasets/active/centered"
 DPO_CONFIG_PATH="$SCRATCH/ActiveUltraFeedback/activeuf/dpo/training.yaml"
 MULTI_NODE_CFG="$SCRATCH/ActiveUltraFeedback/activeuf/dpo/multi_node.yaml"
 ACCELERATE_LAUNCH_BASE="accelerate launch --config_file=${MULTI_NODE_CFG} -m activeuf.dpo.training"
@@ -28,7 +28,7 @@ done
 echo "Found ${#FINAL_DATASETS[@]} datasets to process."
 
 SUBSAMPLE_DATASETS=()
-for ((i=22; i<23 && i<${#FINAL_DATASETS[@]}; i++)); do
+for ((i=15; i<18 && i<${#FINAL_DATASETS[@]}; i++)); do
     SUBSAMPLE_DATASETS+=("${FINAL_DATASETS[$i]}")
 done
 
@@ -44,19 +44,25 @@ for DATASET_PATH in "${SUBSAMPLE_DATASETS[@]}"; do
   # truncate long job names to 80 chars to be safe
   JOB_NAME="${JOB_NAME:0:80}"
 
-  echo "Preparing job for dataset: $DATASET_PATH -> run_name: $RUN_NAME"
-
+  # echo "Preparing job for dataset: $DATASET_PATH -> run_name: $RUN_NAME"
+  # OUTPUT_DIR="$SCRATCH/models/dpo/active/centered"
+  # if [ -d "$OUTPUT_DIR/$RUN_NAME" ]; then
+  #   echo "Skipping dataset $DATASET_PATH (run_name: $RUN_NAME) - already processed (found in $OUTPUT_DIR)"
+  #   continue
+  # fi
+  # continue
+  # exit 0
   sbatch <<EOF
 #!/bin/bash
 #SBATCH -A a-infra01-1
 #SBATCH --job-name=${JOB_NAME}
-#SBATCH --output=logs/dpo/O-${JOB_NAME}.%j
-#SBATCH --error=logs/dpo/E-${JOB_NAME}.%j
+#SBATCH --output=logs/dpo/new/O-${JOB_NAME}.%j
+#SBATCH --error=logs/dpo/new/E-${JOB_NAME}.%j
 #SBATCH --nodes=8
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=4
 #SBATCH --cpus-per-task=288
-#SBATCH --time=03:00:00
+#SBATCH --time=04:30:00
 
 export HF_HOME=\$SCRATCH/hf_home
 export VLLM_CACHE_DIR=\$SCRATCH/vllm_cache
