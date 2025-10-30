@@ -14,10 +14,13 @@ from rewarduq.models.reward_head_ensemble import (
 
 from activeuf.new_loop.arguments import ENNConfig
 
-######################################
-# OUTER/INNER LOOP UTILS
-######################################
-
+def main_process_only(f, accelerator):
+    """Decorator to ensure the wrapped logging function runs only on the main process."""
+    def wrapper(*args, **kwargs):
+        if accelerator.is_main_process:
+            return f(*args, **kwargs)
+        return None
+    return wrapper
 
 def custom_collate(batch):
     out = {}
@@ -48,27 +51,7 @@ def custom_decollate(collated_batch):
 
 
 def compute_acquisition_function_KPIs(rewards, chosen_idxs, rejected_idxs):
-    """
-    Function to calculate acquisition function KPIs.
-    rewards: Tensor of shape (n_samples, n_completions, 2) - rewards for each completion
-    chosen_idxs: Tensor of shape (n_samples, 1) - indices of the chosen completions
-    rejected_idxs: Tensor of shape (n_samples, 1) - indices of the rejected completions
-
-    list of KPIs to calculate:
-    - mean rewards and mean uncertainties of:
-    --- all completions per sample
-    --- chosen completions per sample
-    --- rejected completions per sample
-    --- same as above, but for the whole batch
-
-    TODO: this assumes that the uncertainty bands are symmetric, but we agreed that this may not be the case
-
-    TODO:
-    track these KPIs for each model from the model pool separately.
-    combined statistics for both chosen and rejected completions.
-    """
     mean_rewards_per_sample = rewards.mean(dim=1)  # (n_samples, 2)
-    mean_rewards_of_batch = mean_rewards_per_sample.mean(dim=0)  # (2,)
 
     chosen_rewards = rewards.gather(
         1, chosen_idxs.unsqueeze(-1).expand(-1, -1, rewards.size(-1))
@@ -77,49 +60,63 @@ def compute_acquisition_function_KPIs(rewards, chosen_idxs, rejected_idxs):
         1, rejected_idxs.unsqueeze(-1).expand(-1, -1, rewards.size(-1))
     ).squeeze(1)
 
-    mean_chosen_rewards = chosen_rewards.mean(dim=0)  # (2,)
-    mean_rejected_rewards = rejected_rewards.mean(dim=0)  # (2,)
-
     # Add to KPIs
     kpis = {
         "mean_rewards_per_sample": mean_rewards_per_sample[:, 0].tolist(),
-        "mean_rewards_per_batch": mean_rewards_of_batch[0].item(),
         "mean_uncertainty_per_sample": mean_rewards_per_sample[:, 1].tolist(),
-        "mean_uncertainty_per_batch": mean_rewards_of_batch[1].item(),
-        "mean_chosen_rewards_per_batch": mean_chosen_rewards[0].item(),
-        "mean_chosen_uncertainty_per_batch": mean_chosen_rewards[1].item(),
-        "mean_rejected_rewards_per_batch": mean_rejected_rewards[0].item(),
-        "mean_rejected_uncertainty_per_batch": mean_rejected_rewards[1].item(),
         "chosen_rewards_per_sample": chosen_rewards[:, 0].tolist(),
         "chosen_uncertainty_per_sample": chosen_rewards[:, 1].tolist(),
         "rejected_rewards_per_sample": rejected_rewards[:, 0].tolist(),
         "rejected_uncertainty_per_sample": rejected_rewards[:, 1].tolist(),
     }
     return kpis
-
-
-LOGS_CACHE = []
-
+    
+WANDB_LOGS_CACHE = []
+TRAINER_LOGS_CACHE = []
+MAX_TRAINER_LOGS_CACHE_SIZE = None
 
 class WandbStepLoggerCallback(TrainerCallback):
     def __init__(self, accelerator):
         self.accelerator = accelerator
 
     def on_log(self, args, state, control, logs=None, **kwargs):
-        global LOGS_CACHE
-        if self.accelerator.is_main_process and logs is not None:
-            for key in ["regularization_towards_initial_weights"]:
-                logs[key] = getattr(args, key)
+        """
+        Custom callback for wandb logging with caches. This callback 
+        waits until the trainer's log cache hits the specified maximum size. 
+        Then, it aggregates the cached trainer logs (by taking mean), 
+        and lets the aggregated logs "piggyback" with the final log in
+        the wandb cache. It ignores logs made at the end of each epoch, 
+        by checking for the key 'train_runtime'.
+        """
+        global WANDB_LOGS_CACHE, TRAINER_LOGS_CACHE
 
-            # let current logs piggyback on the last entry in the cache
-            if LOGS_CACHE:
-                LOGS_CACHE[-1].update(logs)
-            else:
-                LOGS_CACHE.append(logs)
+        if self.accelerator.is_main_process and logs and "train_runtime" not in logs:
+            TRAINER_LOGS_CACHE.append(logs)
+            
+            if len(TRAINER_LOGS_CACHE) == MAX_TRAINER_LOGS_CACHE_SIZE:
+                # aggregate trainer logs by taking mean
+                mean_trainer_logs = {}
+                keys = {k for x in TRAINER_LOGS_CACHE for k in x}
+                for k in keys:
+                    values = [x.get(k) for x in TRAINER_LOGS_CACHE]
+                    values = [_ for _ in values if _ is not None]
+                    mean_trainer_logs[k] = sum(values) / len(values)
 
-            for _logs in LOGS_CACHE:
-                wandb.log(_logs)
-            LOGS_CACHE = []
+                for key in ["regularization_towards_initial_weights"]:
+                    mean_trainer_logs[key] = getattr(args, key)
+
+                # let current logs piggyback on the last entry in the cache
+                if WANDB_LOGS_CACHE:
+                    WANDB_LOGS_CACHE[-1].update(mean_trainer_logs)
+                else:
+                    WANDB_LOGS_CACHE.append(mean_trainer_logs)
+
+                for _logs in WANDB_LOGS_CACHE:
+                    wandb.log(_logs)
+
+                # clear caches
+                WANDB_LOGS_CACHE = []
+                TRAINER_LOGS_CACHE = []
 
 
 def init_model_trainer(
@@ -157,12 +154,12 @@ def init_model_trainer(
             train_dataset=Dataset.from_list(
                 [
                     {
-                        "input_ids_chosen": [],
-                        "attention_mask_chosen": [],
                         "input_ids_rejected": [],
                         "attention_mask_rejected": [],
-                        "features_chosen": [],
                         "features_rejected": [],
+                        "input_ids_chosen": [],
+                        "attention_mask_chosen": [],
+                        "features_chosen": [],
                     }
                 ]
             ),
@@ -173,7 +170,7 @@ def init_model_trainer(
     return model, trainer
 
 
-def compute_rewards(samples, model, compute_reward_batch_size) -> torch.tensor:
+def compute_rewards(samples, model, inference_batch_size) -> torch.tensor:
     n_samples = len(samples)
     n_completions_per_sample = len(samples[0]["completions"])
 
@@ -192,7 +189,7 @@ def compute_rewards(samples, model, compute_reward_batch_size) -> torch.tensor:
     rewards_batch = []
     while True:
         features_mbatch = []
-        for _ in range(compute_reward_batch_size):
+        for _ in range(inference_batch_size):
             try:
                 features_mbatch.append(next(features_yielder))
             except StopIteration:
@@ -215,6 +212,7 @@ def compute_rewards(samples, model, compute_reward_batch_size) -> torch.tensor:
 def get_acquired(samples, acquired_idxs):
     acquired = []
     for sample, (a, b) in zip(samples, acquired_idxs):
+        assert a != b
         completions = sample["completions"]
 
         acquired.append(
@@ -224,12 +222,12 @@ def get_acquired(samples, acquired_idxs):
                 "source": sample["source"],
                 "response_text_1": completions[a]["response_text"],
                 "features_1": sample["features"][a],
-                "1_model": completions[a]["model"],
-                "1_score": completions[a]["overall_score"],
+                "model_1": completions[a]["model"],
+                "score_1": completions[a]["overall_score"],
                 "response_text_2": completions[b]["response_text"],
                 "features_2": sample["features"][b],
-                "2_model": completions[b]["model"],
-                "2_score": completions[b]["overall_score"],
+                "model_2": completions[b]["model"],
+                "score_2": completions[b]["overall_score"],
             }
         )
     return acquired
