@@ -7,7 +7,7 @@ set -euo pipefail
 #
 # The script only builds run names and submits jobs with --run_name set to the folder name.
 
-BASE_DATASETS_DIR="${SCRATCH:-/scratch}/datasets/active/centered"
+BASE_DATASETS_DIR="${SCRATCH:-/scratch}/datasets/active/centered_cosine"
 DPO_CONFIG_PATH="$SCRATCH/ActiveUltraFeedback/activeuf/dpo/training.yaml"
 MULTI_NODE_CFG="$SCRATCH/ActiveUltraFeedback/activeuf/dpo/multi_node.yaml"
 ACCELERATE_LAUNCH_BASE="accelerate launch --config_file=${MULTI_NODE_CFG} -m activeuf.dpo.training"
@@ -28,13 +28,13 @@ done
 echo "Found ${#FINAL_DATASETS[@]} datasets to process."
 
 SUBSAMPLE_DATASETS=()
-for ((i=15; i<18 && i<${#FINAL_DATASETS[@]}; i++)); do
+for ((i=1; i<19 && i<${#FINAL_DATASETS[@]}; i++)); do
     SUBSAMPLE_DATASETS+=("${FINAL_DATASETS[$i]}")
 done
 
 echo "Subsampled dataset elements: ${SUBSAMPLE_DATASETS[@]}"
 echo "Subsampled ${#SUBSAMPLE_DATASETS[@]} datasets for training:"
-exit 0
+# exit 0
 for DATASET_PATH in "${SUBSAMPLE_DATASETS[@]}"; do
   [ -d "$DATASET_PATH" ] || continue
 
@@ -56,8 +56,8 @@ for DATASET_PATH in "${SUBSAMPLE_DATASETS[@]}"; do
 #!/bin/bash
 #SBATCH -A a-infra01-1
 #SBATCH --job-name=${JOB_NAME}
-#SBATCH --output=logs/dpo/new/O-${JOB_NAME}.%j
-#SBATCH --error=logs/dpo/new/E-${JOB_NAME}.%j
+#SBATCH --output=logs/dpo/new_cos/O-${JOB_NAME}.%j
+#SBATCH --error=logs/dpo/new_cos/E-${JOB_NAME}.%j
 #SBATCH --nodes=8
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=4
