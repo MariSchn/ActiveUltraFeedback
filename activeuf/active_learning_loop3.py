@@ -247,7 +247,7 @@ def parse_postprocess(args: argparse.Namespace) -> argparse.Namespace:
         # args.output_path = (
         #     f"{args.completions_dataset_path.rstrip('/')}_active_{args.timestamp}"
         # )
-        args.output_path = f"/iopsstor/scratch/cscs/dmelikidze/datasets/active/centered_cosine/{args.timestamp}"
+        args.output_path = f"/iopsstor/scratch/cscs/dmelikidze/datasets/active/centered_cosine_barna/{args.timestamp}"
 
     base_output_path = args.output_path
     suffix = 2

@@ -8,11 +8,11 @@ SBATCH_SCRIPT="./activeuf/active_learning_loop_multi_node.sbatch"
 DRY_RUN=${DRY_RUN:-1}
 
 # Grids
-REG_VALUES=(100) 
+REG_VALUES=(100 1000) 
 EXP_VALUES=(0.9 0.95 0.99) #(0.95 0.975 0.99 0.995 0.999)
-OUTER_VALUES=(32) #(32 128)
+OUTER_VALUES=(256 1024) #(32 128)
 REPLAY_MULT_VALUES=(100) #(100)
-MAX_TRAINING_STEPS=(10)
+MAX_TRAINING_STEPS=(100)
 
 
 
@@ -22,7 +22,7 @@ declare -A DATASET_MAP
 DATASET_MAP[qwen235b]="/iopsstor/scratch/cscs/dmelikidze/datasets/combined_with_small_qwen_3_235b-features"
 
 # Acquisition functions (strings passed to --acquisition_function_type)
-ACQ_FUNCS=(dts)
+ACQ_FUNCS=(dts infomax)
 
 # Common args passed to the python script (edit or extend)
 COMMON_ARGS="--log_kpis --report_to=wandb --use_features"
@@ -76,9 +76,9 @@ ${COMMON_ARGS}"
     jobname="$(echo ${jobname} | cut -c1-32)"
   fi
 
-  echo "JOB ${jobname}: sbatch --export=ALL,SCRIPT_ARGS=\"${script_args}\" --job-name=\"${jobname}\" \"${SBATCH_SCRIPT}\""
+  echo "JOB ${jobname}: sbatch --dependency=afterok:1026863 --export=ALL,SCRIPT_ARGS=\"${script_args}\" --job-name=\"${jobname}\" \"${SBATCH_SCRIPT}\""
   if [ "${DRY_RUN}" -eq 0 ]; then
-    sbatch --export=ALL,SCRIPT_ARGS="${script_args}" --job-name="${jobname}" "${SBATCH_SCRIPT}"
+    sbatch --dependency=afterok:1026863 --export=ALL,SCRIPT_ARGS="${script_args}" --job-name="${jobname}" "${SBATCH_SCRIPT}"
   fi
 }
 
