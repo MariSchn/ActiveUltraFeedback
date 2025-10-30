@@ -8,10 +8,11 @@ SBATCH_SCRIPT="./activeuf/active_learning_loop_multi_node.sbatch"
 DRY_RUN=${DRY_RUN:-1}
 
 # Grids
-REG_VALUES=(10 100 1000) 
-EXP_VALUES=(0.975 0.99 0.995 0.9975) #(0.95 0.975 0.99 0.995 0.999)
-OUTER_VALUES=(32 256 1024) #(32 128)
-REPLAY_MULT_VALUES=(100 1000) #(100)
+REG_VALUES=(100) 
+EXP_VALUES=(0.9 0.95 0.99) #(0.95 0.975 0.99 0.995 0.999)
+OUTER_VALUES=(32) #(32 128)
+REPLAY_MULT_VALUES=(100) #(100)
+MAX_TRAINING_STEPS=(10)
 
 
 
@@ -32,9 +33,11 @@ for reg in "${REG_VALUES[@]}"; do
   for exp in "${EXP_VALUES[@]}"; do
     for outer in "${OUTER_VALUES[@]}"; do
       for mult in "${REPLAY_MULT_VALUES[@]}"; do
-        for annot in "${!DATASET_MAP[@]}"; do
-          for acq in "${ACQ_FUNCS[@]}"; do
-            num_jobs=$((num_jobs+1))
+        for steps in "${MAX_TRAINING_STEPS[@]}"; do
+          for annot in "${!DATASET_MAP[@]}"; do
+            for acq in "${ACQ_FUNCS[@]}"; do
+              num_jobs=$((num_jobs+1))
+            done
           done
         done
       done
@@ -55,6 +58,7 @@ submit_job() {
   local outer="$5"
   local mult="$6"
   local acq="$7"
+  local steps="$8"
 
   local replay_size=$(( outer * mult ))
 
@@ -64,6 +68,7 @@ submit_job() {
 --exponential_decay_base=${exp} \
 --outer_loop_batch_size=${outer} \
 --replay_buffer_size=${replay_size} \
+--max_training_steps=${steps} \
 ${COMMON_ARGS}"
 
   # shorten jobname if very long
@@ -83,10 +88,12 @@ for reg in "${REG_VALUES[@]}"; do
     for outer in "${OUTER_VALUES[@]}"; do
       for mult in "${REPLAY_MULT_VALUES[@]}"; do
         for annot in "${!DATASET_MAP[@]}"; do
-          dataset="${DATASET_MAP[$annot]}"
-          for acq in "${ACQ_FUNCS[@]}"; do
-            job="sweep_${annot}_${acq}_reg${reg}_exp${exp}_outer${outer}_rx${mult}"
-            submit_job "${job}" "${dataset}" "${reg}" "${exp}" "${outer}" "${mult}" "${acq}"
+          for steps in "${MAX_TRAINING_STEPS[@]}"; do
+            dataset="${DATASET_MAP[$annot]}"
+            for acq in "${ACQ_FUNCS[@]}"; do
+              job="sweep_${annot}_${acq}_reg${reg}_exp${exp}_outer${outer}_rx${mult}_steps${steps}"
+              submit_job "${job}" "${dataset}" "${reg}" "${exp}" "${outer}" "${mult}" "${acq}" "${steps}"
+            done
           done
         done
       done

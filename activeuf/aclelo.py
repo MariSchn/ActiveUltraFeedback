@@ -1323,16 +1323,20 @@ if __name__ == "__main__":
         #         allow_val_change=True,  # Allow changing the config values
         #     )
 
-        if enn_config.get("regularization_weight_decay_type") == "linear":
-            updated_lambda_regularizer = (
-                initial_lambda_regularizer
-                * args.outer_loop_batch_size
-                / ((i + 1) * args.outer_loop_batch_size)
-            )
-        elif enn_config.get("regularization_weight_decay_type") == "exponential":
-            updated_lambda_regularizer = initial_lambda_regularizer * (
-                enn_config.get("exponential_decay_base") ** i
-            )
+        # if enn_config.get("regularization_weight_decay_type") == "linear":
+        #     updated_lambda_regularizer = (
+        #         initial_lambda_regularizer
+        #         * args.outer_loop_batch_size
+        #         / ((i + 1) * args.outer_loop_batch_size)
+        #     )
+        # elif enn_config.get("regularization_weight_decay_type") == "exponential":
+        #     updated_lambda_regularizer = initial_lambda_regularizer * (
+        #         enn_config.get("exponential_decay_base") ** i
+        #     )
+        updated_lambda_regularizer = initial_lambda_regularizer * (
+            enn_config.get("exponential_decay_base")
+            ** (((1 - enn_config.get("exponential_decay_base")) * i) ** 3)
+        )
 
         uq_pipeline.trainer.args.regularization_towards_initial_weights = (
             updated_lambda_regularizer

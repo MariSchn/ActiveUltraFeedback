@@ -3,8 +3,8 @@
 #SBATCH --job-name=multinode_loop
 #SBATCH -D .
 #SBATCH -A infra01
-#SBATCH --output=logs/experiments_new/O.%j
-#SBATCH --error=logs/experiments_new/E.%j
+#SBATCH --output=logs/experiments_new_new/O.%j
+#SBATCH --error=logs/experiments_new_new/E.%j
 #SBATCH --nodes=8                   # number of nodes
 #SBATCH --ntasks-per-node=1         # number of MP tasks
 #SBATCH --gres=gpu:4                # number of GPUs per node
@@ -37,7 +37,7 @@ export LAUNCHER="accelerate launch \
     "
 
 export ACCELERATE_DIR="${ACCELERATE_DIR:-/accelerate}"
-export PYTHON_FILE="activeuf.active_learning_loop3"
+export PYTHON_FILE="activeuf.aclelo"
 if [ -z "${SCRIPT_ARGS:-}" ]; then
     export SCRIPT_ARGS=" \
     --completions_dataset_path /iopsstor/scratch/cscs/dmelikidze/datasets/combined_with_small_qwen_3_235b-features \
