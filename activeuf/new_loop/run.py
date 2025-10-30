@@ -17,7 +17,6 @@ from activeuf.oracle.oracles import init_oracle
 from activeuf.utils import get_logger, get_timestamp, set_seed, convert_dataclass_instance_to_yaml_str
 
 # RUN
-# python -m pip install -e resources/rewarduq
 # accelerate launch --config_file=activeuf/new_loop/accelerate.yaml -m activeuf.new_loop.run --config_path activeuf/new_loop/run.yaml
 
 if __name__ == "__main__":
