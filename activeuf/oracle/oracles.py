@@ -189,35 +189,24 @@ class UltraFeedbackOracle(BaseOracle):
             chosen_int, rejected_int = 1, 2
             if self.parse_score_str(x["score_1"]) < self.parse_score_str(x["score_2"]):
                 chosen_int, rejected_int = 2, 1
-            out.append(
-                {
-                    "prompt": x["prompt"],
-                    "prompt_id": x["prompt_id"],
-                    "row_id": x["row_id"] if "row_id" in x else None,
-                    "chosen": x[f"response_text_{chosen_int}"],
-                    "chosen_model": x[f"model_{chosen_int}"],
-                    "chosen_score": x[f"score_{chosen_int}"],
-                    "input_ids_chosen": x[f"input_ids_{chosen_int}"]
-                    if not f"features_{chosen_int}" in x
-                    else None,
-                    "attention_mask_chosen": x[f"attention_mask_{chosen_int}"]
-                    if not f"features_{chosen_int}" in x
-                    else None,
-                    "features_chosen": x[f"features_{chosen_int}"]
-                    if f"features_{chosen_int}" in x
-                    else None,
-                    "rejected": x[f"response_text_{rejected_int}"],
-                    "rejected_model": x[f"model_{rejected_int}"],
-                    "rejected_score": x[f"score_{rejected_int}"],
-                    "input_ids_rejected": x[f"input_ids_{rejected_int}"]
-                    if not f"features_{rejected_int}" in x
-                    else None,
-                    "attention_mask_rejected": x[f"attention_mask_{rejected_int}"]
-                    if not f"features_{rejected_int}" in x
-                    else None,
-                    "features_rejected": x[f"features_{rejected_int}"]
-                    if f"features_{rejected_int}" in x
-                    else None,
-                }
-            )
+
+            
+            out.append({
+                "prompt": x["prompt"],
+                "prompt_id": x["prompt_id"],
+
+                "chosen": x[f"response_text_{chosen_int}"],
+                "chosen_model": x[f"model_{chosen_int}"],
+                "chosen_score": x[f"score_{chosen_int}"],
+                "input_ids_chosen": x.get(f"input_ids_{chosen_int}"),
+                "attention_mask_chosen": x.get(f"attention_mask_{chosen_int}"),
+                "features_chosen": x.get(f"features_{chosen_int}"),
+
+                "rejected": x[f"response_text_{rejected_int}"],
+                "rejected_model": x[f"model_{rejected_int}"],
+                "rejected_score": x[f"score_{rejected_int}"],
+                "input_ids_rejected": x.get(f"input_ids_{rejected_int}"),
+                "attention_mask_rejected": x.get(f"attention_mask_{rejected_int}"),
+                "features_rejected": x.get(f"features_{rejected_int}"),
+            })
         return out
