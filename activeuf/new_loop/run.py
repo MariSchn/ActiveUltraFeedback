@@ -127,14 +127,14 @@ if __name__ == "__main__":
             samples_local = loop_utils.custom_decollate(collated_minibatch)
 
             start = time.time()
-            rewards_local = loop_utils.compute_rewards(
+            rewards_with_uncertainty_bounds_local = loop_utils.compute_rewards_with_uncertainty_bounds(
                 samples_local, model, reward_args.inference_batch_size
             )
             logger.info(f"- Reward computation took {time.time() - start:.2f}s")
 
             start = time.time()
             acquired_idxs_local = torch.tensor(
-                acquisition_function(*rewards_local.unbind(-1))
+                acquisition_function(*rewards_with_uncertainty_bounds_local.unbind(-1))
             )
             logger.info(f"- Acquisition function took {time.time() - start:.2f}s")
 
@@ -150,7 +150,7 @@ if __name__ == "__main__":
 
             start = time.time()
             kpis_local = loop_utils.compute_kpis(
-                rewards_local,
+                rewards_with_uncertainty_bounds_local,
                 acquired_idxs_local,
             )
             logger.info(f"- KPI computation took {time.time() - start:.2f}s")
