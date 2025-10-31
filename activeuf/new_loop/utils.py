@@ -170,7 +170,7 @@ def init_model_trainer(
     return model, trainer
 
 
-def compute_rewards(samples, model, inference_batch_size) -> torch.tensor:
+def compute_rewards_with_uncertainty_bounds(samples, model, inference_batch_size) -> torch.tensor:
     n_samples = len(samples)
     n_completions_per_sample = len(samples[0]["completions"])
 
@@ -244,22 +244,22 @@ def compute_kpis(rewards, acquired_idxs) -> list[dict]:
 
     kpis = []
     for i in range(_rewards.size(0)):
-        kpis.append(
-            {
-                "mean_rewards_per_sample": mean_rewards_per_sample[i].item(),
-                "mean_uncertainty_per_sample": mean_uncertainty_per_sample[i].item(),
-                "chosen_rewards_per_sample": _rewards[index, _chosen_idxs][i].item(),
-                "rejected_rewards_per_sample": _rewards[index, _rejected_idxs][
-                    i
-                ].item(),
-                "chosen_uncertainty_per_sample": _uncertainty[index, _chosen_idxs][
-                    i
-                ].item(),
-                "rejected_uncertainty_per_sample": _uncertainty[index, _rejected_idxs][
-                    i
-                ].item(),
-            }
-        )
+        kpi = {
+            "mean_rewards_per_sample": mean_rewards_per_sample[i].item(),
+            "mean_uncertainty_per_sample": mean_uncertainty_per_sample[i].item(),
+            "chosen_rewards_per_sample": _rewards[index, _chosen_idxs][i].item(),
+            "rejected_rewards_per_sample": _rewards[index, _rejected_idxs][
+                i
+            ].item(),
+            "chosen_uncertainty_per_sample": _uncertainty[index, _chosen_idxs][
+                i
+            ].item(),
+            "rejected_uncertainty_per_sample": _uncertainty[index, _rejected_idxs][
+                i
+            ].item(),
+        }
+        kpi["reward_differences_per_sample"] = kpi["chosen_rewards_per_sample"] - kpi["rejected_rewards_per_sample"]
+        kpis.append(kpi)
     return kpis
 
 
