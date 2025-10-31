@@ -7,7 +7,7 @@ set -euo pipefail
 #
 # The script only builds run names and submits jobs with --run_name set to the folder name.
 
-BASE_DATASETS_DIR="${SCRATCH:-/scratch}/datasets/active/centered_cosine"
+BASE_DATASETS_DIR="${SCRATCH:-/scratch}/datasets/active/centered_cosine_barna"
 DPO_CONFIG_PATH="$SCRATCH/ActiveUltraFeedback/activeuf/dpo/training.yaml"
 MULTI_NODE_CFG="$SCRATCH/ActiveUltraFeedback/activeuf/dpo/multi_node.yaml"
 ACCELERATE_LAUNCH_BASE="accelerate launch --config_file=${MULTI_NODE_CFG} -m activeuf.dpo.training"
@@ -28,7 +28,7 @@ done
 echo "Found ${#FINAL_DATASETS[@]} datasets to process."
 
 SUBSAMPLE_DATASETS=()
-for ((i=1; i<19 && i<${#FINAL_DATASETS[@]}; i++)); do
+for ((i=1; i<2 && i<${#FINAL_DATASETS[@]}; i++)); do
     SUBSAMPLE_DATASETS+=("${FINAL_DATASETS[$i]}")
 done
 
