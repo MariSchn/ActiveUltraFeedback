@@ -152,7 +152,7 @@ class LoopConfig:
     acquisition_function_type: str = field(
         metadata={
             "help": "Acquisition function type",
-            "choices": ["random", "dts", "infomax", "maxminlcb", "infogain"],
+            "choices": ["random", "ultrafeedback", "dts", "ids", "rucb", "maxminlcb", "infogain", "infomax"],
         }
     )
     reward_model_type: str = field(
