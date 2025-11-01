@@ -247,7 +247,7 @@ def parse_postprocess(args: argparse.Namespace) -> argparse.Namespace:
         # args.output_path = (
         #     f"{args.completions_dataset_path.rstrip('/')}_active_{args.timestamp}"
         # )
-        args.output_path = f"/iopsstor/scratch/cscs/dmelikidze/datasets/active/centered_cosine_barna/{args.timestamp}"
+        args.output_path = f"/iopsstor/scratch/cscs/dmelikidze/datasets/active/centered_cosine_bigbatches_moresteps_new/{args.timestamp}"
 
     base_output_path = args.output_path
     suffix = 2
@@ -1331,7 +1331,8 @@ if __name__ == "__main__":
             )
         elif enn_config.get("regularization_weight_decay_type") == "exponential":
             updated_lambda_regularizer = initial_lambda_regularizer * (
-                enn_config.get("exponential_decay_base") ** i
+                enn_config.get("exponential_decay_base")
+                ** min(len(dataset), (i + 1) * args.outer_loop_batch_size)
             )
 
         uq_pipeline.trainer.args.regularization_towards_initial_weights = (
