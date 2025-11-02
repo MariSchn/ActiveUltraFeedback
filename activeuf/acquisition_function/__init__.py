@@ -7,14 +7,32 @@ from activeuf.acquisition_function.ultrafeedback import UltraFeedback
 from activeuf.acquisition_function.ids import InformationDirectedSampling
 from activeuf.acquisition_function.rucb import RelativeUpperConfidenceBound
 
-
 __all__ = [
+    "RandomAcquisitionFunction",
+    "UltraFeedback",
     "DoubleThompsonSampling",
     "InfoMax",
-    "RandomAcquisitionFunction",
     "MaxMinLCB",
     "InfoGain",
     "InformationDirectedSampling",
     "RelativeUpperConfidenceBound",
-    "UltraFeedback"
 ]
+
+_acquisition_function_map = {
+    "random": RandomAcquisitionFunction,
+    "ultrafeedback": UltraFeedback,
+    "dts": DoubleThompsonSampling,
+    "infomax": InfoMax,
+    "maxminlcb": MaxMinLCB,
+    "infogain": InfoGain,
+    "ids": InformationDirectedSampling,
+    "rucb": RelativeUpperConfidenceBound,
+}
+
+def init_acquisition_function(key: str, *args, **kwargs):
+    if key in _acquisition_function_map:
+        return _acquisition_function_map[key](*args, **kwargs)
+    else:
+        raise ValueError(
+            f"Acquisition function '{key}' not found. Available: {list(_acquisition_function_map.keys())}"
+        )

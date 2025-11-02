@@ -34,7 +34,7 @@ from rewarduq.models.reward_head_ensemble import (
 
 
 from activeuf.acquisition_function import *
-from activeuf.oracle.oracles import init_oracle
+from activeuf.oracle.oracles2 import init_oracle
 from activeuf.utils import get_logger, setup, set_seed, get_timestamp
 from activeuf.configs import *
 from activeuf.schemas import *
@@ -45,47 +45,24 @@ using an uncertainty quantification reward model, followed by an acquisition fun
 The oracle is then used to determine which completion is chosen and which is rejected.
 
 Example run command:
-With features:
 
 accelerate launch \
     --config_file=$SCRATCH/ActiveUltraFeedback/activeuf/reward_model/multi_gpu.yaml \
-    -m activeuf.active_learning_loop \
-    --completions_dataset_path /iopsstor/scratch/cscs/dmelikidze/datasets/combined_with_small_qwen_3_235b-features \
+    -m activeuf.active_learning_loop3 --completions_dataset_path /iopsstor/scratch/cscs/dmelikidze/datasets/combined_with_small_qwen_3_235b-features \
     --output_path=$SCRATCH/datasets/testssss/ \
     --report_to="wandb" \
     --acquisition_function_type="dts" \
     --use_features \
-    --debug
+    --log_kpis \
+    --debug 
 
-Without features:
 accelerate launch \
     --config_file=$SCRATCH/ActiveUltraFeedback/activeuf/reward_model/multi_gpu.yaml \
     -m activeuf.active_learning_loop \
-    --completions_dataset_path ${SCRATCH}/datasets/5_merged_annotated_completions/combined_with_small/qwen_3_235b/ \
+    --completions_dataset_path ${SCRATCH}/datasets/combined_annotations_qwen/ \
     --output_path=$SCRATCH/datasets/testssss/ \
     --report_to="wandb" \
-    --acquisition_function_type="dts" \
-    --debug
-    
-    
-accelerate launch \
-    --config_file=$SCRATCH/ActiveUltraFeedback/activeuf/reward_model/multi_gpu.yaml \
-    -m activeuf.active_learning_loop \
-    --completions_dataset_path /iopsstor/scratch/cscs/dmelikidze/datasets/combined_annotations_llama \
-    --output_path=$SCRATCH/datasets/testssss/ \
-    --report_to="wandb" \
-    --acquisition_function_type="dts" \
-    --debug --log_kpis
-    
-accelerate launch \
-    --config_file=$SCRATCH/ActiveUltraFeedback/activeuf/reward_model/multi_gpu.yaml \
-    -m activeuf.active_learning_loop \
-    --completions_dataset_path /iopsstor/scratch/cscs/dmelikidze/datasets/combined_annotations_llama_features \
-    --output_path=$SCRATCH/datasets/testssss/ \
-    --report_to="wandb" \
-    --acquisition_function_type="dts" \
-    --debug --log_kpis --use_features
-
+    --acquisition_function_type="dts"
 """
 
 # previous run stopped at 145 -th iteration.
@@ -220,6 +197,7 @@ class WandbStepLoggerCallback(TrainerCallback):
         self.step_offset_getter = step_offset_getter
 
     def on_log(self, args, state, control, logs=None, **kwargs):
+        # print("Glba")
         if logs:
             absolute_step = self.step_offset_getter() + state.global_step
             if "loss_individual" in logs.keys():
@@ -248,17 +226,28 @@ def parse_postprocess(args: argparse.Namespace) -> argparse.Namespace:
 
     # Acquisition function type + annotator model + timestamp
     args.timestamp = (
-        args.acquisition_function_type
+        os.environ.get("SLURM_JOB_ID")
+        + "_"
+        + args.acquisition_function_type
         + "_"
         + ("llama" if "llama" in args.completions_dataset_path else "qwen")
-        + "_"
-        + get_timestamp(more_detailed=True)
+        + "_rgl"
+        + str(args.regularization_towards_initial_weights)
+        + "_wdcb"
+        + str(args.exponential_decay_base)
+        + "_obs"
+        + str(args.outer_loop_batch_size)
+        + "_rbs"
+        + str(args.replay_buffer_size)
+        + "_steps"
+        + str(args.max_training_steps)
     )
 
     if not args.output_path:
-        args.output_path = (
-            f"{args.completions_dataset_path.rstrip('/')}_active_{args.timestamp}"
-        )
+        # args.output_path = (
+        #     f"{args.completions_dataset_path.rstrip('/')}_active_{args.timestamp}"
+        # )
+        args.output_path = f"/iopsstor/scratch/cscs/dmelikidze/datasets/active/centered_cosine/{args.timestamp}"
 
     base_output_path = args.output_path
     suffix = 2
@@ -327,12 +316,21 @@ def parse_postprocess(args: argparse.Namespace) -> argparse.Namespace:
 
 
 def custom_collate_fn(batch):
+    if "features" in batch[0]:
+        return {
+            "prompt_id": [x["prompt_id"] for x in batch],
+            "prompt": [x["prompt"] for x in batch],
+            "source": [x["source"] for x in batch],
+            "completions": [x["completions"] for x in batch],
+            "features": [x["features"] for x in batch],
+            "row_id": [x["row_id"] for x in batch],
+        }
     return {
         "prompt_id": [x["prompt_id"] for x in batch],
         "prompt": [x["prompt"] for x in batch],
         "source": [x["source"] for x in batch],
         "completions": [x["completions"] for x in batch],
-        "features": [x["features"] for x in batch] if "features" in batch[0] else None,
+        "row_id": [x["row_id"] for x in batch],
     }
 
 
@@ -470,7 +468,7 @@ def compute_or_load_features(
                     attention_mask=inputs["attention_mask"],
                 )
                 row_features.append(out)
-            features.append({"features": row_features})
+            features.append({"features": row_features, "row_id": row["row_id"]})
 
     accelerator.wait_for_everyone()
     features = gather_object(
@@ -478,11 +476,11 @@ def compute_or_load_features(
     )  # This is already filtered by the way we process the data.
 
     # sorting features according to row_id:
-    # features.sort(key=lambda x: x["row_id"])
+    features.sort(key=lambda x: x["row_id"])
     print(len(features))
     if accelerator.is_main_process:
-        # for j in range(len(features)):
-        #     print(features[j]["row_id"])
+        for j in range(len(features)):
+            print(features[j]["row_id"])
         torch.save(features, cache_path)
         print(f"Saved features to cache: {cache_path}")
 
@@ -556,11 +554,11 @@ if __name__ == "__main__":
 
     logger.info(f"Loading completions from {args.completions_dataset_path}")
     dataset = load_from_disk(args.completions_dataset_path)
-    # if "row_id" not in dataset.column_names:
-    #     dataset = dataset.add_column("row_id", list(range(len(dataset))))
+    if "row_id" not in dataset.column_names:
+        dataset = dataset.add_column("row_id", list(range(len(dataset))))
 
     if args.debug:
-        dataset = dataset.select(range(320))
+        dataset = dataset.select(range(1000))
 
     # dataset = dataset.select(range(args.outer_loop_batch_size))
     # Unfortunately the set of prompts have duplicate prompt_ids, so we can not filter by prompt_ids.
@@ -593,50 +591,101 @@ if __name__ == "__main__":
 
     logger.info(f"Creating UQ model")
     # if args.acquisition_function_type in ["dts", "infomax", "maxminlcb", "infogain"]:
-    uq_pipeline = ENNRewardModelPipeline(
-        ENNRewardModelConfig(
-            base_model_name_or_path=enn_config.get(
-                "base_model_name_or_path", "allenai/OLMo-2-1124-7B-SFT"
+    if accelerator.is_main_process:
+        uq_pipeline = ENNRewardModelPipeline(
+            ENNRewardModelConfig(
+                base_model_name_or_path=enn_config.get(
+                    "base_model_name_or_path", "allenai/OLMo-2-1124-7B-SFT"
+                ),
+                # enn_config.get("freeze_base_model", True),
+                freeze_base_model=enn_config.get("freeze_base_model", True),
+                feature_extraction_layer=enn_config.get(
+                    "feature_extraction_layer", "last_hidden_state"
+                ),
+                # feature_extraction_selection_strategy="last",
+                # fp16=True,
+                initialization_xavier_gain=enn_config.get(
+                    "initialization_xavier_gain", 1.0
+                ),
             ),
-            # enn_config.get("freeze_base_model", True),
-            freeze_base_model=enn_config.get("freeze_base_model", True),
-            feature_extraction_layer=enn_config.get(
-                "feature_extraction_layer", "last_hidden_state"
+            ENNRewardModelTrainerConfig(
+                num_train_epochs=enn_config.get("num_train_epochs", 1),
+                output_dir=f"trainer_output/{args.timestamp}",
+                save_strategy=enn_config.get("save_strategy", "no"),
+                per_device_train_batch_size=math.ceil(
+                    args.rm_training_batch_size / accelerator.num_processes
+                ),  # total will be exactly args.batch_size if: (B mod GPU_COUNT ≡ 0)
+                report_to=enn_config.get("report_to", "none"),
+                disable_tqdm=enn_config.get("disable_tqdm", True),
+                logging_strategy=enn_config.get("logging_strategy", "steps"),
+                logging_steps=enn_config.get("logging_steps", 1),
+                run_name=f"activeuf_{args.timestamp}",
+                lr_scheduler_type=enn_config.get("lr_scheduler_type", "constant"),
+                learning_rate=float(enn_config.get("learning_rate", 5e-6)),
+                max_length=args.max_length,
+                bf16=True,
+                regularization_towards_initial_weights=enn_config.get(
+                    "regularization_towards_initial_weights", 10
+                ),
+                precompute_features=args.use_features,
+                warmup_steps=0,
+                center_rewards_coefficient=enn_config.get(
+                    "center_rewards_coefficient", 0.0
+                ),
+                # precompute_base_model_features=True,
+                # precomputed_base_model_features_path="temp/",
+                # eval_on_start=False,
+                # max_steps=100,
             ),
-            # feature_extraction_selection_strategy="last",
-            # fp16=True,
-            initialization_xavier_gain=enn_config.get(
-                "initialization_xavier_gain", 1.0
+        )
+    accelerator.wait_for_everyone()
+    if not accelerator.is_main_process:
+        uq_pipeline = ENNRewardModelPipeline(
+            ENNRewardModelConfig(
+                base_model_name_or_path=enn_config.get(
+                    "base_model_name_or_path", "allenai/OLMo-2-1124-7B-SFT"
+                ),
+                # enn_config.get("freeze_base_model", True),
+                freeze_base_model=enn_config.get("freeze_base_model", True),
+                feature_extraction_layer=enn_config.get(
+                    "feature_extraction_layer", "last_hidden_state"
+                ),
+                # feature_extraction_selection_strategy="last",
+                # fp16=True,
+                initialization_xavier_gain=enn_config.get(
+                    "initialization_xavier_gain", 1.0
+                ),
             ),
-        ),
-        ENNRewardModelTrainerConfig(
-            num_train_epochs=enn_config.get("num_train_epochs", 1),
-            output_dir=f"trainer_output/{args.timestamp}",
-            save_strategy=enn_config.get("save_strategy", "no"),
-            per_device_train_batch_size=math.ceil(
-                args.rm_training_batch_size / accelerator.num_processes
-            ),  # total will be exactly args.batch_size if: (B mod GPU_COUNT ≡ 0)
-            report_to=enn_config.get("report_to", "none"),
-            disable_tqdm=enn_config.get("disable_tqdm", True),
-            logging_strategy=enn_config.get("logging_strategy", "steps"),
-            logging_steps=enn_config.get("logging_steps", 1),
-            run_name=f"activeuf_{args.timestamp}",
-            lr_scheduler_type=enn_config.get("lr_scheduler_type", "constant"),
-            learning_rate=float(enn_config.get("learning_rate", 5e-6)),
-            max_length=args.max_length,
-            bf16=True,
-            regularization_towards_initial_weights=enn_config.get(
-                "regularization_towards_initial_weights", 10
+            ENNRewardModelTrainerConfig(
+                num_train_epochs=enn_config.get("num_train_epochs", 1),
+                output_dir=f"trainer_output/{args.timestamp}",
+                save_strategy=enn_config.get("save_strategy", "no"),
+                per_device_train_batch_size=math.ceil(
+                    args.rm_training_batch_size / accelerator.num_processes
+                ),  # total will be exactly args.batch_size if: (B mod GPU_COUNT ≡ 0)
+                report_to=enn_config.get("report_to", "none"),
+                disable_tqdm=enn_config.get("disable_tqdm", True),
+                logging_strategy=enn_config.get("logging_strategy", "steps"),
+                logging_steps=enn_config.get("logging_steps", 1),
+                run_name=f"activeuf_{args.timestamp}",
+                lr_scheduler_type=enn_config.get("lr_scheduler_type", "constant"),
+                learning_rate=float(enn_config.get("learning_rate", 5e-6)),
+                max_length=args.max_length,
+                bf16=True,
+                regularization_towards_initial_weights=enn_config.get(
+                    "regularization_towards_initial_weights", 10
+                ),
+                precompute_features=args.use_features,
+                warmup_steps=0,
+                center_rewards_coefficient=enn_config.get(
+                    "center_rewards_coefficient", 0.0
+                ),
+                # precompute_base_model_features=True,
+                # precomputed_base_model_features_path="temp/",
+                # eval_on_start=False,
+                # max_steps=100,
             ),
-            precompute_features=args.use_features,
-            warmup_steps=0,
-            center_rewards_coefficient=0.01,
-            # precompute_base_model_features=True,
-            # precomputed_base_model_features_path="temp/",
-            # eval_on_start=False,
-            # max_steps=100,
-        ),
-    )
+        )
     logger.info(
         f"batch size per gpu is {uq_pipeline.trainer_config.per_device_train_batch_size}"
     )
@@ -688,9 +737,10 @@ if __name__ == "__main__":
     model = uq_pipeline.model
     tokenizer = model.tokenizer
 
-    if args.use_features and (
-        ("features" not in dataset["completions"][0][0].keys())
-        and ("features" not in dataset.column_names)
+    if (
+        args.use_features
+        and "features" not in dataset["completions"][0][0].keys()
+        and "features" not in dataset.column_names
     ):
         # Define cache path (may have to be modified as it may not generate that unique of a name).
         cache_path = get_cache_path(
@@ -711,7 +761,7 @@ if __name__ == "__main__":
         start = time.time()
 
         def add_features_to_row(row, idx, features):
-            # assert row["row_id"] == features[idx]["row_id"], "Row IDs do not match!"
+            assert row["row_id"] == features[idx]["row_id"], "Row IDs do not match!"
 
             for j, completion in enumerate(row["completions"]):
                 completion["features"] = features[idx]["features"][j]
@@ -777,7 +827,21 @@ if __name__ == "__main__":
 
     if args.only_generate_features:
         exit()
+
+    all_acquisition_kpis_samples = []
+    all_acquisition_kpis_batch = []
     # exit()
+
+    if accelerator.is_main_process and args.report_to == "wandb":
+        wandb.init(
+            project=args.wandb_project,
+            name=ENNTrainer_log_run,
+            id=ENNTrainer_log_run,
+            # resume=(get_global_step_offset() > 0),
+            config=vars(args),
+            allow_val_change=True,  # Allow changing the config values
+        )
+
     for i in range(num_batches):
         start_idx = i * loop_batch_size
         end_idx = min((i + 1) * loop_batch_size, len(dataset))
@@ -883,11 +947,20 @@ if __name__ == "__main__":
                 output_list = []
                 if args.use_features:
                     features_list = []
-                    for sample_idx in range(n_samples_in_batch):
-                        for features in batch["features"][sample_idx]:
-                            features_list.append(
-                                torch.tensor(features).unsqueeze(0).to(model.device)
-                            )
+                    if "features" in batch["completions"][0][0].keys():
+                        for sample_idx in range(n_samples_in_batch):
+                            for completion in batch["completions"][sample_idx]:
+                                features_list.append(
+                                    torch.tensor(completion["features"]).to(
+                                        model.device
+                                    )
+                                )
+                    else:
+                        for sample_idx in range(n_samples_in_batch):
+                            for feature in batch["features"][sample_idx]:
+                                features_list.append(
+                                    torch.tensor(feature).to(model.device)
+                                )
 
                 for mb_start in range(0, total, microbatch_size):
                     mb_end = min(mb_start + microbatch_size, total)
@@ -990,7 +1063,7 @@ if __name__ == "__main__":
                     "prompt_id": batch["prompt_id"][j],
                     "source": batch["source"][j],
                     "prompt": batch["prompt"][j],
-                    # "row_id": batch["row_id"][j],
+                    "row_id": batch["row_id"][j],
                     "batch_id": i,
                     "response_text_1": batch["completions"][j][a]["response_text"],
                     "model_1": batch["completions"][j][a]["model"],
@@ -999,9 +1072,12 @@ if __name__ == "__main__":
                     "input_ids_1": b_acquired_input_ids[j, 0],
                     # (max_length,)
                     "attention_mask_1": b_acquired_attention_mask[j, 0],
-                    "features_1": batch["features"][j][a]
+                    "features_1": batch["completions"][j][a]["features"]
                     if args.use_features
-                    else None,  # (feature_size,)
+                    and "features" in batch["completions"][j][a].keys()
+                    else (
+                        batch["features"][j][a] if "features" in batch else None
+                    ),  # (feature_size,)
                     "response_text_2": batch["completions"][j][b]["response_text"],
                     "model_2": batch["completions"][j][b]["model"],
                     "score_2": batch["completions"][j][b]["overall_score"],
@@ -1009,12 +1085,16 @@ if __name__ == "__main__":
                     "input_ids_2": b_acquired_input_ids[j, 1],
                     # (max_length,)
                     "attention_mask_2": b_acquired_attention_mask[j, 1],
-                    "features_2": batch["features"][j][b]
+                    "features_2": batch["completions"][j][b]["features"]
                     if args.use_features
-                    else None,  # (feature_size,)
+                    and "features" in batch["completions"][j][b].keys()
+                    else (
+                        batch["features"][j][b] if "features" in batch else None
+                    ),  # (feature_size,)
                 }
                 for j, (a, b) in enumerate(b_acquired_idxs)
             ]
+
             end = time.time()
             logger.info(f"- Preparing batch for oracle: {end - start:.2f}s")
 
@@ -1068,9 +1148,9 @@ if __name__ == "__main__":
                     local_acquisition_KPIs_sample[j]["prompt_id"] = (
                         annotated_batch_local[j]["prompt_id"]
                     )
-                    # local_acquisition_KPIs_sample[j]["row_id"] = annotated_batch_local[
-                    #     j
-                    # ]["row_id"]
+                    local_acquisition_KPIs_sample[j]["row_id"] = annotated_batch_local[
+                        j
+                    ]["row_id"]
                 ######################################
 
             accelerator.wait_for_everyone()
@@ -1092,16 +1172,21 @@ if __name__ == "__main__":
 
         start = time.time()
         annotated_batch = list(
-            {str(x["prompt_id"]): x for x in annotated_batch}.values()
+            {
+                str(x["prompt_id"]) + "_" + str(x["row_id"]): x for x in annotated_batch
+            }.values()
         )
         if args.report_to == "wandb":
             acquisition_kpis_sample = list(
-                {str(x["prompt_id"]): x for x in acquisition_kpis_sample}.values()
+                {
+                    str(x["prompt_id"]) + "_" + str(x["row_id"]): x
+                    for x in acquisition_kpis_sample
+                }.values()
             )
 
-            # for x in acquisition_kpis_sample:
-            #     if "row_id" in x:
-            #         del x["row_id"]
+            for x in acquisition_kpis_sample:
+                if "row_id" in x:
+                    del x["row_id"]
 
         # Restructuring "chosen", "rejected" columns according to allenai/ultrafeedback_binarized_cleaned dataset and the way they are properly handled by the trl RewardTrainer
         for x in annotated_batch:
@@ -1150,23 +1235,25 @@ if __name__ == "__main__":
             acquisition_kpis_batch = acquisition_kpis_batch_copy
 
         if accelerator.is_main_process and args.report_to == "wandb" and args.log_kpis:
-            wandb.init(
-                project=args.wandb_project,
-                name=acquisition_KPI_run,
-                id=acquisition_KPI_run,
-                resume=(i > 0),
-                config=vars(args),
-                allow_val_change=True,
-            )
-            for j, sample_kpis in enumerate(acquisition_kpis_sample):
-                sample_kpis_no_id = {
-                    k: v for k, v in sample_kpis.items() if k != "prompt_id"
-                }
-                wandb.log(
-                    sample_kpis_no_id, step=args.outer_loop_batch_size * i + j + 1
-                )
-            wandb.log(acquisition_kpis_batch, step=(i + 1) * args.outer_loop_batch_size)
-            wandb.finish()
+            # wandb.init(
+            #     project=args.wandb_project,
+            #     name=acquisition_KPI_run,
+            #     id=acquisition_KPI_run,
+            #     resume=(i > 0),
+            #     config=vars(args),
+            #     allow_val_change=True,
+            # )
+            # for j, sample_kpis in enumerate(acquisition_kpis_sample):
+            #     sample_kpis_no_id = {
+            #         k: v for k, v in sample_kpis.items() if k != "prompt_id"
+            #     }
+            #     wandb.log(
+            #         sample_kpis_no_id, step=args.outer_loop_batch_size * i + j + 1
+            #     )
+            # wandb.log(acquisition_kpis_batch, step=(i + 1) * args.outer_loop_batch_size)
+            # wandb.finish()
+            all_acquisition_kpis_samples.append(acquisition_kpis_sample)
+            all_acquisition_kpis_batch.append(acquisition_kpis_batch)
 
         if args.acquisition_function_type in ["random", "ultrafeedback"]:
             continue
@@ -1177,18 +1264,10 @@ if __name__ == "__main__":
                 {
                     "chosen": x["chosen"],
                     "rejected": x["rejected"],
-                    "input_ids_chosen": [0]
-                    if args.use_features
-                    else x["input_ids_chosen"],
-                    "attention_mask_chosen": [0]
-                    if args.use_features
-                    else x["attention_mask_chosen"],
-                    "input_ids_rejected": [0]
-                    if args.use_features
-                    else x["input_ids_rejected"],
-                    "attention_mask_rejected": [0]
-                    if args.use_features
-                    else x["attention_mask_rejected"],
+                    "input_ids_chosen": x["input_ids_chosen"],
+                    "attention_mask_chosen": x["attention_mask_chosen"],
+                    "input_ids_rejected": x["input_ids_rejected"],
+                    "attention_mask_rejected": x["attention_mask_rejected"],
                     "features_chosen": x["features_chosen"],
                     "features_rejected": x["features_rejected"],
                 }
@@ -1234,26 +1313,30 @@ if __name__ == "__main__":
         del batch_loader
         torch.cuda.empty_cache()
         # start = time.time()
-        if accelerator.is_main_process and args.report_to == "wandb":
-            wandb.init(
-                project=args.wandb_project,
-                name=ENNTrainer_log_run,
-                id=ENNTrainer_log_run,
-                resume=(get_global_step_offset() > 0),
-                config=vars(args),
-                allow_val_change=True,  # Allow changing the config values
-            )
+        # if accelerator.is_main_process and args.report_to == "wandb":
+        #     wandb.init(
+        #         project=args.wandb_project,
+        #         name=ENNTrainer_log_run,
+        #         id=ENNTrainer_log_run,
+        #         resume=(get_global_step_offset() > 0),
+        #         config=vars(args),
+        #         allow_val_change=True,  # Allow changing the config values
+        #     )
 
-        if enn_config.get("regularization_weight_decay_type") == "linear":
-            updated_lambda_regularizer = (
-                initial_lambda_regularizer
-                * args.outer_loop_batch_size
-                / ((i + 1) * args.outer_loop_batch_size)
-            )
-        elif enn_config.get("regularization_weight_decay_type") == "exponential":
-            updated_lambda_regularizer = initial_lambda_regularizer * (
-                enn_config.get("exponential_decay_base") ** i
-            )
+        # if enn_config.get("regularization_weight_decay_type") == "linear":
+        #     updated_lambda_regularizer = (
+        #         initial_lambda_regularizer
+        #         * args.outer_loop_batch_size
+        #         / ((i + 1) * args.outer_loop_batch_size)
+        #     )
+        # elif enn_config.get("regularization_weight_decay_type") == "exponential":
+        #     updated_lambda_regularizer = initial_lambda_regularizer * (
+        #         enn_config.get("exponential_decay_base") ** i
+        #     )
+        updated_lambda_regularizer = initial_lambda_regularizer * (
+            enn_config.get("exponential_decay_base")
+            ** (((1 - enn_config.get("exponential_decay_base")) * i) ** 3)
+        )
 
         uq_pipeline.trainer.args.regularization_towards_initial_weights = (
             updated_lambda_regularizer
@@ -1322,8 +1405,8 @@ if __name__ == "__main__":
         # logger.info(f"Done with batch {i}\n")
 
         torch.cuda.empty_cache()
-        if accelerator.is_main_process and args.report_to == "wandb" and args.log_kpis:
-            wandb.finish()
+        # if accelerator.is_main_process and args.report_to == "wandb" and args.log_kpis:
+        #     wandb.finish()
 
     if accelerator.is_main_process:
         logger.info(
@@ -1331,3 +1414,42 @@ if __name__ == "__main__":
         )
         if len(output_dataset) > 0:
             Dataset.from_list(output_dataset).save_to_disk(args.output_path)
+
+    if accelerator.is_main_process and args.report_to == "wandb" and args.log_kpis:
+        wandb.finish()
+        print("Training finished.\nLogging all acquisition KPIs now...")
+        os.environ.pop("WANDB_DISABLED", None)
+        os.environ["WANDB_MODE"] = "offline"
+        os.environ.setdefault("WANDB_DIR", os.path.join(args.output_path, "wandb"))
+
+        # init a single run and log everything collected
+        wandb.init(
+            project=args.wandb_project,
+            name=acquisition_KPI_run,
+            id=acquisition_KPI_run,
+            # resume=True,
+            config=vars(args),
+            allow_val_change=True,
+        )
+
+        step_counter = 1
+        for idx in range(len(all_acquisition_kpis_samples)):
+            samples = all_acquisition_kpis_samples[idx]
+            batch = all_acquisition_kpis_batch[idx]
+            for sample in samples:
+                sample_no_id = {k: v for k, v in sample.items() if k != "prompt_id"}
+                wandb.log(sample_no_id, step=step_counter)
+                step_counter += 1
+            wandb.log(batch, step=step_counter)
+        # # log per-sample KPIs sequentially
+        # for sample in all_acquisition_kpis_samples:
+        #     sample_no_id = {k: v for k, v in sample.items() if k != "prompt_id"}
+        #     wandb.log(sample_no_id, step=step_counter)
+        #     step_counter += 1
+
+        # # log per-batch KPIs using approximate batch step
+        # for idx, batch_kpi in enumerate(all_acquisition_kpis_batch):
+        #     step = (idx + 1) * args.outer_loop_batch_size
+        #     wandb.log(batch_kpi, step=step)
+
+        wandb.finish()

@@ -1,0 +1,4 @@
+distributed_type: "MULTI_GPU"
+mixed_precision: "bf16"
+num_processes: 4
+main_process_port: 14014

@@ -17,18 +17,20 @@ training:
   epochs: 2
   grad_acc_steps: 1
   logging_steps: 10
-  save_strategy: "no"
-  save_steps: 125
+  save_strategy: "steps"
+  save_steps: 250
   remove_unused_columns: false
   max_length: 4096
-  report_to: "wandb"
+  report_to: wandb
   max_steps: -1
   bf16: true
   lr_scheduler_type: constant
+  shuffle: False
 
+# as long robust hyperpameters good
 optimization:
   optimizer: adamw_torch
   learning_rate: 2e-5
-
+# our dataset, acheckpoints, how batches ordered. utlrafeedbackd ata firs tcheckpoint sand reward bench scores.
 lr_scheduling:
   num_warmup_steps: 0

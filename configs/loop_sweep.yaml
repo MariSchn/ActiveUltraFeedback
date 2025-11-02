@@ -1,0 +1,25 @@
+program: activeuf/new_loop/run.py  # Placeholder overwritten by `command`
+method: grid
+metric:
+  name: "dummy" # TODO
+  goal: maximize
+
+command:
+  - accelerate
+  - launch
+  - --config_file=activeuf/new_loop/accelerate.yaml
+  - -m 
+  - activeuf.new_loop.run
+  - --config_path 
+  - activeuf/new_loop/run.yaml
+  - ${args}
+
+parameters:
+  outer_loop_batch_size:
+    values: [32, 256, 1024]
+  replay_buffer_factor:
+      values: [100, 1000]
+  enn.regularization.initial_value:
+    values: [10.0, 100.0, 1000.0]
+  enn.regularization.decay_base:
+    values: [0.975, 0.99, 0.995, 0.9975]
