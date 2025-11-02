@@ -8,8 +8,8 @@ SBATCH_SCRIPT="./activeuf/active_learning_loop_multi_node.sbatch"
 DRY_RUN=${DRY_RUN:-1}
 
 # Grids
-REG_VALUES=(100 1000) 
-EXP_VALUES=(0.99975 0.99985 0.9999) #(0.95 0.975 0.99 0.995 0.999)
+REG_VALUES=(100) 
+EXP_VALUES=(0.9 0.95 0.99) #(0.95 0.975 0.99 0.995 0.999)
 OUTER_VALUES=(256 1024) #(32 128)
 REPLAY_MULT_VALUES=(100) #(100)
 MAX_TRAINING_STEPS=(100)
@@ -21,8 +21,11 @@ declare -A DATASET_MAP
 # DATASET_MAP[llama70b]="/iopsstor/scratch/cscs/dmelikidze/datasets/combined_annotations_llama"
 DATASET_MAP[qwen235b]="/iopsstor/scratch/cscs/dmelikidze/datasets/combined_with_small_qwen_3_235b-features"
 
+OUTPUT_DIR_BASE="/iopsstor/scratch/cscs/dmelikidze/datasets/active/centered_cosine_big_batches_new"
+
+
 # Acquisition functions (strings passed to --acquisition_function_type)
-ACQ_FUNCS=(infomax)
+ACQ_FUNCS=(dts infomax maxminlcb)
 
 # Common args passed to the python script (edit or extend)
 COMMON_ARGS="--log_kpis --report_to=wandb --use_features"
@@ -59,6 +62,7 @@ submit_job() {
   local mult="$6"
   local acq="$7"
   local steps="$8"
+  local output_dir="$9"
 
   local replay_size=$(( outer * mult ))
 
@@ -69,6 +73,7 @@ submit_job() {
 --outer_loop_batch_size=${outer} \
 --replay_buffer_size=${replay_size} \
 --max_training_steps=${steps} \
+--output_path=${output_dir} \
 ${COMMON_ARGS}"
 
   # shorten jobname if very long
@@ -76,12 +81,13 @@ ${COMMON_ARGS}"
     jobname="$(echo ${jobname} | cut -c1-32)"
   fi
 
-  echo "JOB ${jobname}: sbatch --dependency=afterok:1034621 --export=ALL,SCRIPT_ARGS=\"${script_args}\" --job-name=\"${jobname}\" \"${SBATCH_SCRIPT}\""
+  echo "JOB ${jobname}: sbatch --export=ALL,SCRIPT_ARGS=\"${script_args}\" --job-name=\"${jobname}\" \"${SBATCH_SCRIPT}\""
   if [ "${DRY_RUN}" -eq 0 ]; then
-    sbatch --dependency=afterok:1034621 --export=ALL,SCRIPT_ARGS="${script_args}" --job-name="${jobname}" "${SBATCH_SCRIPT}"
+    sbatch --dependency=afterok:1037501 --export=ALL,SCRIPT_ARGS="${script_args}" --job-name="${jobname}" "${SBATCH_SCRIPT}"
   fi
 }
 
+counter=0
 # Iterate full Cartesian product
 for reg in "${REG_VALUES[@]}"; do
   for exp in "${EXP_VALUES[@]}"; do
@@ -91,8 +97,32 @@ for reg in "${REG_VALUES[@]}"; do
           for steps in "${MAX_TRAINING_STEPS[@]}"; do
             dataset="${DATASET_MAP[$annot]}"
             for acq in "${ACQ_FUNCS[@]}"; do
+              if [[ "${dataset}" == *llama* ]]; then
+                model_type="llama"
+              else
+                model_type="qwen"
+              fi
+              replay_size=$(( outer * mult ))
+              output_dir="${OUTPUT_DIR_BASE}/${acq}_${model_type}_rgl${reg}_wdcb${exp}_obs${outer}_rbs${replay_size}_steps${steps}"
+
+                            # Check if output dir already exists for this config (ignore job id)
+              if [ ! -d "${OUTPUT_DIR_BASE}" ]; then
+                # Output dir base does not exist, so nothing has been processed yet
+                echo "✗✗✗ Output dir base ${OUTPUT_DIR_BASE} does not exist, submitting job for config (${acq}, ${model_type}, reg=${reg}, exp=${exp}, outer=${outer}, rbs=${replay_size}, steps=${steps})"
+              else
+                existing_dirs=( $(find "${OUTPUT_DIR_BASE}" -maxdepth 1 -type d -name "${acq}_${model_type}_rgl${reg}_wdcb${exp}_obs${outer}_rbs${replay_size}_steps${steps}") )
+                if [ ${#existing_dirs[@]} -gt 0 ]; then
+                  echo "✓✓✓ Skipping job for config (${acq}, ${model_type}, reg=${reg}, exp=${exp}, outer=${outer}, rbs=${replay_size}, steps=${steps}) -- output dir already exists."
+                  continue
+                else
+                  echo "✗✗✗ No existing output dir found for config (${acq}, ${model_type}, reg=${reg}, exp=${exp}, outer=${outer}, rbs=${replay_size}, steps=${steps}), submitting job."
+                fi
+              fi
               job="sweep_${annot}_${acq}_reg${reg}_exp${exp}_outer${outer}_rx${mult}_steps${steps}"
-              submit_job "${job}" "${dataset}" "${reg}" "${exp}" "${outer}" "${mult}" "${acq}" "${steps}"
+              submit_job "${job}" "${dataset}" "${reg}" "${exp}" "${outer}" "${mult}" "${acq}" "${steps}" "${output_dir}"
+              
+              # exit 0
+              counter=$((counter+1))
             done
           done
         done
@@ -101,4 +131,4 @@ for reg in "${REG_VALUES[@]}"; do
   done
 done
 
-echo "Done. (If DRY_RUN=0, jobs were submitted.)"
+echo "Done. submitted ${counter} jobs (If DRY_RUN=0, jobs were submitted.)"

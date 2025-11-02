@@ -54,7 +54,7 @@ accelerate launch \
     --acquisition_function_type="dts" \
     --use_features \
     --log_kpis \
-    --debug 
+    --debug
 
 accelerate launch \
     --config_file=$SCRATCH/ActiveUltraFeedback/activeuf/reward_model/multi_gpu.yaml \
@@ -234,7 +234,11 @@ def parse_postprocess(args: argparse.Namespace) -> argparse.Namespace:
         + "_rgl"
         + str(args.regularization_towards_initial_weights)
         + "_wdcb"
-        + str(args.exponential_decay_base)
+        + (
+            str(args.exponential_decay_base)
+            if args.exponential_decay_base
+            else str(config["enn"].get("exponential_decay_base", "none"))
+        )
         + "_obs"
         + str(args.outer_loop_batch_size)
         + "_rbs"
@@ -558,7 +562,7 @@ if __name__ == "__main__":
         dataset = dataset.add_column("row_id", list(range(len(dataset))))
 
     if args.debug:
-        dataset = dataset.select(range(1000))
+        dataset = dataset.select(range(300))
 
     # dataset = dataset.select(range(args.outer_loop_batch_size))
     # Unfortunately the set of prompts have duplicate prompt_ids, so we can not filter by prompt_ids.
@@ -811,11 +815,6 @@ if __name__ == "__main__":
 
     total_processes = accelerator.num_processes
     logger.info(f"Total processes: {total_processes}")
-
-    if accelerator.is_main_process:
-        os.makedirs(args.output_path, exist_ok=True)
-        with open(os.path.join(args.output_path, "args.json"), "w") as f:
-            json.dump(vars(args), f, indent=4)
 
     initial_lambda_regularizer = float(
         uq_pipeline.trainer.args.regularization_towards_initial_weights
@@ -1213,7 +1212,7 @@ if __name__ == "__main__":
                     for x in annotated_batch
                 ]
             )
-            if i % 100 == 0:
+            if i % 100 == 1:
                 logger.info(
                     f"Saving {len(output_dataset)} samples to {args.output_path}"
                 )
@@ -1330,15 +1329,26 @@ if __name__ == "__main__":
                 / ((i + 1) * args.outer_loop_batch_size)
             )
         elif enn_config.get("regularization_weight_decay_type") == "exponential":
+            # updated_lambda_regularizer = initial_lambda_regularizer * (
+            #     enn_config.get("exponential_decay_base")
+            #     ** min(len(dataset), (i + 1) * args.outer_loop_batch_size)
+            # )
             updated_lambda_regularizer = initial_lambda_regularizer * (
                 enn_config.get("exponential_decay_base")
-                ** min(len(dataset), (i + 1) * args.outer_loop_batch_size)
+                ** (4308 * (i + 1) / num_batches)
             )
+            # print(
+            #     f"Iteration: {i + 1}, Updated lambda regularizer: {updated_lambda_regularizer}, formula: {initial_lambda_regularizer} * ({enn_config.get('exponential_decay_base')} ** (4308 * {i + 1} / {num_batches}))"
+            # )
 
         uq_pipeline.trainer.args.regularization_towards_initial_weights = (
             updated_lambda_regularizer
         )
 
+        if accelerator.is_main_process:
+            all_acquisition_kpis_batch[-1]["lambda_regularizer"] = (
+                updated_lambda_regularizer
+            )
         # logger.info(
         #     f"Updated lambda regularizer: {updated_lambda_regularizer}")
 
@@ -1450,3 +1460,8 @@ if __name__ == "__main__":
         #     wandb.log(batch_kpi, step=step)
 
         wandb.finish()
+
+    if accelerator.is_main_process:
+        os.makedirs(args.output_path, exist_ok=True)
+        with open(os.path.join(args.output_path, "args.json"), "w") as f:
+            json.dump(vars(args), f, indent=4)

@@ -9,7 +9,7 @@
 #SBATCH --ntasks-per-node=1         # number of MP tasks
 #SBATCH --gres=gpu:4                # number of GPUs per node
 #SBATCH --cpus-per-task=288         # number of cores per tasks
-#SBATCH --time=12:00:00             # maximum execution time (HH:MM:SS)
+#SBATCH --time=3:30:00             # maximum execution time (HH:MM:SS)
 #SBATCH --environment=activeuf_dev      # using compressed docker image as an environment
 #SBATCH --partition=normal
 
