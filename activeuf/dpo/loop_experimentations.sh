@@ -7,10 +7,11 @@ set -euo pipefail
 #
 # The script only builds run names and submits jobs with --run_name set to the folder name.
 
-BASE_DATASETS_DIR="${SCRATCH:-/scratch}/datasets/active/centered_cosine_barna"
+BASE_DATASETS_DIR="${SCRATCH:-/scratch}/datasets/active/centered_cosine"
 DPO_CONFIG_PATH="$SCRATCH/ActiveUltraFeedback/activeuf/dpo/training.yaml"
 MULTI_NODE_CFG="$SCRATCH/ActiveUltraFeedback/activeuf/dpo/multi_node.yaml"
 ACCELERATE_LAUNCH_BASE="accelerate launch --config_file=${MULTI_NODE_CFG} -m activeuf.dpo.training"
+BASE_OUTPUT_DIR="$SCRATCH/models/dpo/active/centered_cosine_big_batches/"
 
 if [ ! -d "$BASE_DATASETS_DIR" ]; then
   echo "ERROR: datasets dir not found: $BASE_DATASETS_DIR" >&2
@@ -28,7 +29,7 @@ done
 echo "Found ${#FINAL_DATASETS[@]} datasets to process."
 
 SUBSAMPLE_DATASETS=()
-for ((i=1; i<2 && i<${#FINAL_DATASETS[@]}; i++)); do
+for ((i=19; i<44 && i<${#FINAL_DATASETS[@]}; i++)); do
     SUBSAMPLE_DATASETS+=("${FINAL_DATASETS[$i]}")
 done
 
@@ -52,12 +53,29 @@ for DATASET_PATH in "${SUBSAMPLE_DATASETS[@]}"; do
   # fi
   # continue
   # exit 0
+  RUN_NAME="$(basename "$DATASET_PATH")"
+  SANITIZED_NAME="$(echo "$RUN_NAME" | sed 's/[\/.]/-/g')"
+  echo "Sanitized name: $SANITIZED_NAME"
+
+  if [ ! -d "$BASE_OUTPUT_DIR" ]; then
+    echo "✗✗✗ Output dir $BASE_OUTPUT_DIR does not exist, submitting job for $SANITIZED_NAME"
+  else
+    MATCHING_DIRS=($(find "$BASE_OUTPUT_DIR" -maxdepth 1 -type d -name "*-${SANITIZED_NAME}"))
+    if [ ${#MATCHING_DIRS[@]} -gt 0 ]; then
+      echo "✓✓✓ Skipping dataset $DATASET_PATH (output dir for $SANITIZED_NAME already exists)"
+      continue
+    else
+      echo "✗✗✗ Output dir for $SANITIZED_NAME does not exist, submitting job"
+    fi
+  fi
+  # continue
+  # exit 0
   sbatch <<EOF
 #!/bin/bash
 #SBATCH -A a-infra01-1
 #SBATCH --job-name=${JOB_NAME}
-#SBATCH --output=logs/dpo/new_cos/O-${JOB_NAME}.%j
-#SBATCH --error=logs/dpo/new_cos/E-${JOB_NAME}.%j
+#SBATCH --output=logs/dpo/$(basename "${BASE_OUTPUT_DIR}")/O-${JOB_NAME}.%j
+#SBATCH --error=logs/dpo/$(basename "${BASE_OUTPUT_DIR}")/E-${JOB_NAME}.%j
 #SBATCH --nodes=8
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=4
@@ -81,6 +99,7 @@ CMD="accelerate launch \\
     --main_process_ip \$MAIN_PROCESS_IP \\
     --main_process_port \$MAIN_PROCESS_PORT \\
     -m activeuf.dpo.training \\
+    --base_output_dir ${BASE_OUTPUT_DIR} \\
     --config_path ${DPO_CONFIG_PATH} \\
     --slurm_job_id \$SLURM_JOB_ID \\
     --dataset_path ${DATASET_PATH} \\

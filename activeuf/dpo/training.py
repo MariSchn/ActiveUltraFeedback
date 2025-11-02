@@ -61,6 +61,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Whether to run ablation studies",
     )
+    parser.add_argument(
+        "--base_output_dir",
+        type=str,
+        help="Base output directory for model checkpoints and logs",
+        default=None,
+    )
     return parser.parse_args()
 
 
@@ -151,6 +157,8 @@ if __name__ == "__main__":
         config["seed"] = args.seed
     if args.num_epochs:
         config["training"]["num_train_epochs"] = args.num_epochs
+    if args.base_output_dir:
+        config["base_output_dir"] = args.base_output_dir
 
     lora_config = config.get("lora", {})
     training_config = config.get("training", {})
@@ -202,9 +210,6 @@ if __name__ == "__main__":
 
     # Export config file for reproducibility
     out_path = os.path.join(output_dir, os.path.basename(args.config_path))
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
-    with open(out_path, "w") as f_out:
-        yaml.dump(config, f_out, default_flow_style=False)
 
     if config.get("torch_dtype", "bfloat16") == "bfloat16":
         torch_dtype = torch.bfloat16
@@ -322,6 +327,9 @@ if __name__ == "__main__":
         model.save_pretrained(output_dir)
         tokenizer.save_pretrained(output_dir)
         print(f"Model and tokenizer saved to {output_dir}")
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        with open(out_path, "w") as f_out:
+            yaml.dump(config, f_out, default_flow_style=False)
 
 
 if accelerator.is_main_process and wandb.run is not None:
