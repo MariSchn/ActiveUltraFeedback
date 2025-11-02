@@ -1,5 +1,5 @@
 import argparse
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict, is_dataclass
 import os.path as path
 from transformers import HfArgumentParser
 import yaml
@@ -204,17 +204,70 @@ def extract_annotator_name(dataset_path: str) -> str:
     for key in ["llama", "qwen"]:
         if key in path.basename(dataset_path):
             return key
+        
+def recursive_update(base_dict, new_dict):
+    """
+    Recursively update a dictionary, handling nested dictionaries and dot-notation keys.
+    Values in new_dict will overwrite values in base_dict.
+    """
+    for key, value in new_dict.items():
+        if value is None:
+            continue
 
+        if "." in key:
+            keys = key.split(".")
+
+            leaf_dict = base_dict
+            for k in keys[:-1]:
+                leaf_dict = leaf_dict[k]
+
+            leaf_dict[keys[-1]] = value
+        else:
+            base_dict[key] = value
+            
+    return base_dict
+
+def parse_overwrites(remaining_args) -> dict:
+    overwrite_dict = {}
+
+    for arg in remaining_args:
+        if not arg.startswith("--"):
+            continue
+        arg = arg.lstrip("-")
+
+        key_value_pair = arg.split("=", 1)
+        if len(key_value_pair) != 2:
+            raise ValueError(f"Invalid argument format: {arg}")
+        
+        key, value = key_value_pair
+        value = yaml.safe_load(value)
+
+        overwrite_dict[key] = value
+
+        # Special case certain keys as they involve variables in the config
+        if key in ["enn.regularization.initial_value", "enn.trainer.regularization_towards_initial_weights"]:
+            overwrite_dict["enn.regularization.initial_value"] = value
+            overwrite_dict["enn.trainer.regularization_towards_initial_weights"] = value
+        elif key in ["enn.max_steps", "enn.trainer.max_length"]:
+            overwrite_dict["enn.max_steps"] = value
+            overwrite_dict["enn.trainer.max_length"] = value
+
+    return overwrite_dict
 
 def get_loop_args(timestamp) -> argparse.Namespace:
     cli_parser = argparse.ArgumentParser()
     cli_parser.add_argument(
         "--config_path", required=True, help="Path to the YAML config"
     )
-    config_path = cli_parser.parse_args().config_path
+    config_args, remaining_args = cli_parser.parse_known_args()
+    config_path = config_args.config_path
     with open(config_path, "r") as f:
         config_dict = yaml.safe_load(f)
 
+    if remaining_args:
+        sweep_dict = parse_overwrites(remaining_args)
+        config_dict = recursive_update(config_dict, sweep_dict)
+        
     # define timestamp, then use it to create a run id
     config_dict['timestamp'] = timestamp
     config_dict['run_id'] = "_".join(
