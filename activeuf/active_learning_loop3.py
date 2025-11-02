@@ -213,6 +213,7 @@ def parse_postprocess(args: argparse.Namespace) -> argparse.Namespace:
     loop = config.get("loop", {})
     acquisition = config.get("acquisition", {})
     enn = config.get("enn", {})
+    args.acquisition_config = acquisition.get("acquisition_config", {})
 
     for key, value in loop.items():
         if hasattr(args, key):
@@ -283,14 +284,6 @@ def parse_postprocess(args: argparse.Namespace) -> argparse.Namespace:
         args.max_length = 1
         args.outer_loop_batch_size = 8192
         enn["base_model_name_or_path"] = "unsloth/Qwen2.5-1.5B-Instruct"
-
-    # Load acquisition config file and add as a dict
-    acq_config_path = acquisition["acquisition_config"]
-    if acq_config_path:
-        with open(acq_config_path, "r") as f:
-            args.acquisition_config = yaml.safe_load(f)
-    else:
-        args.acquisition_config = {}
 
     # Set acquisition_config.seed to args.seed if args.seed is set
     if args.seed is not None:

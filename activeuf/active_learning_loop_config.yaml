@@ -16,7 +16,13 @@ loop:
 
 acquisition:
   acquisition_function_type: dts
-  acquisition_config: activeuf/acquisition_function/configs.yaml
+  acquisition_config:
+    max_iterations: 30
+    beta: 1
+    argmax_tol: 1e-4
+    decision_buffer: 0.0
+    use_candidate_set: false
+    seed: 42
 # converge to evals 
 # given a 
 # try to evalulate checkpoints, 5000 datapoints. 2500 per each step. 
