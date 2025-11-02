@@ -1,5 +1,5 @@
 import argparse
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict, is_dataclass
 import os.path as path
 from transformers import HfArgumentParser
 import yaml
@@ -11,7 +11,7 @@ from activeuf.acquisition_function.arguments import (
     IDSConfig,
     RUCBConfig,
 )
-from activeuf.utils import get_timestamp, ensure_dataclass
+from activeuf.utils import ensure_dataclass
 
 
 @dataclass
@@ -62,19 +62,14 @@ class ENNModelConfig:
 
 @dataclass
 class ENNTrainerConfig:
-    warmup_ratio: float = field(
-        metadata={"help": "Warmup ratio for the learning rate scheduler."}
-    )
+    warmup_ratio: float = field()
     lr_scheduler_type: str = field(
         metadata={
             "help": "Type of learning rate scheduler.",
-            "choices": ["linear", "cosine"],
+            "choices": ["constant", "linear", "cosine"],
         }
     )
     learning_rate: float = field(metadata={"help": "Initial learning rate."})
-    max_steps: int = field(
-        metadata={"help": "Maximum number of training steps per outer batch added."}
-    )
     num_train_epochs: int = field(
         metadata={"help": "Number of training epochs per outer batch added."}
     )
@@ -87,11 +82,18 @@ class ENNTrainerConfig:
             "help": "Coefficient to incentivize the reward model to output mean-zero rewards"
         }
     )
+    precompute_features: bool = field()
     bf16: bool = field(metadata={"help": "Whether to use bfloat16 precision."})
     disable_tqdm: bool = field(metadata={"help": "Disable tqdm progress bars."})
     report_to: str = field(metadata={"help": "Reporting tool for the trainer."})
     save_strategy: str = field(metadata={"help": "Strategy for saving checkpoints."})
+    save_steps: int = field(metadata={"help": "Number of steps between each save"})
     logging_strategy: str = field(metadata={"help": "Strategy for logging."})
+    logging_steps: int = field(metadata={"help": "Number of steps between each log"})
+    output_dir: str | None = field(
+        default=None,
+        metadata={"help": "Where to save checkpoints."},
+    )
 
 
 @dataclass
@@ -120,7 +122,7 @@ class ENNConfig:
     effective_batch_size: int = field(
         metadata={"help": "Effective batch size for training ENN."}
     )
-    compute_reward_batch_size: int = field(
+    inference_batch_size: int = field(
         metadata={"help": "Number of completions per reward forward pass."}
     )
 
@@ -131,7 +133,9 @@ class ENNConfig:
     regularization: ENNRegularizationConfig = field(
         metadata={"help": "Regularization settings for ENN."}
     )
-
+    max_steps: int = field(
+        metadata={"help": "Maximum number of training steps per outer batch added."}
+    )
 
 @dataclass
 class LoopConfig:
@@ -148,7 +152,7 @@ class LoopConfig:
     acquisition_function_type: str = field(
         metadata={
             "help": "Acquisition function type",
-            "choices": ["random", "dts", "infomax", "maxminlcb", "infogain"],
+            "choices": ["random", "ultrafeedback", "dts", "ids", "rucb", "maxminlcb", "infogain", "infomax"],
         }
     )
     reward_model_type: str = field(
@@ -184,53 +188,112 @@ class LoopConfig:
         metadata={"help": "All configs related to ENN reward model and training."}
     )
 
+    # derived fields
+    env_local_path: str = ""
+    timestamp: str = ""
+    run_id: str = ""
+    output_path: str = ""
+    args_path: str = ""
+    logs_path: str = ""
+    wandb_project: str = ""
+    wandb_dir: str = ""
+
 
 # TODO: make more robust, this is ridiculous
 def extract_annotator_name(dataset_path: str) -> str:
     for key in ["llama", "qwen"]:
         if key in path.basename(dataset_path):
             return key
+        
+def recursive_update(base_dict, new_dict):
+    """
+    Recursively update a dictionary, handling nested dictionaries and dot-notation keys.
+    Values in new_dict will overwrite values in base_dict.
+    """
+    for key, value in new_dict.items():
+        if value is None:
+            continue
 
+        if "." in key:
+            keys = key.split(".")
 
-def get_loop_args() -> argparse.Namespace:
+            leaf_dict = base_dict
+            for k in keys[:-1]:
+                leaf_dict = leaf_dict[k]
+
+            leaf_dict[keys[-1]] = value
+        else:
+            base_dict[key] = value
+            
+    return base_dict
+
+def parse_overwrites(remaining_args) -> dict:
+    overwrite_dict = {}
+
+    for arg in remaining_args:
+        if not arg.startswith("--"):
+            continue
+        arg = arg.lstrip("-")
+
+        key_value_pair = arg.split("=", 1)
+        if len(key_value_pair) != 2:
+            raise ValueError(f"Invalid argument format: {arg}")
+        
+        key, value = key_value_pair
+        value = yaml.safe_load(value)
+
+        overwrite_dict[key] = value
+
+        # Special case certain keys as they involve variables in the config
+        if key in ["enn.regularization.initial_value", "enn.trainer.regularization_towards_initial_weights"]:
+            overwrite_dict["enn.regularization.initial_value"] = value
+            overwrite_dict["enn.trainer.regularization_towards_initial_weights"] = value
+        elif key in ["enn.max_steps", "enn.trainer.max_length"]:
+            overwrite_dict["enn.max_steps"] = value
+            overwrite_dict["enn.trainer.max_length"] = value
+
+    return overwrite_dict
+
+def get_loop_args(timestamp) -> argparse.Namespace:
     cli_parser = argparse.ArgumentParser()
     cli_parser.add_argument(
         "--config_path", required=True, help="Path to the YAML config"
     )
-    config_path = cli_parser.parse_args().config_path
+    config_args, remaining_args = cli_parser.parse_known_args()
+    config_path = config_args.config_path
     with open(config_path, "r") as f:
         config_dict = yaml.safe_load(f)
 
-    parser = HfArgumentParser(LoopConfig)
-    args = parser.parse_dict(config_dict, allow_extra_keys=True)[0]
-    args = ensure_dataclass(LoopConfig, vars(args))
-
+    if remaining_args:
+        sweep_dict = parse_overwrites(remaining_args)
+        config_dict = recursive_update(config_dict, sweep_dict)
+        
     # define timestamp, then use it to create a run id
-    args.timestamp = get_timestamp(more_detailed=True)
-    args.run_id = "_".join(
+    config_dict['timestamp'] = timestamp
+    config_dict['run_id'] = "_".join(
         [
-            args.acquisition_function_type,
-            args.reward_model_type,
-            extract_annotator_name(args.inputs_path),
-            args.oracle_name,
-            args.timestamp,
+            config_dict['acquisition_function_type'],
+            config_dict['reward_model_type'],
+            extract_annotator_name(config_dict['inputs_path']),
+            config_dict['oracle_name'],
+            config_dict['timestamp'],
         ]
     )
 
     # setup paths
-    args.output_path = path.join(config_dict["base_output_dir"], args.run_id)
-    args.args_path = path.join(config_dict["base_logs_dir"], f"{args.run_id}.args")
-    args.logs_path = path.join(config_dict["base_logs_dir"], f"{args.run_id}.log")
-    if args.reward_model_type != "none":
-        args.wandb_project = config_dict["base_wandb_project"]
-        args.wandb_dir = path.join(config_dict["base_wandb_dir"], args.run_id)
+    config_dict['output_path'] = path.join(config_dict["base_output_dir"], config_dict['run_id'])
+    config_dict['args_path'] = path.join(config_dict["base_logs_dir"], f"{config_dict['run_id']}.args")
+    config_dict['logs_path'] = path.join(config_dict["base_logs_dir"], f"{config_dict['run_id']}.log")
+    if config_dict['reward_model_type'] != "none":
+        config_dict['wandb_project'] = config_dict["base_wandb_project"]
+        config_dict['wandb_dir'] = path.join(config_dict["base_wandb_dir"], config_dict['run_id'])
 
-        trainer_args = getattr(args, args.reward_model_type)
-        if not hasattr(trainer_args, "output_dir"):
-            setattr(
-                trainer_args,
-                "output_dir",
-                f"{config_dict['base_trainer_dir']}/{args.run_id}",
-            )
+        trainer_args = config_dict[config_dict['reward_model_type']]["trainer"]
+        if not trainer_args.get("output_dir"):
+            trainer_args["output_dir"] = f"{config_dict['base_trainer_dir']}/{config_dict['run_id']}"
+
+    parser = HfArgumentParser(LoopConfig)
+    args = parser.parse_dict(config_dict, allow_extra_keys=True)[0]
+    args = ensure_dataclass(LoopConfig, vars(args))
 
     return args

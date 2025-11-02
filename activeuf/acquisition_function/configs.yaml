@@ -1,6 +1,0 @@
-max_iterations: 30
-beta: 1
-argmax_tol: 1e-4
-decision_buffer: 0.0
-use_candidate_set: false
-seed: 42

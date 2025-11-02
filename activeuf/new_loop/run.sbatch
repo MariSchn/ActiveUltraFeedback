@@ -9,8 +9,6 @@
 #SBATCH --environment=activeuf_dev
 #SBATCH --partition=normal
 
-python -m pip install -e resources/rewarduq
-
 accelerate launch \
     --config_file=activeuf/new_loop/accelerate.yaml \
     -m activeuf.new_loop.run --config_path activeuf/new_loop/run.yaml
