@@ -89,13 +89,12 @@ def get_logger(name, logs_path="app.log", accelerator=None) -> logging.Logger:
 def setup(login_to_hf: bool = False, login_to_wandb: bool = False) -> None:
     # load env variables
     load_dotenv(PUBLIC_ENV_PATH)
+    load_dotenv(LOCAL_ENV_PATH)
 
     if login_to_hf:
-        load_dotenv(LOCAL_ENV_PATH)
         huggingface_hub.login(os.getenv("HF_TOKEN"))
 
     if login_to_wandb:
-        load_dotenv(LOCAL_ENV_PATH)
         wandb.login(key=os.getenv("WANDB_TOKEN"))
 
 
@@ -104,8 +103,8 @@ def set_seed(seed: int) -> None:
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.deterministic = False
-    torch.backends.cudnn.benchmark = True
+    torch.backends.cudnn.deterministic = False  # False
+    torch.backends.cudnn.benchmark = True  # maybe TRUE
     os.environ["PYTHONHASHSEED"] = str(seed)
 
 
@@ -121,12 +120,12 @@ def filter_dict(dict_to_filter, func):
 
 
 def sample_principle(source: str) -> str:
-    principle_pool = PROMPT_SOURCE2PRINCIPLES.get(source, [DEFAULT_PRINCIPLE])
+    principle_pool = PROMPT_SOURCE2PRINCIPLES.get(source, DEFAULT_PRINCIPLES)
     principle = random.choice(principle_pool)
 
-    if principle == "honesty":
-        if "verbalized_calibration" in PRINCIPLES and np.random.rand() < 0.9:
-            principle = "verbalized_calibration"
+    # if principle == "honesty":
+    #     if "verbalized_calibration" in PRINCIPLES and np.random.rand() < 0.9:
+    #         principle = "verbalized_calibration"
 
     return principle
 
@@ -140,8 +139,11 @@ def load_model(
     model_class: str = DEFAULT_MODEL_CLASS,
     max_num_gpus: int | None = None,
     num_nodes: int = 1,
+    data_parallel_size: int = 1,
     ping_delay: int = PING_DELAY,
     max_ping_retries: int = MAX_PING_RETRIES,
+    gpu_memory_utilization: float = 0.9,
+    max_model_len: int = 0,
     model_kwargs: dict = {},
 ) -> Union[
     # model requires API calls (e.g. gpt-4) or model_class == "vllm_server"
@@ -163,8 +165,11 @@ def load_model(
         model_class (Optional[str]): The class of the model to load. This determines the type of the output. Must be one of ["transformers", "pipeline", "vllm", "vllm_server"].
         max_num_gpus (Optional[int]): The maximum number of GPUs to use for loading the model (only used for vLLM models).
         num_nodes (int): The number of nodes to use for loading the model. This is only used for vLLM models.
+        data_parallel_size (Optional[int]): The size of the data parallel group (only applicable for vllm_server model class).
         ping_delay (int): Delay between pings to the vLLM server to check if it is already running (only used for model_class == "vllm_server").
         max_ping_retries (int): Number of retries to check if the vLLM server is running (only used for model_class == "vllm_server").
+        gpu_memory_utilization (float): The GPU memory utilization to use for loading the model (only used for vllm models).
+        max_model_len (int): The maximum context length of the model. Pass 0 to use the model's default max length.
         model_kwargs (Optional[dict]): Additional keyword arguments to pass to the model when loading it.
     Returns:
         Union[Tuple[str, None], Tuple[AutoModelForCausalLM, AutoTokenizer], Tuple[Pipeline, None], Tuple[LLM, vllm.transformers_utils.tokenizer.AnyTokenizer]]: The loaded model and tokenizer (if applicable).
@@ -198,7 +203,7 @@ def load_model(
         while model is None and tps > 0:
             try:
                 vllm_kwargs = {
-                    "gpu_memory_utilization": 0.9,
+                    "gpu_memory_utilization": gpu_memory_utilization,
                     "swap_space": 1,
                     "tensor_parallel_size": tps,
                     "pipeline_parallel_size": num_nodes,
@@ -207,6 +212,9 @@ def load_model(
                     "download_dir": os.getenv("HF_CACHE", None),
                     **model_kwargs,
                 }
+
+                if max_model_len > 0:
+                    vllm_kwargs["max_model_len"] = max_model_len
 
                 # Specify tokenizer mode for Mistral models
                 if "mistral" in model_name.lower():
@@ -228,38 +236,75 @@ def load_model(
         tps = tensor_parallel_size
         model = None
 
+        # Check if vLLM server is already running
+        server_url = "http://localhost:8000"
+        try:
+            # Check if server is running
+            response = requests.get(f"{server_url}/ping")
+            if response.status_code == 200:
+                # Check which model is loaded
+                models_resp = requests.get(f"{server_url}/v1/models")
+                if models_resp.status_code == 200:
+                    models_data = models_resp.json()
+                    loaded_models = [m["id"] for m in models_data.get("data", [])]
+                    # Accept both full repo name and short name
+                    model_short_name = model_name.split("/")[-1]
+                    if model_name in loaded_models or model_short_name in loaded_models:
+                        print(
+                            f"vLLM server is already running with model: {loaded_models} reusing existing server"
+                        )
+                    model = server_url
+                    tokenizer = None
+        except Exception:
+            pass
+
         while model is None and tps > 0:
             try:
-                out_file = f"./logs/server/{model_name.split('/')[-1]}_server_tps_{tps}"
+                out_dir = f"./logs/server/{model_name.split('/')[-1]}"
+                os.makedirs(out_dir, exist_ok=True)
+
+                out_file = f"{out_dir}/"
                 out_file += (
-                    f"_{os.getenv('SLURM_JOB_ID', '')}.out"
+                    f"{os.getenv('SLURM_JOB_ID', '')}_"
                     if os.getenv("SLURM_JOB_ID", None)
-                    else ".out"
+                    else ""
                 )
+                out_file += f"tp_{tps}_pp_{num_nodes}_dp_{data_parallel_size}.out"
 
                 command = f"vllm serve {model_name}"
-                command += " --gpu-memory-utilization 0.9"
+                command += f" --gpu-memory-utilization {gpu_memory_utilization}"
                 command += " --swap-space 1"
                 command += f" --tensor-parallel-size {tps}"
                 command += f" --pipeline-parallel-size {num_nodes}"
+                command += f" --data-parallel-size {data_parallel_size}"
                 command += " --trust-remote-code"
-                command += " --dtype auto"
+                command += (
+                    " --dtype auto"
+                    if "deepseek" in model_name.lower()
+                    else " --dtype bfloat16"
+                )
+                command += " --port 8000"  # Default port
+
+                command += (
+                    f" --max-model-len {max_model_len}" if max_model_len > 0 else ""
+                )
                 command += (
                     f" --download-dir {os.getenv('HF_CACHE', None)}"
                     if os.getenv("HF_CACHE", None)
                     else ""
                 )
-                command += f" --port 8000"  # Default port
+                command += " --port 8000"  # Default port
                 command += (
                     " --tokenizer-mode=mistral"
                     if "mistral" in model_name.lower()
                     else ""
                 )
+                # command += " --load-format dummy"  # Debug
                 command += f" > {out_file} 2>&1"
                 command += " &"  # Run in background
 
+                print(f"Starting vLLM server with command: {command}")
                 os.system(command)
-                print(f"Logging server output to {out_file}")
 
                 server_ready = False
                 for attempt in range(max_ping_retries):
@@ -349,16 +394,19 @@ async def vllm_server_inference(
     models = await client.models.list()
     model = models.data[0].id
 
-    # Use a semaphore to limit the number of concurrent requests
-    concurrency_limit = 50
+    concurrency_limit = int(os.getenv("VLLM_SERVER_CONCURRENCY_LIMIT", 50))
     semaphore = asyncio.Semaphore(concurrency_limit)
+
+    print(
+        f"Using vLLM server at {url} with model {model}. Concurrency limit: {concurrency_limit}"
+    )
 
     # Define helper function that runs the API calls asynchronously
     async def send_request(conversation):
         async with semaphore:
             for _ in range(max_api_retry):
                 try:
-                    return await client.chat.completions.create(
+                    response = await client.chat.completions.create(
                         model=model,
                         messages=conversation,
                         temperature=sampling_params.temperature,
@@ -366,7 +414,13 @@ async def vllm_server_inference(
                         top_p=sampling_params.top_p,
                         presence_penalty=sampling_params.presence_penalty,
                         frequency_penalty=sampling_params.frequency_penalty,
+                        logprobs=True if sampling_params.logprobs else False,
+                        top_logprobs=sampling_params.logprobs,
+                        extra_body={
+                            "chat_template_kwargs": {"enable_thinking": False},
+                        },
                     )
+                    return response
                 except Exception as e:
                     print(f"An error occurred: {e}. Retrying...")
                     await asyncio.sleep(1)
@@ -420,6 +474,8 @@ def get_response_texts(
                             top_p=sampling_params.top_p,
                             presence_penalty=sampling_params.presence_penalty,
                             frequency_penalty=sampling_params.frequency_penalty,
+                            logprobs=True if sampling_params.logprobs else False,
+                            top_logprobs=sampling_params.logprobs,
                             **generate_kwargs,
                         )
                     except Exception as e:

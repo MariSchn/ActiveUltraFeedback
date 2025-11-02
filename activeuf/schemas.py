@@ -7,13 +7,6 @@ class Prompt(BaseModel):
     prompt: str
     prompt_id: str
 
-    @root_validator(pre=True)
-    def check_source(cls, values):
-        source = values["source"]
-        if source is not None and source not in PROMPT_SOURCES:
-            raise ValueError(f"Invalid source: {source}. Must be one of {PROMPT_SOURCES}.")
-        return values
-
 class Annotation(BaseModel):
     aspect: str
 
