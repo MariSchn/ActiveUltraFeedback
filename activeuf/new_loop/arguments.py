@@ -110,6 +110,9 @@ class ENNRegularizationConfig:
     exponential_decay_base: float = field(
         metadata={"help": "Base for exponential decay regularization."}
     )
+    exponential_decay_scaler: float = field(
+        metadata={"help": "Scaler for exponent in exponential decay regularization."}
+    )
 
 
 @dataclass

@@ -278,10 +278,13 @@ def get_new_regularization(
     decay_type: str,
     initial_value: float,
     exponential_decay_base: float = None,
+    exponential_decay_scaler: float = None,
 ) -> float:
     if decay_type == "linear":
         return initial_value * (1.0 - n_done / n_total)
     elif decay_type == "exponential":
-        return initial_value * (exponential_decay_base**n_done)
+        frac_done = n_done / n_total
+        exponent = exponential_decay_scaler * frac_done
+        return initial_value * (exponential_decay_base**exponent)
     else:
         raise ValueError(f"{decay_type=} not supported")

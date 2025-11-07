@@ -48,7 +48,7 @@ if __name__ == "__main__":
     # env setup
     load_dotenv(args.env_local_path)
     logger = get_logger(__name__, args.logs_path, accelerator)
-    logger.info = loop_utils.main_process_only(logger.info, accelerator)
+    # logger.info = loop_utils.main_process_only(logger.info, accelerator)
 
     torch.cuda.empty_cache()
     torch.cuda.reset_peak_memory_stats()
@@ -77,7 +77,7 @@ if __name__ == "__main__":
     dataset = load_from_disk(args.inputs_path)
     assert "features" in dataset.column_names, "Dataset must have precomputed features"
     if args.debug:
-        dataset = dataset.select(range(1001))
+        dataset = dataset.select(range(2001))
     dataset = dataset.shuffle(seed=args.seed)
     logger.info(f"# Prompts: {len(dataset)}")
 
@@ -221,13 +221,14 @@ if __name__ == "__main__":
         )
         loop_utils.MAX_TRAINER_LOGS_CACHE_SIZE = len(trainer.get_train_dataloader())
         
-        trainer.args.regularization_towards_initial_weights = (
-            loop_utils.get_new_regularization(
-                n_done=len(output),
-                n_total=expected_output_size,
-                **asdict(reward_args.regularization),
-            )
+        n_done = broadcast_object_list([len(output)])[0]
+        new_regularisation = loop_utils.get_new_regularization(
+            n_done=n_done,
+            n_total=expected_output_size,
+            **asdict(reward_args.regularization),
         )
+        trainer.args.regularization_towards_initial_weights = new_regularisation
+        logger.info(f"Process {accelerator.process_index} sees {trainer.args.regularization_towards_initial_weights} regularisation")
 
         start = time.time()
         model.train()
