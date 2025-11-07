@@ -66,7 +66,7 @@ accelerate launch \
 """
 
 # previous run stopped at 145 -th iteration.
-
+exit(0)
 # მადლობა, ძმაო, გაიხარე.
 os.environ["WANDB_DISABLED"] = "true"
 os.environ["WANDB_SILENT"] = "true"

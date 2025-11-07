@@ -414,6 +414,10 @@ def acquisition_function_handler(acquisition_function_type, acquisition_config):
         acquisition_function = InformationDirectedSampling()
     elif acquisition_function_type == "ultrafeedback":
         acquisition_function = UltraFeedback()
+    elif acquisition_function_type == "ids":
+        acquisition_function = InformationDirectedSampling()
+    elif acquisition_function_type == "rucb":
+        acquisition_function = RelativeUpperConfidenceBound()
     else:
         raise ValueError(
             f"Unknown acquisition function type: {acquisition_function_type}"
@@ -555,7 +559,7 @@ if __name__ == "__main__":
         dataset = dataset.add_column("row_id", list(range(len(dataset))))
 
     if args.debug:
-        dataset = dataset.select(range(300))
+        dataset = dataset.select(range(2000))
 
     # dataset = dataset.select(range(args.outer_loop_batch_size))
     # Unfortunately the set of prompts have duplicate prompt_ids, so we can not filter by prompt_ids.
@@ -981,7 +985,7 @@ if __name__ == "__main__":
                 }
                 torch.cuda.empty_cache()
 
-            print(outputs["rewards"].shape)
+            # print(outputs["rewards"].shape)
             # exit()
 
             end = time.time()
@@ -997,7 +1001,7 @@ if __name__ == "__main__":
                 )
                 for j in range(n_completions_per_sample):
                     rewards[:, j, 0] = torch.tensor(
-                        batch["completions"][j]["overall_score"], dtype=torch.float32
+                        batch["completions"][j][:]["overall_score"], dtype=torch.float32
                     )
             else:
                 rewards = outputs["rewards"].detach().view(n_samples_in_batch, -1, 3)

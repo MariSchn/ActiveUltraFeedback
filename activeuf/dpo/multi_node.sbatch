@@ -31,7 +31,7 @@ CMD="accelerate launch \
     -m activeuf.dpo.training \
     --config_path $SCRATCH/ActiveUltraFeedback/activeuf/dpo/training.yaml \
     --slurm_job_id $SLURM_JOB_ID \
-    --dataset_path /iopsstor/scratch/cscs/dmelikidze/datasets/centerrewards099 \
+    --dataset_path /iopsstor/scratch/cscs/dmelikidze/datasets/my_experiments2 \
     --beta 0.1 \
     --learning_rate 2e-5 \
     --seed 4 \
