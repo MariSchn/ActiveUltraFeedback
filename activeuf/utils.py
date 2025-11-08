@@ -139,8 +139,11 @@ def load_model(
     model_class: str = DEFAULT_MODEL_CLASS,
     max_num_gpus: int | None = None,
     num_nodes: int = 1,
+    data_parallel_size: int = 1,
     ping_delay: int = PING_DELAY,
     max_ping_retries: int = MAX_PING_RETRIES,
+    gpu_memory_utilization: float = 0.9,
+    max_model_len: int = 0,
     model_kwargs: dict = {},
 ) -> Union[
     # model requires API calls (e.g. gpt-4) or model_class == "vllm_server"
@@ -153,26 +156,23 @@ def load_model(
     tuple[vllm.LLM, vllm.transformers_utils.tokenizer.AnyTokenizer],
 ]:
     """
-        Loads a model given the name.
+    Loads a model given the name.
 
-        If the specified model is among the supported APIs, no model is actually loaded and the model name is returned.
+    If the specified model is among the supported APIs, no model is actually loaded and the model name is returned.
 
-        Args:
-            model_name (str): The name of the model or API to load.
-            model_class (Optional[str]): The class of the model to load. This determines the type of the output. Must be one of ["transformers", "pipeline", "vllm", "vllm_server"].
-            max_num_gpus (Optional[int]): The maximum number of GPUs to use for loading the model (only used for vLLM models).
-            num_nodes (int): The number of nodes to use for loading the model. This is only used for vLLM models.
-            data_parallel_size (Optional[int]): The size of the data parallel group (only applicable for vllm_server model class).
-            ping_delay (int): Delay between pings to the vLLM server to check if it is already running (only used for model_class == "vllm_server").
-            max_ping_retries (int): Number of retries to check if the vLLM server is running (only used for model_class == "vllm_server").
-    <<<<<<< HEAD
-            gpu_memory_utilization (float): The GPU memory utilization to use for loading the model (only used for vllm models).
-            max_model_len (int): The maximum context length of the model. Pass 0 to use the model's default max length.
-    =======
-    >>>>>>> loop
-            model_kwargs (Optional[dict]): Additional keyword arguments to pass to the model when loading it.
-        Returns:
-            Union[Tuple[str, None], Tuple[AutoModelForCausalLM, AutoTokenizer], Tuple[Pipeline, None], Tuple[LLM, vllm.transformers_utils.tokenizer.AnyTokenizer]]: The loaded model and tokenizer (if applicable).
+    Args:
+        model_name (str): The name of the model or API to load.
+        model_class (Optional[str]): The class of the model to load. This determines the type of the output. Must be one of ["transformers", "pipeline", "vllm", "vllm_server"].
+        max_num_gpus (Optional[int]): The maximum number of GPUs to use for loading the model (only used for vLLM models).
+        num_nodes (int): The number of nodes to use for loading the model. This is only used for vLLM models.
+        data_parallel_size (Optional[int]): The size of the data parallel group (only applicable for vllm_server model class).
+        ping_delay (int): Delay between pings to the vLLM server to check if it is already running (only used for model_class == "vllm_server").
+        max_ping_retries (int): Number of retries to check if the vLLM server is running (only used for model_class == "vllm_server").
+        gpu_memory_utilization (float): The GPU memory utilization to use for loading the model (only used for vllm models).
+        max_model_len (int): The maximum context length of the model. Pass 0 to use the model's default max length.
+        model_kwargs (Optional[dict]): Additional keyword arguments to pass to the model when loading it.
+    Returns:
+        Union[Tuple[str, None], Tuple[AutoModelForCausalLM, AutoTokenizer], Tuple[Pipeline, None], Tuple[LLM, vllm.transformers_utils.tokenizer.AnyTokenizer]]: The loaded model and tokenizer (if applicable).
     """
     if model_name in MODEL_APIS:
         return model_name, None
@@ -260,12 +260,16 @@ def load_model(
 
         while model is None and tps > 0:
             try:
-                out_file = f"./logs/server/{model_name.split('/')[-1]}_server_tps_{tps}"
+                out_dir = f"./logs/server/{model_name.split('/')[-1]}"
+                os.makedirs(out_dir, exist_ok=True)
+
+                out_file = f"{out_dir}/"
                 out_file += (
-                    f"_{os.getenv('SLURM_JOB_ID', '')}.out"
+                    f"{os.getenv('SLURM_JOB_ID', '')}_"
                     if os.getenv("SLURM_JOB_ID", None)
-                    else ".out"
+                    else ""
                 )
+                out_file += f"tp_{tps}_pp_{num_nodes}_dp_{data_parallel_size}.out"
 
                 command = f"vllm serve {model_name}"
                 command += f" --gpu-memory-utilization {gpu_memory_utilization}"
@@ -274,18 +278,28 @@ def load_model(
                 command += f" --pipeline-parallel-size {num_nodes}"
                 command += f" --data-parallel-size {data_parallel_size}"
                 command += " --trust-remote-code"
-                command += " --dtype auto"
+                command += (
+                    " --dtype auto"
+                    if "deepseek" in model_name.lower()
+                    else " --dtype bfloat16"
+                )
+                command += " --port 8000"  # Default port
+
+                command += (
+                    f" --max-model-len {max_model_len}" if max_model_len > 0 else ""
+                )
                 command += (
                     f" --download-dir {os.getenv('HF_CACHE', None)}"
                     if os.getenv("HF_CACHE", None)
                     else ""
                 )
-                command += f" --port 8000"  # Default port
+                command += " --port 8000"  # Default port
                 command += (
                     " --tokenizer-mode=mistral"
                     if "mistral" in model_name.lower()
                     else ""
                 )
+                # command += " --load-format dummy"  # Debug
                 command += f" > {out_file} 2>&1"
                 command += " &"  # Run in background
 
@@ -460,6 +474,8 @@ def get_response_texts(
                             top_p=sampling_params.top_p,
                             presence_penalty=sampling_params.presence_penalty,
                             frequency_penalty=sampling_params.frequency_penalty,
+                            logprobs=True if sampling_params.logprobs else False,
+                            top_logprobs=sampling_params.logprobs,
                             **generate_kwargs,
                         )
                     except Exception as e:
