@@ -11,8 +11,9 @@ class InfoMax(BaseAcquisitionFunction):
     selects the pair with the maximum gap.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, beta: float = 1.0, **kwargs):
         super().__init__()
+        self.beta = beta
 
     def __call__(
         self,
@@ -33,23 +34,7 @@ class InfoMax(BaseAcquisitionFunction):
                 The order for these is arbitrary and needs to be determined
                 using an oracle.
         """
-        n_prompts, n_completions = rewards.shape
-        
-        # Compute confidence bounds for all pairs (i, j) and compute the confidence gap
-        upper_confidence_bounds = torch.sigmoid(upper_bounds.unsqueeze(2) - upper_bounds.unsqueeze(1))
-        lower_confidence_bounds = torch.sigmoid(lower_bounds.unsqueeze(2) - lower_bounds.unsqueeze(1))
-        
-        confidence_gaps = upper_confidence_bounds - lower_confidence_bounds
+        variances = (upper_bounds - lower_bounds)
+        sorted_stds = torch.argsort(variances, descending=True, dim=-1)
 
-        # Mask the diagonal to prevent choosing the same completion for both i and j
-        diag_mask = torch.eye(n_completions, device=confidence_gaps.device, dtype=torch.bool).unsqueeze(0)
-        confidence_gaps.masked_fill_(diag_mask, -torch.inf)
-
-        # Find the pair with the largest confidence gap (flatten the n_completions x n_completions matrix, find argmax and convert back to (i, j) pairs)
-        confidence_gaps_flattened = confidence_gaps.view(n_prompts, -1)
-        max_gap_flat_idx = confidence_gaps_flattened.argmax(dim=1)
-        
-        first_idxs = max_gap_flat_idx // n_completions
-        second_idxs = max_gap_flat_idx % n_completions
-        
-        return list(zip(first_idxs.tolist(), second_idxs.tolist()))
+        return sorted_stds[:, :2].tolist()
