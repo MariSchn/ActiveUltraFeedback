@@ -237,6 +237,7 @@ if __name__ == "__main__":
 
         # cleanup
         accelerator.wait_for_everyone()
+        accelerator.free_memory()
         torch.cuda.empty_cache()
 
     if accelerator.is_main_process:
