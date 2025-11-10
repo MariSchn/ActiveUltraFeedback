@@ -34,7 +34,22 @@ class InfoMax(BaseAcquisitionFunction):
                 The order for these is arbitrary and needs to be determined
                 using an oracle.
         """
-        variances = (upper_bounds - lower_bounds)
-        sorted_stds = torch.argsort(variances, descending=True, dim=-1)
+        n_prompts, n_completions = upper_bounds.shape
+        
+        # Shape: (n_prompts, n_completions, n_completions)
+        upper_confidence_bounds = torch.sigmoid(upper_bounds.unsqueeze(2) - lower_bounds.unsqueeze(1))
+        lower_confidence_bounds = torch.sigmoid(lower_bounds.unsqueeze(2) - upper_bounds.unsqueeze(1))
+        confidence_gap_sizes = upper_confidence_bounds - lower_confidence_bounds
+        
+        # Mask out diagonal to avoid choosing the same completion twice
+        diag_mask = torch.eye(n_completions, device=confidence_gap_sizes.device, dtype=torch.bool).unsqueeze(0)
+        confidence_gap_sizes.masked_fill_(diag_mask, -torch.inf)
 
-        return sorted_stds[:, :2].tolist()
+        # Flatten the n_completions x n_completions matrices, find argmax and convert back to (i, j) pairs)
+        confidence_gap_sizes_flattened = confidence_gap_sizes.view(n_prompts, -1)
+        max_confidence_gap_flat_idx = confidence_gap_sizes_flattened.argmax(dim=1)
+        
+        first_idxs = max_confidence_gap_flat_idx // n_completions
+        second_idxs = max_confidence_gap_flat_idx % n_completions
+        
+        return list(zip(first_idxs.tolist(), second_idxs.tolist()))
