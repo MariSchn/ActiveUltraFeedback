@@ -10,6 +10,7 @@ from activeuf.acquisition_function.arguments import (
     DTSConfig,
     IDSConfig,
     RUCBConfig,
+    InfoGainConfig,
 )
 from activeuf.utils import ensure_dataclass
 
@@ -24,6 +25,9 @@ class AcquisitionFunctionConfig:
     )
     dts: DTSConfig = field(
         metadata={"help": "Config for the dts acquisition function."},
+    )
+    infogain: InfoGainConfig = field(
+        metadata={"help": "Config for the infogain acquisition function."},
     )
     ids: IDSConfig = field(
         metadata={"help": "Config for the ids acquisition function."},
