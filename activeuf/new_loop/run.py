@@ -48,7 +48,7 @@ if __name__ == "__main__":
     # env setup
     load_dotenv(args.env_local_path)
     logger = get_logger(__name__, args.logs_path, accelerator)
-    # logger.info = loop_utils.main_process_only(logger.info, accelerator)
+    logger.info = loop_utils.main_process_only(logger.info, accelerator)
 
     torch.cuda.empty_cache()
     torch.cuda.reset_peak_memory_stats()
@@ -228,7 +228,6 @@ if __name__ == "__main__":
             **asdict(reward_args.regularization),
         )
         trainer.args.regularization_towards_initial_weights = new_regularisation
-        logger.info(f"Process {accelerator.process_index} sees {trainer.args.regularization_towards_initial_weights} regularisation")
 
         start = time.time()
         model.train()
