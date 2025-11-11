@@ -34,7 +34,7 @@ from rewarduq.models.reward_head_ensemble import (
 
 
 from activeuf.acquisition_function import *
-from activeuf.oracle.oracles2 import init_oracle
+from activeuf.oracle.oracles import init_oracle
 from activeuf.utils import get_logger, setup, set_seed, get_timestamp
 from activeuf.configs import *
 from activeuf.schemas import *
@@ -320,14 +320,14 @@ def custom_collate_fn(batch):
             "source": [x["source"] for x in batch],
             "completions": [x["completions"] for x in batch],
             "features": [x["features"] for x in batch],
-            "row_id": [x["row_id"] for x in batch],
+            # "row_id": [x["row_id"] for x in batch],
         }
     return {
         "prompt_id": [x["prompt_id"] for x in batch],
         "prompt": [x["prompt"] for x in batch],
         "source": [x["source"] for x in batch],
         "completions": [x["completions"] for x in batch],
-        "row_id": [x["row_id"] for x in batch],
+        # "row_id": [x["row_id"] for x in batch],
     }
 
 
@@ -469,7 +469,7 @@ def compute_or_load_features(
                     attention_mask=inputs["attention_mask"],
                 )
                 row_features.append(out)
-            features.append({"features": row_features, "row_id": row["row_id"]})
+            features.append({"features": row_features})
 
     accelerator.wait_for_everyone()
     features = gather_object(
@@ -477,11 +477,11 @@ def compute_or_load_features(
     )  # This is already filtered by the way we process the data.
 
     # sorting features according to row_id:
-    features.sort(key=lambda x: x["row_id"])
+    # features.sort(key=lambda x: x["row_id"])
     print(len(features))
     if accelerator.is_main_process:
-        for j in range(len(features)):
-            print(features[j]["row_id"])
+        # for j in range(len(features)):
+        #     print(features[j]["row_id"])
         torch.save(features, cache_path)
         print(f"Saved features to cache: {cache_path}")
 
@@ -555,8 +555,8 @@ if __name__ == "__main__":
 
     logger.info(f"Loading completions from {args.completions_dataset_path}")
     dataset = load_from_disk(args.completions_dataset_path)
-    if "row_id" not in dataset.column_names:
-        dataset = dataset.add_column("row_id", list(range(len(dataset))))
+    # if "row_id" not in dataset.column_names:
+    #     dataset = dataset.add_column("row_id", list(range(len(dataset))))
 
     if args.debug:
         dataset = dataset.select(range(2000))
@@ -762,7 +762,7 @@ if __name__ == "__main__":
         start = time.time()
 
         def add_features_to_row(row, idx, features):
-            assert row["row_id"] == features[idx]["row_id"], "Row IDs do not match!"
+            # assert row["row_id"] == features[idx]["row_id"], "Row IDs do not match!"
 
             for j, completion in enumerate(row["completions"]):
                 completion["features"] = features[idx]["features"][j]
@@ -1059,7 +1059,7 @@ if __name__ == "__main__":
                     "prompt_id": batch["prompt_id"][j],
                     "source": batch["source"][j],
                     "prompt": batch["prompt"][j],
-                    "row_id": batch["row_id"][j],
+                    # "row_id": batch["row_id"][j],
                     "batch_id": i,
                     "response_text_1": batch["completions"][j][a]["response_text"],
                     "model_1": batch["completions"][j][a]["model"],
@@ -1144,9 +1144,9 @@ if __name__ == "__main__":
                     local_acquisition_KPIs_sample[j]["prompt_id"] = (
                         annotated_batch_local[j]["prompt_id"]
                     )
-                    local_acquisition_KPIs_sample[j]["row_id"] = annotated_batch_local[
-                        j
-                    ]["row_id"]
+                    # local_acquisition_KPIs_sample[j]["row_id"] = annotated_batch_local[
+                    #     j
+                    # ]["row_id"]
                 ######################################
 
             accelerator.wait_for_everyone()
@@ -1167,22 +1167,22 @@ if __name__ == "__main__":
             logger.info(f"- Gathering data from processes took {end - start:.2f}s")
 
         start = time.time()
-        annotated_batch = list(
-            {
-                str(x["prompt_id"]) + "_" + str(x["row_id"]): x for x in annotated_batch
-            }.values()
-        )
-        if args.report_to == "wandb":
-            acquisition_kpis_sample = list(
-                {
-                    str(x["prompt_id"]) + "_" + str(x["row_id"]): x
-                    for x in acquisition_kpis_sample
-                }.values()
-            )
+        # annotated_batch = list(
+        #     {
+        #         str(x["prompt_id"]) + "_" + str(x["row_id"]): x for x in annotated_batch
+        #     }.values()
+        # )
+        # if args.report_to == "wandb":
+        #     acquisition_kpis_sample = list(
+        #         {
+        #             str(x["prompt_id"]) + "_" + str(x["row_id"]): x
+        #             for x in acquisition_kpis_sample
+        #         }.values()
+        #     )
 
-            for x in acquisition_kpis_sample:
-                if "row_id" in x:
-                    del x["row_id"]
+        # for x in acquisition_kpis_sample:
+        #     if "row_id" in x:
+        #         del x["row_id"]
 
         # Restructuring "chosen", "rejected" columns according to allenai/ultrafeedback_binarized_cleaned dataset and the way they are properly handled by the trl RewardTrainer
         for x in annotated_batch:
