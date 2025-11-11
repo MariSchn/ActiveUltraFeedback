@@ -5,7 +5,7 @@ from activeuf.acquisition_function.base import BaseAcquisitionFunction
 
 
 class DoubleThompsonSampling(BaseAcquisitionFunction):
-    def __init__(self, max_iterations: int = 10, beta: int = 1):
+    def __init__(self, max_iterations: int = 10, beta: int = 1, **kwargs):
         super().__init__()
         self.max_iterations = max_iterations
         self.beta = beta

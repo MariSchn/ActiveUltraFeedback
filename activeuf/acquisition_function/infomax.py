@@ -9,6 +9,9 @@ class InfoMax(BaseAcquisitionFunction):
     Randomly selects and returns two indices per prompt
     """
 
+    def __init__(self, **kwargs):
+        super().__init__()
+
     def __call__(
         self,
         rewards: torch.Tensor,

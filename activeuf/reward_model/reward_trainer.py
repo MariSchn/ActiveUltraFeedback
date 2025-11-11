@@ -3,15 +3,65 @@ import argparse
 import yaml
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer, set_seed
-from datasets import load_dataset, load_from_disk
+from datasets import load_dataset, load_from_disk, concatenate_datasets
 from trl import RewardTrainer, RewardConfig
 from peft import LoraConfig, get_peft_model
 import pprint
 import math
 from accelerate import Accelerator
 from datetime import datetime
+from torch.optim.lr_scheduler import CosineAnnealingLR
 
 os.environ["WANDB_PROJECT"] = "RM-Training"
+
+
+def load_dataset_all(dataset_path):
+    try:
+        dataset = load_dataset(dataset_path)
+    except Exception as e:
+        try:
+            dataset = load_from_disk(dataset_path)
+        except Exception as e:
+            print(f"Failed to load remote or local datasets: {e}")
+            return
+    return dataset
+
+
+def process_dataset(dataset):
+    # Dataset processing (Determining splits, restructuring (chosen/rejected columns))
+    if isinstance(dataset, dict):
+        if "train_prefs" in dataset:
+            train_dataset = dataset["train_prefs"]
+        elif "train" in dataset:
+            train_dataset = dataset["train"]
+        else:
+            # TODO: More general way of handling dataset splits (They should come as arguments, for example).
+            raise Exception(
+                "Unknown dataset format. Expected 'train' or 'train_prefs' split.")
+    else:
+        train_dataset = dataset
+
+    if isinstance(train_dataset[0]["chosen"], str):
+        train_dataset = train_dataset.map(
+            lambda x:
+                {
+                    "chosen": [
+                        {'content': x["prompt"], 'role': 'user'},
+                        {'content': x["chosen"], 'role': 'assistant'}
+                    ],
+                    "rejected": [
+                        {'content': x["prompt"], 'role': 'user'},
+                        {'content': x["rejected"], 'role': 'assistant'}
+                    ],
+                }
+        )
+
+    # remove all columns except 'chosen' and 'rejected'
+    train_dataset = train_dataset.remove_columns(
+        [col for col in train_dataset.column_names if col not in ["chosen", "rejected"]]
+    )
+
+    return train_dataset
 
 
 def train_reward_model(config, args):
@@ -43,20 +93,22 @@ def train_reward_model(config, args):
     base_model = general_config.get(
         "base_model", "meta-llama/Llama-3.2-1B-Instruct")
     dataset_path = args.dataset_path
-    seed = general_config.get("seed", 42)
+    if args.seed is None:
+        seed = general_config.get("seed", 42)
+    else:
+        seed = args.seed
+
+    print("Seed before setting: ", seed)
     set_seed(seed)
     torch_dtype = torch.bfloat16 if general_config.get(
         "torch_dtype", "bfloat16") == "bfloat16" else torch.float32
 
     # Load dataset
-    try:
-        dataset = load_dataset(dataset_path)
-    except Exception as e:
-        try:
-            dataset = load_from_disk(dataset_path)
-        except Exception as e:
-            print(f"Failed to load remote or local datasets: {e}")
-            return
+    dataset = load_dataset_all(dataset_path)
+    dataset_2 = None
+    if args.dataset_path_2 is not None:
+        dataset_2 = load_dataset_all(args.dataset_path_2)
+        print("Using the second dataset as well")
 
     # Load tokenizer and model
     tokenizer = AutoTokenizer.from_pretrained(base_model)
@@ -113,44 +165,20 @@ def train_reward_model(config, args):
         max_steps=training_config.get("max_steps", -1),
         lr_scheduler_type=training_config.get("lr_scheduler_type", "linear"),
         run_name=os.path.basename(os.path.normpath(output_dir)),
+        dataset_num_proc=accelerator.num_processes
     )
 
     if accelerator.is_main_process:
         print("==== Trainer Configuration ====")
         pprint.pprint(trainer_config)
 
-    # Dataset processing (Determining splits, restructuring (chosen/rejected columns))
-    if isinstance(dataset, dict):
-        if "train_prefs" in dataset:
-            train_dataset = dataset["train_prefs"]
-        elif "train" in dataset:
-            train_dataset = dataset["train"]
-        else:
-            # TODO: More general way of handling dataset splits (They should come as arguments, for example).
-            raise Exception(
-                "Unknown dataset format. Expected 'train' or 'train_prefs' split.")
-    else:
-        train_dataset = dataset
+    train_dataset = process_dataset(dataset)
+    if dataset_2 is not None:
+        train_dataset_2 = process_dataset(dataset_2)
+        train_dataset = concatenate_datasets([train_dataset, train_dataset_2])
 
-    if isinstance(train_dataset[0]["chosen"], str):
-        train_dataset = train_dataset.map(
-            lambda x:
-                {
-                    "chosen": [
-                        {'content': x["prompt"], 'role': 'user'},
-                        {'content': x["chosen"], 'role': 'assistant'}
-                    ],
-                    "rejected": [
-                        {'content': x["prompt"], 'role': 'user'},
-                        {'content': x["rejected"], 'role': 'assistant'}
-                    ],
-                }
-        )
-
-    # remove all columns except 'chosen' and 'rejected'
-    train_dataset = train_dataset.remove_columns(
-        [col for col in train_dataset.column_names if col not in ["chosen", "rejected"]]
-    )
+    if args.shuffle:
+        train_dataset = train_dataset.shuffle(seed=seed)
 
     if accelerator.is_main_process:
         print("==== Dataset Columns ====")
@@ -164,6 +192,13 @@ def train_reward_model(config, args):
     if args.debug:
         train_dataset = train_dataset.select(range(270))
 
+    if args.subset_size:
+        train_dataset = train_dataset.select(
+            range(min(len(train_dataset), args.subset_size)))
+
+    print(f"doing training with {len(train_dataset)} samples")
+
+    # Are you sure this doesn't internally shuffle the training dataset?
     trainer = RewardTrainer(
         model=model,
         processing_class=tokenizer,
@@ -194,6 +229,14 @@ def parse_arguments():
                         help="Path to the dataset for training.")
     parser.add_argument("--debug", action="store_true",
                         help="Run in debug mode with a smaller dataset for testing.")
+    parser.add_argument("--subset_size", type=int, default=None,
+                        help="Number of samples to use from the dataset.")
+    parser.add_argument("--seed", type=int, default=None,
+                        help="Random seed for initialization.")
+    parser.add_argument("--dataset_path_2", type=str, default=None,
+                        help="Path to the second dataset for training.")
+    parser.add_argument("--shuffle", action="store_true",
+                        help="Whether to shuffle the dataset.")
     return parser.parse_args()
 
 

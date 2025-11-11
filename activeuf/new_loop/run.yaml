@@ -1,0 +1,73 @@
+env_local_path: .env.local
+base_output_dir: datasets/loop
+base_trainer_dir: trainer_output/loop
+base_logs_dir: logs/loop
+base_wandb_dir: wandb/loop
+base_wandb_project: loop
+
+inputs_path: datasets/combined_with_small_qwen_3_235b-features
+oracle_name: ultrafeedback
+acquisition_function_type: dts
+reward_model_type: enn
+debug: true
+
+seed: &a 4
+max_length: &b 4096
+outer_loop_batch_size: 32
+save_every_n_outer_batches: 100
+replay_buffer_factor: 100
+
+acquisition_function:
+  random:
+    seed: *a
+  ultrafeedback:
+    seed: *a
+  dts:
+    beta: 1
+    max_iterations: 30
+  ids:
+    argmax_tol: 1e-4
+    decision_buffer: 0.0
+    use_candidate_set: false
+  rucb:
+    beta: 1
+    argmax_tol: 1e-4
+    decision_buffer: 0.0
+    use_candidate_set: false
+
+enn:
+  previous_checkpoint_path: null
+  effective_batch_size: 32
+  inference_batch_size: 8
+  max_steps: &d 10
+
+  model:
+    base_model_name_or_path: Skywork/Skywork-Reward-V2-Qwen3-4B
+    num_heads: 20
+    head_num_layers: 2
+    head_hidden_dim: 128
+    head_initialization_xavier_gain: 1.0
+    freeze_base_model: true
+    feature_extraction_layer: last_hidden_state
+
+  regularization:
+    initial_value: &c 100.0
+    decay_type: exponential
+    exponential_decay_base: 0.99
+
+  trainer:
+    lr_scheduler_type: cosine
+    learning_rate: 1.0e-4
+    warmup_ratio: 0.05
+    num_train_epochs: 1
+    max_length: *b
+    center_rewards_coefficient: 0.01
+    regularization_towards_initial_weights: *c
+    precompute_features: true
+    bf16: true
+    disable_tqdm: true
+    report_to: none
+    save_strategy: "no"
+    save_steps: *d
+    logging_strategy: "steps"
+    logging_steps: 1

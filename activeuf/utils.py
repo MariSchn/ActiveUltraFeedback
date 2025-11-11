@@ -1,6 +1,8 @@
+from dataclasses import asdict, is_dataclass, fields
 from datetime import datetime
 from dotenv import load_dotenv
 import huggingface_hub
+import inspect
 import logging
 import wandb
 import os
@@ -8,9 +10,10 @@ import asyncio
 import requests
 import httpx
 import time
-from typing import Union, Any, Tuple, List
+from typing import Any, Union
 from tqdm import tqdm
 from tqdm.asyncio import tqdm as async_tqdm
+import yaml
 
 import numpy as np
 import random
@@ -30,6 +33,25 @@ from activeuf.configs import *
 from activeuf.schemas import *
 
 
+def ensure_dataclass(cls, d):
+    if not is_dataclass(cls):
+        return d  # primitive type, leave as is
+    kwargs = {}
+    for f in fields(cls):
+        if f.name not in d:
+            continue
+        value = d[f.name]
+        if is_dataclass(f.type) and isinstance(value, dict):
+            kwargs[f.name] = ensure_dataclass(f.type, value)
+        else:
+            kwargs[f.name] = value
+    return cls(**kwargs)
+
+
+def convert_dataclass_instance_to_yaml_str(instance) -> str:
+    return yaml.dump(asdict(instance))
+
+
 def get_timestamp(more_detailed=False) -> str:
     now = datetime.now()
     if more_detailed:
@@ -37,16 +59,30 @@ def get_timestamp(more_detailed=False) -> str:
     return now.strftime("%Y%m%d-%H%M%S")
 
 
-def get_logger(name: str, logs_path: str = "app.log") -> logging.Logger:
+def get_logger(name, logs_path="app.log", accelerator=None) -> logging.Logger:
     logger = logging.getLogger(name)
-    if not logger.handlers:
-        logger.setLevel(logging.INFO)
-        handler = logging.FileHandler(logs_path)
-        formatter = logging.Formatter(
-            "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
-        )
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
+    logger.propagate = False  # prevent double logging
+
+    if logger.hasHandlers():
+        logger.handlers.clear()
+
+    logger.setLevel(logging.INFO)
+
+    formatter = logging.Formatter(
+        "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
+    )
+
+    # Console handler for all ranks
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+
+    # File handler only for main process
+    if accelerator is None or accelerator.is_main_process:
+        file_handler = logging.FileHandler(logs_path)
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+
     return logger
 
 
@@ -70,6 +106,17 @@ def set_seed(seed: int) -> None:
     torch.backends.cudnn.deterministic = False  # False
     torch.backends.cudnn.benchmark = True  # maybe TRUE
     os.environ["PYTHONHASHSEED"] = str(seed)
+
+
+def filter_dict(dict_to_filter, func):
+    sig = inspect.signature(func)
+    valid_keys = {
+        param.name
+        for param in sig.parameters.values()
+        if param.kind
+        in {inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY}
+    }
+    return {key: dict_to_filter[key] for key in valid_keys if key in dict_to_filter}
 
 
 def sample_principle(source: str) -> str:
