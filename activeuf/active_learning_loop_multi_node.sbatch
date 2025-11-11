@@ -9,7 +9,7 @@
 #SBATCH --ntasks-per-node=1         # number of MP tasks
 #SBATCH --gres=gpu:4                # number of GPUs per node
 #SBATCH --cpus-per-task=288         # number of cores per tasks
-#SBATCH --time=3:30:00             # maximum execution time (HH:MM:SS)
+#SBATCH --time=2:15:00             # maximum execution time (HH:MM:SS)
 #SBATCH --environment=activeuf_dev      # using compressed docker image as an environment
 #SBATCH --partition=normal
 
@@ -37,7 +37,7 @@ export LAUNCHER="accelerate launch \
     "
 
 export ACCELERATE_DIR="${ACCELERATE_DIR:-/accelerate}"
-export PYTHON_FILE="activeuf.aclelo"
+export PYTHON_FILE="activeuf.active_learning_loop3"
 if [ -z "${SCRIPT_ARGS:-}" ]; then
     export SCRIPT_ARGS=" \
     --completions_dataset_path /iopsstor/scratch/cscs/dmelikidze/datasets/combined_with_small_qwen_3_235b-features \

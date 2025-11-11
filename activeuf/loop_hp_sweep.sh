@@ -9,7 +9,7 @@ DRY_RUN=${DRY_RUN:-1}
 
 # Grids
 REG_VALUES=(100) 
-EXP_VALUES=(0.9 0.95 0.99) #(0.95 0.975 0.99 0.995 0.999)
+EXP_VALUES=(0.875 0.9 0.95 0.99 0.9925) #(0.95 0.975 0.99 0.995 0.999)
 OUTER_VALUES=(256 1024) #(32 128)
 REPLAY_MULT_VALUES=(100) #(100)
 MAX_TRAINING_STEPS=(100)
@@ -21,11 +21,12 @@ declare -A DATASET_MAP
 # DATASET_MAP[llama70b]="/iopsstor/scratch/cscs/dmelikidze/datasets/combined_annotations_llama"
 DATASET_MAP[qwen235b]="/iopsstor/scratch/cscs/dmelikidze/datasets/combined_with_small_qwen_3_235b-features"
 
-OUTPUT_DIR_BASE="/iopsstor/scratch/cscs/dmelikidze/datasets/active/centered_cosine_big_batches_new"
+OUTPUT_DIR_BASE="/iopsstor/scratch/cscs/dmelikidze/datasets/active/centered_cosine_correct"
 
 
 # Acquisition functions (strings passed to --acquisition_function_type)
-ACQ_FUNCS=(dts infomax maxminlcb)
+# ACQ_FUNCS=(dts infomax maxminlcb)
+ACQ_FUNCS=(infogain) #(ids)
 
 # Common args passed to the python script (edit or extend)
 COMMON_ARGS="--log_kpis --report_to=wandb --use_features"
@@ -83,7 +84,7 @@ ${COMMON_ARGS}"
 
   echo "JOB ${jobname}: sbatch --export=ALL,SCRIPT_ARGS=\"${script_args}\" --job-name=\"${jobname}\" \"${SBATCH_SCRIPT}\""
   if [ "${DRY_RUN}" -eq 0 ]; then
-    sbatch --dependency=afterok:1037501 --export=ALL,SCRIPT_ARGS="${script_args}" --job-name="${jobname}" "${SBATCH_SCRIPT}"
+    sbatch --export=ALL,SCRIPT_ARGS="${script_args}" --job-name="${jobname}" "${SBATCH_SCRIPT}"
   fi
 }
 
