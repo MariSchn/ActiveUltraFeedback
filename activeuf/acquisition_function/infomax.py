@@ -6,11 +6,14 @@ from activeuf.acquisition_function.base import BaseAcquisitionFunction
 
 class InfoMax(BaseAcquisitionFunction):
     """
-    Randomly selects and returns two indices per prompt
+    Selects the pair of completions with the highest variance in their comparison.
+    For each pair (i, j), computes the confidence gap when comparing them and 
+    selects the pair with the maximum gap.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, beta: float = 1.0, **kwargs):
         super().__init__()
+        self.beta = beta
 
     def __call__(
         self,
@@ -22,15 +25,31 @@ class InfoMax(BaseAcquisitionFunction):
         Args:
             rewards: tensor of shape (n_prompts, n_completions_per_prompt)
                 containing the reward scores for each completion
-            std_deviation: tensor of shape (n_prompts, n_completions_per_prompt)
-                containing the standard deviation of the reward for each completions
+            lower_bounds: tensor of shape (n_prompts, n_completions_per_prompt)
+                containing the lower_bound of the reward for each completions
+            upper_bounds: tensor of shape (n_prompts, n_completions_per_prompt)
+                containing the upper bound of the reward for each completions
         Returns:
             list[list[int, int]]: The selected indices per prompt.
                 The order for these is arbitrary and needs to be determined
                 using an oracle.
         """
-        std_deviation = (upper_bounds - lower_bounds) / 2
+        n_prompts, n_completions = upper_bounds.shape
+        
+        # Shape: (n_prompts, n_completions, n_completions)
+        upper_confidence_bounds = torch.sigmoid(upper_bounds.unsqueeze(2) - lower_bounds.unsqueeze(1))
+        lower_confidence_bounds = torch.sigmoid(lower_bounds.unsqueeze(2) - upper_bounds.unsqueeze(1))
+        confidence_gap_sizes = upper_confidence_bounds - lower_confidence_bounds
+        
+        # Mask out diagonal to avoid choosing the same completion twice
+        diag_mask = torch.eye(n_completions, device=confidence_gap_sizes.device, dtype=torch.bool).unsqueeze(0)
+        confidence_gap_sizes.masked_fill_(diag_mask, -torch.inf)
 
-        sorted_stds = torch.argsort(std_deviation, descending=True, dim=-1)
-
-        return sorted_stds[:, :2].tolist()
+        # Flatten the n_completions x n_completions matrices, find argmax and convert back to (i, j) pairs)
+        confidence_gap_sizes_flattened = confidence_gap_sizes.view(n_prompts, -1)
+        max_confidence_gap_flat_idx = confidence_gap_sizes_flattened.argmax(dim=1)
+        
+        first_idxs = max_confidence_gap_flat_idx // n_completions
+        second_idxs = max_confidence_gap_flat_idx % n_completions
+        
+        return list(zip(first_idxs.tolist(), second_idxs.tolist()))

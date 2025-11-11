@@ -77,7 +77,7 @@ if __name__ == "__main__":
     dataset = load_from_disk(args.inputs_path)
     assert "features" in dataset.column_names, "Dataset must have precomputed features"
     if args.debug:
-        dataset = dataset.select(range(1001))
+        dataset = dataset.select(range(2001))
     dataset = dataset.shuffle(seed=args.seed)
     logger.info(f"# Prompts: {len(dataset)}")
 
@@ -221,13 +221,13 @@ if __name__ == "__main__":
         )
         loop_utils.MAX_TRAINER_LOGS_CACHE_SIZE = len(trainer.get_train_dataloader())
         
-        trainer.args.regularization_towards_initial_weights = (
-            loop_utils.get_new_regularization(
-                n_done=len(output),
-                n_total=expected_output_size,
-                **asdict(reward_args.regularization),
-            )
+        n_done = broadcast_object_list([len(output)])[0]
+        new_regularisation = loop_utils.get_new_regularization(
+            n_done=n_done,
+            n_total=expected_output_size,
+            **asdict(reward_args.regularization),
         )
+        trainer.args.regularization_towards_initial_weights = new_regularisation
 
         start = time.time()
         model.train()
@@ -236,6 +236,7 @@ if __name__ == "__main__":
 
         # cleanup
         accelerator.wait_for_everyone()
+        accelerator.free_memory()
         torch.cuda.empty_cache()
 
     if accelerator.is_main_process:
