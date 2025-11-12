@@ -22,15 +22,15 @@ import wandb
 """
 run command example:
 accelerate launch \
-    --config_file=$SCRATCH/ActiveUltraFeedback/activeuf/reward_model/multi_gpu.yaml -m activeuf.dpo.training \
-    --config_path $SCRATCH/ActiveUltraFeedback/activeuf/dpo/training.yaml \
+    --config_file=$SCRATCH/ActiveUltraFeedback/configs/accelerate/multi_node.yaml -m activeuf.dpo.training \
+    --config_path $SCRATCH/ActiveUltraFeedback/configs/dpo_training.yaml \
     --slurm_job_id $SLURM_JOB_ID \
     --dataset_path allenai/ultrafeedback_binarized_cleaned \
     --beta 0.1
     
 accelerate launch \
-    --config_file=$SCRATCH/ActiveUltraFeedback/activeuf/reward_model/multi_gpu.yaml -m activeuf.dpo.training \
-    --config_path $SCRATCH/ActiveUltraFeedback/activeuf/dpo/training.yaml \
+    --config_file=$SCRATCH/ActiveUltraFeedback/configs/accelerate/multi_node.yaml -m activeuf.dpo.training \
+    --config_path $SCRATCH/ActiveUltraFeedback/configs/dpo_training.yaml \
     --slurm_job_id $SLURM_JOB_ID \
     --dataset_path /iopsstor/scratch/cscs/dmelikidze/datasets/active/dts_qwen_rgl100.0_wdcb0.995_obs128_rbs12800_1008156 
 """

@@ -1,17 +1,16 @@
 #!/bin/bash
 
-#SBATCH --job-name=multinode_loop
+#SBATCH --job-name=rm_training
 #SBATCH -D .
-#SBATCH -A infra01
-#SBATCH --output=logs/experiments_new_new/O.%j
-#SBATCH --error=logs/experiments_new_new/E.%j
-#SBATCH --nodes=8                   # number of nodes
+#SBATCH -A a-infra01-1
+#SBATCH --output=./RM-Training/O-%x.%j
+#SBATCH --error=./RM-Training/E-%x.%j
+#SBATCH --nodes=2                   # number of nodes
 #SBATCH --ntasks-per-node=1         # number of MP tasks
 #SBATCH --gres=gpu:4                # number of GPUs per node
 #SBATCH --cpus-per-task=288         # number of cores per tasks
-#SBATCH --time=2:15:00             # maximum execution time (HH:MM:SS)
+#SBATCH --time=02:30:00             # maximum execution time (HH:MM:SS)
 #SBATCH --environment=activeuf_dev      # using compressed docker image as an environment
-#SBATCH --partition=normal
 
 export GPUS_PER_NODE=4
 export HF_HOME=$SCRATCH/huggingface
@@ -33,38 +32,25 @@ export LAUNCHER="accelerate launch \
     --rdzv_backend c10d \
     --main_process_ip $head_node_ip \
     --main_process_port 29500 \
-    -m
     "
 
 export ACCELERATE_DIR="${ACCELERATE_DIR:-/accelerate}"
-export PYTHON_FILE="activeuf.active_learning_loop"
-if [ -z "${SCRIPT_ARGS:-}" ]; then
-    export SCRIPT_ARGS=" \
-    --completions_dataset_path /iopsstor/scratch/cscs/dmelikidze/datasets/combined_with_small_qwen_3_235b-features \
-    --output_path=$SCRATCH/datasets/testssss/ \
-        --acquisition_function_type=dts \
-        --log_kpis \
-        --report_to=wandb \
-        --use_features \
+export PYTHON_FILE="${SCRATCH}/ActiveUltraFeedback/activeuf/reward_model/training.py"
+export SCRIPT_ARGS=" \
+    --output_dir ${SCRATCH}/models/reward_models/skywork_78000 \
+    --reward_config ${SCRATCH}/ActiveUltraFeedback/configs/rm_training.yaml \
+    --dataset_path Skywork/Skywork-Reward-Preference-80K-v0.2 \
+    --seed 42 \
     "
-fi
-        
+
 # This step is necessary because accelerate launch does not handle multiline arguments properly
 export CMD="$LAUNCHER $PYTHON_FILE $SCRIPT_ARGS" 
-
-export DS_ACCELERATOR_CACHE_DIR="$SCRATCH/tmp/deepspeed_cache_$SLURM_JOB_ID"
-export TRANSFORMERS_CACHE="$SCRATCH/tmp/hf_cache_$SLURM_JOB_ID"
-mkdir -p "$DS_ACCELERATOR_CACHE_DIR" "$TRANSFORMERS_CACHE"
 
 START=$(date +%s)
 
 cd $SCRATCH/ActiveUltraFeedback/
-export PYTHONPATH="$SCRATCH/ActiveUltraFeedback:$PYTHONPATH"
-pip install --user ./resources/rewarduq/
 
-export CUDA_VISIBLE_DEVICES=0,1,2,3
-
-srun --chdir=$SCRATCH/ActiveUltraFeedback $CMD
+srun $CMD
 
 END=$(date +%s)
 DURATION=$(( END - START ))

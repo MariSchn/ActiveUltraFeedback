@@ -18,7 +18,7 @@ from activeuf.oracle.oracles import init_oracle
 from activeuf.utils import get_logger, get_timestamp, set_seed, convert_dataclass_instance_to_yaml_str
 
 # RUN
-# accelerate launch --config_file=activeuf/new_loop/accelerate.yaml -m activeuf.new_loop.run --config_path activeuf/new_loop/run.yaml
+# accelerate launch --config_file=configs/accelerate/single_node.yaml -m activeuf.new_loop.run --config_path configs/loop.yaml
 
 if __name__ == "__main__":    
     accelerator = Accelerator()

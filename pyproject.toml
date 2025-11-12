@@ -9,7 +9,39 @@ description = "UltraFeedback pipeline with Active Learning"
 authors = [{ name = "Your Name", email = "you@example.com" }]
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "numpy",
+    "transformers",
+    "datasets",
+    "accelerate",
+    "trl",
+    "tokenizers",
+    "tiktoken",
+    "openai",
+    "pandas",
+    "tqdm",
+    "wandb",
+    "python-dotenv",
+    "peft",
+    "mmh3",
+    "tensordict",
+    "langdetect",
+    "nltk",
+    "immutabledict",
+    "omegaconf",
+    "blobfile",
+
+    # Linux-only dependencies (excluded on Windows)
+    "vllm; platform_system != 'Windows'",
+    "deepspeed; platform_system != 'Windows'",
+    "nvitop; platform_system != 'Windows'",
+]
+
+[project.optional-dependencies]
+# Development tools
+dev = [
+    "ruff",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["activeuf"]

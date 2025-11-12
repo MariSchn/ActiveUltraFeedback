@@ -12,5 +12,5 @@
 python -m pip install -e resources/rewarduq
 
 accelerate launch \
-    --config_file=activeuf/new_loop/accelerate.yaml \
-    -m activeuf.new_loop.compute_base_model_features --config_path activeuf/new_loop/compute_base_model_features.yaml
+    --config_file=configs/accelerate/single_node.yaml \
+    -m activeuf.new_loop.compute_base_model_features --config_path configs/compute_base_model_features.yaml

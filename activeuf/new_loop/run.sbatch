@@ -10,5 +10,5 @@
 #SBATCH --partition=normal
 
 accelerate launch \
-    --config_file=activeuf/new_loop/accelerate.yaml \
-    -m activeuf.new_loop.run --config_path activeuf/new_loop/run.yaml
+    --config_file=configs/accelerate/single_node.yaml \
+    -m activeuf.new_loop.run --config_path configs/loop.yaml
