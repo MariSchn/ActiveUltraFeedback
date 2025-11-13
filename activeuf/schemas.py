@@ -1,7 +1,5 @@
 from pydantic import BaseModel, Field, root_validator
 
-from activeuf.configs import PROMPT_SOURCES
-
 class Prompt(BaseModel):
     source: str
     prompt: str

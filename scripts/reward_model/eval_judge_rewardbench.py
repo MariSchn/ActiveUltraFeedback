@@ -58,14 +58,14 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output_path", type=str, help="Where to export the results and annotated dataset")
     parser.add_argument("--model_path", type=str, required=True, help="The (Huggingface) to the model to use for annotation")
-    parser.add_argument("--seed", type=int, default=SEED, help="Seed for random sampling")
+    parser.add_argument("--seed", type=int, default=42, help="Seed for random sampling")
 
-    parser.add_argument("--model_class", type=str, default=DEFAULT_MODEL_CLASS, help="The class which is used to perform inference (e.g. transformers, pipeline, vllm)")
+    parser.add_argument("--model_class", type=str, default="vllm", help="The class which is used to perform inference (e.g. transformers, pipeline, vllm)")
     parser.add_argument("--max_tokens", type=int, default=ANNOTATION_MAX_TOKENS, help="The maximum number of tokens for LLM responses")
-    parser.add_argument("--max_num_gpus", type=int, default=MAX_NUM_GPUS, help="The maximum number of GPUs to use")
+    parser.add_argument("--max_num_gpus", type=int, default=4, help="The maximum number of GPUs to use")
     parser.add_argument("--num_nodes", type=int, default=1, help="The number of nodes to use")
-    parser.add_argument("--temperature", type=float, default=ANNOTATION_TEMPERATURE, help="The temperature for sampling")
-    parser.add_argument("--top_p", type=float, default=ANNOTATION_TOP_P, help="The top_p for sampling")
+    parser.add_argument("--temperature", type=float, default=1.0, help="The temperature for sampling")
+    parser.add_argument("--top_p", type=float, default=1.0, help="The top_p for sampling")
 
     parser.add_argument("--debug", action="store_true", help="If set, will only annotate the first few samples")
 

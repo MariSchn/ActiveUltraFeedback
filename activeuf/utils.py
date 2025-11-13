@@ -31,6 +31,34 @@ from transformers import (
 
 from activeuf.configs import *
 from activeuf.schemas import *
+from activeuf.completions.prompts import *
+
+PROMPT_SOURCE2PRINCIPLES = {
+    "truthful_qa": ["honesty", "truthfulness"],
+    "sharegpt": ["helpfulness", "honesty", "truthfulness"],
+    "ultrachat": ["helpfulness", "honesty", "truthfulness"],
+    "flan": ["helpfulness", "verbalized_calibration"],
+    "false_qa": ["honesty", "truthfulness"],
+    "evol_instruct": ["helpfulness"],
+}
+
+PRINCIPLE2SYSTEM_PROMPTS = {
+    "helpfulness": HELPFULNESS_COMPLETION_SYSTEM_PROMPTS,
+    "honesty": HONESTY_COMPLETION_SYSTEM_PROMPTS,
+    "truthfulness": TRUTHFULNESS_COMPLETION_SYSTEM_PROMPTS,
+    "verbalized_calibration": VERBALIZED_CALIBRATION_COMPLETION_SYSTEM_PROMPTS,
+}
+
+DEFAULT_PRINCIPLES = [
+    "helpfulness",
+    "honesty",
+    "truthfulness",
+]
+
+MODEL_APIS = {
+    "gpt-3",
+    "gpt-4",
+}
 
 
 def ensure_dataclass(cls, d):
@@ -88,8 +116,8 @@ def get_logger(name, logs_path="app.log", accelerator=None) -> logging.Logger:
 
 def setup(login_to_hf: bool = False, login_to_wandb: bool = False) -> None:
     # load env variables
-    load_dotenv(PUBLIC_ENV_PATH)
-    load_dotenv(LOCAL_ENV_PATH)
+    load_dotenv(".env")
+    load_dotenv(".env.local")
 
     if login_to_hf:
         huggingface_hub.login(os.getenv("HF_TOKEN"))
@@ -136,12 +164,12 @@ def sample_system_prompt(principle: str) -> str:
 
 def load_model(
     model_name: str,
-    model_class: str = DEFAULT_MODEL_CLASS,
+    model_class: str = "vllm",
     max_num_gpus: int | None = None,
     num_nodes: int = 1,
     data_parallel_size: int = 1,
-    ping_delay: int = PING_DELAY,
-    max_ping_retries: int = MAX_PING_RETRIES,
+    ping_delay: int = 30,
+    max_ping_retries: int = 100,
     gpu_memory_utilization: float = 0.9,
     max_model_len: int = 0,
     model_kwargs: dict = {},
@@ -438,7 +466,7 @@ def get_response_texts(
     all_messages: list[list[dict[str, str]]],
     sampling_params: vllm.SamplingParams | None,
     batch_size: int = 64,
-    max_api_retry: int = MAX_API_RETRY,
+    max_api_retry: int = 10,
     generate_kwargs: dict = {},
 ) -> tuple[list[str], list[Any]]:
     """
