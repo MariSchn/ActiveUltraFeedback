@@ -4,7 +4,7 @@ import glob
 import os
 import torch
 
-# python -m activeuf.new_loop.combine_dataset_with_features --inputs_path datasets/combined_with_smqwen_3_235b --feature_partials_path datasets/combined_with_smqwen_3_235b-feature_partials
+# python -m activeuf.loop.combine_dataset_with_features --inputs_path datasets/combined_with_smqwen_3_235b --feature_partials_path datasets/combined_with_smqwen_3_235b-feature_partials
 
 if __name__ == "__main__":
     parser = ArgumentParser()

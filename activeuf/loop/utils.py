@@ -12,7 +12,7 @@ from rewarduq.models.reward_head_ensemble import (
     RewardHeadEnsemblePipeline as ENNRewardModelPipeline,
 )
 
-from activeuf.new_loop.arguments import ENNConfig
+from activeuf.loop.arguments import ENNConfig
 
 def main_process_only(f, accelerator):
     """Decorator to ensure the wrapped logging function runs only on the main process."""

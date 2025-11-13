@@ -11,4 +11,4 @@
 
 accelerate launch \
     --config_file=configs/accelerate/single_node.yaml \
-    -m activeuf.new_loop.run --config_path configs/loop.yaml
+    -m activeuf.loop.run --config_path configs/loop.yaml

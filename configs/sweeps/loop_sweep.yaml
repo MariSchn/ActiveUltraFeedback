@@ -1,4 +1,4 @@
-program: activeuf/new_loop/run.py # Placeholder overwritten by `command`
+program: activeuf/loop/run.py # Placeholder overwritten by `command`
 method: grid
 metric:
   name: "dummy" # TODO
@@ -7,11 +7,11 @@ metric:
 command:
   - accelerate
   - launch
-  - --config_file=activeuf/new_loop/accelerate.yaml
+  - --config_file=configs/accelerate/single_node.yaml
   - -m
-  - activeuf.new_loop.run
+  - activeuf.loop.run
   - --config_path
-  - activeuf/new_loop/run.yaml
+  - configs/loop.yaml
   - ${args}
 
 parameters:

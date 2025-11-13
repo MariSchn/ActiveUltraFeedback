@@ -12,13 +12,13 @@ from torch.utils.data import DataLoader
 import wandb
 
 from activeuf.acquisition_function import init_acquisition_function
-from activeuf.new_loop.arguments import get_loop_args
-from activeuf.new_loop import utils as loop_utils
+from activeuf.loop.arguments import get_loop_args
+from activeuf.loop import utils as loop_utils
 from activeuf.oracle.oracles import init_oracle
 from activeuf.utils import get_logger, get_timestamp, set_seed, convert_dataclass_instance_to_yaml_str
 
 # RUN
-# accelerate launch --config_file=configs/accelerate/single_node.yaml -m activeuf.new_loop.run --config_path configs/loop.yaml
+# accelerate launch --config_file=configs/accelerate/single_node.yaml -m activeuf.loop.run --config_path configs/loop.yaml
 
 if __name__ == "__main__":    
     accelerator = Accelerator()
