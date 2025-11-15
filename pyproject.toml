@@ -40,7 +40,12 @@ dependencies = [
 [dependency-groups]
 dev = [
     "ruff",
+    "pre-commit",
 ]
+
+[tool.ruff]
+# Add "archive" to the list of default exclusions
+extend-exclude = ["archive"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["activeuf"]
