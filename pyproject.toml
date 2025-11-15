@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "UltraFeedback pipeline with Active Learning"
 authors = [{ name = "Your Name", email = "you@example.com" }]
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = "==3.12"
 dependencies = [
     "numpy",
     "transformers",
@@ -37,8 +37,7 @@ dependencies = [
     "nvitop; platform_system != 'Windows'",
 ]
 
-[project.optional-dependencies]
-# Development tools
+[dependency-groups]
 dev = [
     "ruff",
 ]
