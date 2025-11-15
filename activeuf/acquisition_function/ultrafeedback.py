@@ -40,4 +40,3 @@ class UltraFeedback(BaseAcquisitionFunction):
             second_idx = np.random.choice(remaining)
             selected_indices.append([chosen_idx, second_idx])
         return selected_indices
-

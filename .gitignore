@@ -8,6 +8,7 @@ __pycache__/
 
 # Distribution / packaging
 .Python
+.ruff_cache
 build/
 develop-eggs/
 dist/
@@ -173,8 +174,6 @@ olmes/
 trainer_output/
 multinodeloop/
 playground.sh
-loop/
 resources/reward-bench/
 resources/rewarduq/
 RM-Training/
-**/configs**

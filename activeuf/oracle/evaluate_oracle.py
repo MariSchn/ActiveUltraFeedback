@@ -1,4 +1,4 @@
-from datasets import load_from_disk, Dataset, load_dataset
+from datasets import load_from_disk, Dataset
 from tqdm import tqdm
 import argparse
 
@@ -14,14 +14,9 @@ def combine_datasets_annotated(dataset1, dataset2, filename_output=None):
     """
     all_rows = []
     for i in tqdm(range(len(dataset1))):
-        new_row = {
-            "prompt_id": dataset1[i]["prompt_id"],
-            "completions": {}
-        }
-        new_row["completions"][dataset1[i]
-                               ["model"]] = dataset1[i]["annotation"]
-        new_row["completions"][dataset2[i]
-                               ["model"]] = dataset2[i]["annotation"]
+        new_row = {"prompt_id": dataset1[i]["prompt_id"], "completions": {}}
+        new_row["completions"][dataset1[i]["model"]] = dataset1[i]["annotation"]
+        new_row["completions"][dataset2[i]["model"]] = dataset2[i]["annotation"]
         all_rows.append(new_row)
 
     # Convert to list for Dataset
@@ -57,23 +52,29 @@ def get_choices(dataset):
                     present_aspects[key] += 1
 
         scores = {
-            k: v / present_aspects[k] if present_aspects[k] > 0 else None for k, v in scores.items()}
+            k: v / present_aspects[k] if present_aspects[k] > 0 else None
+            for k, v in scores.items()
+        }
 
         invalid_counter = {
             "chosen": 4 - present_aspects["chosen"],
-            "rejected": 4 - present_aspects["rejected"]
+            "rejected": 4 - present_aspects["rejected"],
         }
 
         prompt_id = row["prompt_id"]
-        decisions.append({
-            "prompt_id": prompt_id,
-            "decision": scores["chosen"] > scores["rejected"] if scores["chosen"] is not None and scores["rejected"] is not None else None,
-            "chosen_score": scores["chosen"],
-            "rejected_score": scores["rejected"],
-            "tie": scores["chosen"] == scores["rejected"],
-            "invalid_chosen": invalid_counter["chosen"],
-            "invalid_rejected": invalid_counter["rejected"],
-        })
+        decisions.append(
+            {
+                "prompt_id": prompt_id,
+                "decision": scores["chosen"] > scores["rejected"]
+                if scores["chosen"] is not None and scores["rejected"] is not None
+                else None,
+                "chosen_score": scores["chosen"],
+                "rejected_score": scores["rejected"],
+                "tie": scores["chosen"] == scores["rejected"],
+                "invalid_chosen": invalid_counter["chosen"],
+                "invalid_rejected": invalid_counter["rejected"],
+            }
+        )
 
     return decisions
 
@@ -82,8 +83,7 @@ def print_results(decisions):
     total = len(decisions)
     correct = sum(1 for d in decisions if d["decision"])
     ties = sum(1 for d in decisions if d["tie"])
-    invalid = sum(d["invalid_chosen"] + d["invalid_rejected"]
-                  for d in decisions)
+    invalid = sum(d["invalid_chosen"] + d["invalid_rejected"] for d in decisions)
     counter = 0
     for d in decisions:
         if d["invalid_chosen"] == 4 or d["invalid_rejected"] == 4:
@@ -101,9 +101,17 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "--foldername_chosen", type=str, default="/iopsstor/scratch/cscs/dmelikidze/datasets/combined_annotations_qwen_test10/chosen", help="Path to the chosen completion annotations folder")
+        "--foldername_chosen",
+        type=str,
+        default="/iopsstor/scratch/cscs/dmelikidze/datasets/combined_annotations_qwen_test10/chosen",
+        help="Path to the chosen completion annotations folder",
+    )
     parser.add_argument(
-        "--foldername_rejected", type=str, default="/iopsstor/scratch/cscs/dmelikidze/datasets/combined_annotations_qwen_test10/rejected", help="Path to the rejected completion annotations folder")
+        "--foldername_rejected",
+        type=str,
+        default="/iopsstor/scratch/cscs/dmelikidze/datasets/combined_annotations_qwen_test10/rejected",
+        help="Path to the rejected completion annotations folder",
+    )
 
     args = parser.parse_args()
     return args
@@ -123,8 +131,7 @@ def main():
 
     print("Combining datasets...")
 
-    dataset_combined = combine_datasets_annotated(
-        dataset_chosen, dataset_rejected)
+    dataset_combined = combine_datasets_annotated(dataset_chosen, dataset_rejected)
 
     print(dataset_combined)
 

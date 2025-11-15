@@ -1,8 +1,0 @@
-# Specify distributed_type as `MULTI_GPU` for DDP
-distributed_type: "MULTI_GPU"
-# Can be one of "no", "fp16", or "bf16" (see `transformer_engine.yaml` for `fp8`)
-mixed_precision: "bf16"
-# Specify the number of GPUs to use
-num_processes: 4
-# Specify the port :)
-main_process_port: 14014

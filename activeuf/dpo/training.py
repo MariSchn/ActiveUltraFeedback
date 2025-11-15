@@ -13,8 +13,7 @@ from pprint import pprint
 
 from accelerate import Accelerator
 
-from activeuf.configs import *
-from activeuf.utils import *
+from activeuf.utils import set_seed, setup
 from activeuf.dpo.trainer import NormedDPOConfig, NormedDPOTrainer
 
 import wandb
@@ -22,15 +21,15 @@ import wandb
 """
 run command example:
 accelerate launch \
-    --config_file=$SCRATCH/ActiveUltraFeedback/activeuf/reward_model/multi_gpu.yaml -m activeuf.dpo.training \
-    --config_path $SCRATCH/ActiveUltraFeedback/activeuf/dpo/training.yaml \
+    --config_file=$SCRATCH/ActiveUltraFeedback/configs/accelerate/multi_node.yaml -m activeuf.dpo.training \
+    --config_path $SCRATCH/ActiveUltraFeedback/configs/dpo_training.yaml \
     --slurm_job_id $SLURM_JOB_ID \
     --dataset_path allenai/ultrafeedback_binarized_cleaned \
     --beta 0.1
     
 accelerate launch \
-    --config_file=$SCRATCH/ActiveUltraFeedback/activeuf/reward_model/multi_gpu.yaml -m activeuf.dpo.training \
-    --config_path $SCRATCH/ActiveUltraFeedback/activeuf/dpo/training.yaml \
+    --config_file=$SCRATCH/ActiveUltraFeedback/configs/accelerate/multi_node.yaml -m activeuf.dpo.training \
+    --config_path $SCRATCH/ActiveUltraFeedback/configs/dpo_training.yaml \
     --slurm_job_id $SLURM_JOB_ID \
     --dataset_path /iopsstor/scratch/cscs/dmelikidze/datasets/active/dts_qwen_rgl100.0_wdcb0.995_obs128_rbs12800_1008156 
 """
@@ -222,7 +221,7 @@ if __name__ == "__main__":
     # Load dataset
     try:
         dataset = load_dataset(dataset_path)
-    except Exception as e:
+    except Exception:
         try:
             dataset = load_from_disk(dataset_path)
         except Exception as e:
@@ -234,7 +233,7 @@ if __name__ == "__main__":
     for column in ["messages", "prompt"]:
         try:
             dataset = dataset.remove_columns(column)
-        except:
+        except Exception:
             print(f"Unable to remove {column=} from dataset")
 
     # limit dataset if in debug mode

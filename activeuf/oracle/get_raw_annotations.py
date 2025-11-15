@@ -1,17 +1,21 @@
-import re
 import argparse
 import json
 import os.path as path
 import numpy as np
+from tqdm import tqdm
 
 from datasets import Dataset, load_from_disk, load_dataset
-from vllm import SamplingParams, LLM
+from vllm import SamplingParams
 from transformers import AutoTokenizer
 
-from activeuf.configs import *
-from activeuf.schemas import *
-from activeuf.utils import *
-from activeuf.oracle.prompts import *
+from activeuf.utils import get_logger, set_seed, setup, load_model, get_response_texts
+from activeuf.oracle.prompts import (
+    PREFERENCE_ANNOTATION_SYSTEM_PROMPT,
+    HELPFULNESS_ANNOTATION_SYSTEM_PROMPT,
+    HONESTY_ANNOTATION_SYSTEM_PROMPT,
+    TRUTHFULNESS_ANNOTATION_SYSTEM_PROMPT,
+    INSTRUCTION_FOLLOWING_ANNOTATION_SYSTEM_PROMPT,
+)
 import os
 
 # these are not system prompts, these are user prompts.
@@ -84,13 +88,11 @@ def parse_args() -> argparse.Namespace:
         help="The Huggingface path or API of the model to use for completions (e.g. HuggingFaceTB/SmolLM2-135M-Instruct, gpt-4)",
     )
 
-    parser.add_argument(
-        "--seed", type=int, default=SEED, help="Seed for random sampling"
-    )
+    parser.add_argument("--seed", type=int, default=42, help="Seed for random sampling")
     parser.add_argument(
         "--max_num_gpus",
         type=int,
-        default=MAX_NUM_GPUS,
+        default=4,
         help="The maximum number of GPUs to use",
     )
     parser.add_argument(
@@ -102,24 +104,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model_class",
         type=str,
-        default=DEFAULT_MODEL_CLASS,
+        default="vllm",
         help="The class which is used to perform inference (e.g. transformers, pipeline, vllm)",
     )
 
     parser.add_argument(
         "--max_tokens",
         type=int,
-        default=ANNOTATION_MAX_TOKENS,
+        default=1024,
         help="The maximum number of tokens for LLM responses",
     )
     parser.add_argument(
         "--temperature",
         type=float,
-        default=ANNOTATION_TEMPERATURE,
+        default=1.0,
         help="The temperature for sampling",
     )
     parser.add_argument(
-        "--top_p", type=float, default=ANNOTATION_TOP_P, help="The top_p for sampling"
+        "--top_p", type=float, default=1.0, help="The top_p for sampling"
     )
 
     parser.add_argument(
@@ -188,6 +190,7 @@ def calculate_probabilities(raw_output, tokenizer, target_words):
 
     return word_probabilities
 
+
 def calculate_probabilities_openai(raw_output, target_words):
     """
     Calculates the probabilities of target words from OpenAI API outputs.
@@ -243,7 +246,7 @@ def load_dataset_my_way(dataset_path, output_path):
         )
         try:
             already_processed_dataset = load_from_disk(output_path)
-        except Exception as e:
+        except Exception:
             already_processed_dataset = Dataset.from_dict(
                 {k: [] for k in dataset.features}
             )
@@ -296,10 +299,9 @@ if __name__ == "__main__":
         model_name=args.model_name,
         model_class=args.model_class,
         max_num_gpus=4,
-        num_nodes=args.num_nodes
+        num_nodes=args.num_nodes,
     )
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
-
 
     sampling_params = SamplingParams(
         max_tokens=64,  # args.max_tokens,

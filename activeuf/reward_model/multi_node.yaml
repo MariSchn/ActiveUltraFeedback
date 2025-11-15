@@ -1,5 +1,0 @@
-# This config template is for a multi-node setup. This assumes DDP, but can be interop'd with the other configs in this folder
-# Generally it's recommended to look at the SLURM config template for a more robust multi-node setup
-distributed_type: MULTI_GPU
-# If the compute nodes are on the same network (cloud will more than likely be false)
-same_network: false
