@@ -69,7 +69,7 @@ if __name__ == "__main__":
     dataset = load_dataset(args.dataset_path, split=args.dataset_split)
 
     # Apply Prompt schema to dataset and export
-    logger.info(f"Processing dataset into prompts")
+    logger.info("Processing dataset into prompts")
     prompts = dataset.map(
         construct_prompt_from_sample, remove_columns=dataset.column_names
     )

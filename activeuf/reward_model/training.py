@@ -10,7 +10,6 @@ import pprint
 import math
 from accelerate import Accelerator
 from datetime import datetime
-from torch.optim.lr_scheduler import CosineAnnealingLR
 
 os.environ["WANDB_PROJECT"] = "RM-Training"
 
@@ -18,7 +17,7 @@ os.environ["WANDB_PROJECT"] = "RM-Training"
 def load_dataset_all(dataset_path):
     try:
         dataset = load_dataset(dataset_path)
-    except Exception as e:
+    except Exception:
         try:
             dataset = load_from_disk(dataset_path)
         except Exception as e:

@@ -2,7 +2,6 @@ from dataclasses import dataclass, field
 from typing import Literal, Union
 
 import torch
-import torch.nn as nn
 
 from trl import DPOConfig, DPOTrainer
 

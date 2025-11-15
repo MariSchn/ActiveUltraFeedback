@@ -13,8 +13,7 @@ from pprint import pprint
 
 from accelerate import Accelerator
 
-from activeuf.configs import *
-from activeuf.utils import *
+from activeuf.utils import set_seed, setup
 from activeuf.dpo.trainer import NormedDPOConfig, NormedDPOTrainer
 
 import wandb
@@ -222,7 +221,7 @@ if __name__ == "__main__":
     # Load dataset
     try:
         dataset = load_dataset(dataset_path)
-    except Exception as e:
+    except Exception:
         try:
             dataset = load_from_disk(dataset_path)
         except Exception as e:
@@ -234,7 +233,7 @@ if __name__ == "__main__":
     for column in ["messages", "prompt"]:
         try:
             dataset = dataset.remove_columns(column)
-        except:
+        except Exception:
             print(f"Unable to remove {column=} from dataset")
 
     # limit dataset if in debug mode

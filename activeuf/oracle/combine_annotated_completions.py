@@ -77,13 +77,13 @@ def combine_annotations(annotations_folder, completions_folder, output_folder):
 
             try:
                 annotations = datasets_annotation[j][i]["annotation"]
-            except Exception as e:
+            except Exception:
                 # print(f"Error accessing annotation for dataset {j}, index {i}: {e}")
                 annotations = []
 
             try:
                 overall_score = calculate_overall_score(annotations)
-            except Exception as e:
+            except Exception:
                 # print(f"Error calculatincg overall score for dataset {j}, index {i}: {e}")
                 overall_score = datasets_annotation[j][i]["completions"][0][
                     "overall_score"

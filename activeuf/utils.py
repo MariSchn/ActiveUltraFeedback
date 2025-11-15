@@ -29,9 +29,12 @@ from transformers import (
     PreTrainedModel,
 )
 
-from activeuf.configs import *
-from activeuf.schemas import *
-from activeuf.completions.prompts import *
+from activeuf.completions.prompts import (
+    HELPFULNESS_COMPLETION_SYSTEM_PROMPTS,
+    HONESTY_COMPLETION_SYSTEM_PROMPTS,
+    TRUTHFULNESS_COMPLETION_SYSTEM_PROMPTS,
+    VERBALIZED_CALIBRATION_COMPLETION_SYSTEM_PROMPTS,
+)
 
 PROMPT_SOURCE2PRINCIPLES = {
     "truthful_qa": ["honesty", "truthfulness"],
@@ -380,11 +383,11 @@ def load_model(
 
     # Check tokenizer and set padding token if needed
     if tokenizer is not None:
-        if not "mistral" in model_name.lower() and tokenizer.chat_template is None:
+        if "mistral" not in model_name.lower() and tokenizer.chat_template is None:
             raise ValueError(
                 "Tokenizer does not have a chat template. Please use a model that supports chat templates."
             )
-        if not "mistral" in model_name.lower() and tokenizer.pad_token is None:
+        if "mistral" not in model_name.lower() and tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
 
             if isinstance(model, PreTrainedModel):

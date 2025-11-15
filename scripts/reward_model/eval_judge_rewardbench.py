@@ -27,19 +27,21 @@ import json
 import os
 import numpy as np
 import pandas as pd
-from typing import Dict
+from typing import Dict, List, Tuple
 from collections import defaultdict
 
-
-import torch
 from vllm import SamplingParams, LLM
-from datasets import Dataset, load_from_disk, load_dataset
+from datasets import Dataset, load_dataset
 from transformers import AutoTokenizer
 
-from activeuf.configs import *
-from activeuf.schemas import *
-from activeuf.utils import *
-from activeuf.oracle.prompts import *
+from activeuf.utils import set_seed, get_logger, setup, get_response_texts, load_model
+from activeuf.oracle.prompts import (
+    PREFERENCE_ANNOTATION_SYSTEM_PROMPT,
+    INSTRUCTION_FOLLOWING_ANNOTATION_SYSTEM_PROMPT,
+    HONESTY_ANNOTATION_SYSTEM_PROMPT,
+    TRUTHFULNESS_ANNOTATION_SYSTEM_PROMPT,
+    HELPFULNESS_ANNOTATION_SYSTEM_PROMPT,
+)
 
 ASPECT2ANNOTATION_PROMPT = {
     "instruction_following": INSTRUCTION_FOLLOWING_ANNOTATION_SYSTEM_PROMPT,
@@ -61,7 +63,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=42, help="Seed for random sampling")
 
     parser.add_argument("--model_class", type=str, default="vllm", help="The class which is used to perform inference (e.g. transformers, pipeline, vllm)")
-    parser.add_argument("--max_tokens", type=int, default=ANNOTATION_MAX_TOKENS, help="The maximum number of tokens for LLM responses")
+    parser.add_argument("--max_tokens", type=int, default=1024, help="The maximum number of tokens for LLM responses")
     parser.add_argument("--max_num_gpus", type=int, default=4, help="The maximum number of GPUs to use")
     parser.add_argument("--num_nodes", type=int, default=1, help="The number of nodes to use")
     parser.add_argument("--temperature", type=float, default=1.0, help="The temperature for sampling")

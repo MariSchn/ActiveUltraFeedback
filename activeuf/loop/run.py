@@ -40,7 +40,7 @@ if __name__ == "__main__":
         acquisition_function_args = asdict(
             getattr(args.acquisition_function, args.acquisition_function_type)
         )
-    except:
+    except Exception:
         acquisition_function_args = {}
     if hasattr(args, args.reward_model_type):
         reward_args = getattr(args, args.reward_model_type)
@@ -101,7 +101,7 @@ if __name__ == "__main__":
     expected_output_size = len(dataset)
     replay_buffer = deque(maxlen=args.outer_loop_batch_size * args.replay_buffer_factor)
 
-    logger.info(f"Starting dataset generation loop")
+    logger.info("Starting dataset generation loop")
     outer_dataloader = DataLoader(
         dataset,
         batch_size=args.outer_loop_batch_size,

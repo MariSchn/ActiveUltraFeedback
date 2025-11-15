@@ -87,7 +87,7 @@ if __name__ == "__main__":
     end = min(start + per_proc, n)
     _dataset = dataset.select(range(start, end))
 
-    print(f"Pretokenizing everything")
+    print("Pretokenizing everything")
     _flattened_inputs = []
     for x in tqdm(_dataset, disable=not accelerator.is_main_process):
         messages = [

@@ -1,5 +1,5 @@
 from argparse import ArgumentParser
-from datasets import Dataset, load_from_disk
+from datasets import load_from_disk
 import glob
 import os
 import torch

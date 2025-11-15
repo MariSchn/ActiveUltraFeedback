@@ -1,15 +1,22 @@
 import argparse
 import json
+import os
 import os.path as path
 
 import torch
 import vllm
 from datasets import load_from_disk
-from transformers import pipeline
 
-from activeuf.schemas import Completion, PromptWithCompletions
-from activeuf.configs import *
-from activeuf.utils import *
+from activeuf.schemas import Completion, PromptWithCompletions, Message
+from activeuf.utils import (
+    load_model,
+    get_logger,
+    set_seed,
+    setup,
+    get_response_texts,
+    sample_principle,
+    sample_system_prompt,
+)
 
 logger = get_logger(__name__)
 

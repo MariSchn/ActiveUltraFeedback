@@ -1,5 +1,5 @@
 import argparse
-from dataclasses import dataclass, field, asdict, is_dataclass
+from dataclasses import dataclass, field
 import os.path as path
 from transformers import HfArgumentParser
 import yaml

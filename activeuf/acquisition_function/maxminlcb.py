@@ -1,4 +1,3 @@
-import numpy as np
 import torch
 
 from activeuf.acquisition_function.base import BaseAcquisitionFunction

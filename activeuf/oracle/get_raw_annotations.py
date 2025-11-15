@@ -1,17 +1,21 @@
-import re
 import argparse
 import json
 import os.path as path
 import numpy as np
+from tqdm import tqdm
 
 from datasets import Dataset, load_from_disk, load_dataset
-from vllm import SamplingParams, LLM
+from vllm import SamplingParams
 from transformers import AutoTokenizer
 
-from activeuf.configs import *
-from activeuf.schemas import *
-from activeuf.utils import *
-from activeuf.oracle.prompts import *
+from activeuf.utils import get_logger, set_seed, setup, load_model, get_response_texts
+from activeuf.oracle.prompts import (
+    PREFERENCE_ANNOTATION_SYSTEM_PROMPT,
+    HELPFULNESS_ANNOTATION_SYSTEM_PROMPT,
+    HONESTY_ANNOTATION_SYSTEM_PROMPT,
+    TRUTHFULNESS_ANNOTATION_SYSTEM_PROMPT,
+    INSTRUCTION_FOLLOWING_ANNOTATION_SYSTEM_PROMPT,
+)
 import os
 
 # these are not system prompts, these are user prompts.
@@ -242,7 +246,7 @@ def load_dataset_my_way(dataset_path, output_path):
         )
         try:
             already_processed_dataset = load_from_disk(output_path)
-        except Exception as e:
+        except Exception:
             already_processed_dataset = Dataset.from_dict(
                 {k: [] for k in dataset.features}
             )

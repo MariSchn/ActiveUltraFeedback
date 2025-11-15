@@ -3,7 +3,7 @@ import os
 import random
 import json
 
-from datasets import load_from_disk, Dataset
+from datasets import load_from_disk
 
 from activeuf.utils import set_seed, get_logger
 from activeuf.configs import SEED

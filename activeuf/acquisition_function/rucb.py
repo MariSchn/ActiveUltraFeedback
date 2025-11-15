@@ -50,7 +50,6 @@ class RelativeUpperConfidenceBound(BaseAcquisitionFunction):
             s = std_deviation[p].cpu().numpy()
 
             posterior_mean, posterior_std = r, s
-            n = posterior_mean.shape[0]
 
             ucb = posterior_mean + self.beta * posterior_std  # shape (n,)
             candidate_mask = ucb > (

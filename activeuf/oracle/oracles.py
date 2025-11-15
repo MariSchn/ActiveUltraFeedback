@@ -147,8 +147,8 @@ class UltraFeedbackOracle(BaseOracle):
             score = int(match.group())
             score = max(0, min(score, 10))
             return score
-        except:
-            print(f"Could not parse score from {score_str}")
+        except Exception as e:
+            print(f"Could not parse score from {score_str}: {e}")
             return 0
 
     def __call__(

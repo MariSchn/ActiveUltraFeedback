@@ -3,7 +3,6 @@ import argparse
 import yaml
 import os
 import time
-import sys
 from collections import deque
 import math
 
@@ -14,11 +13,9 @@ from dataclasses import dataclass, field
 from typing import Optional
 from transformers import HfArgumentParser, TrainerCallback
 from accelerate import Accelerator
-from accelerate.utils import gather_object, broadcast_object_list
+from accelerate.utils import gather_object
 import wandb
-import logging
 import random
-import copy
 import hashlib
 
 from tqdm import tqdm
@@ -35,7 +32,7 @@ from rewarduq.models.reward_head_ensemble import (
 
 from activeuf.acquisition_function import *
 from activeuf.oracle.oracles import init_oracle
-from activeuf.utils import get_logger, setup, set_seed, get_timestamp
+from activeuf.utils import get_logger, set_seed
 from activeuf.configs import *
 from activeuf.schemas import *
 
@@ -590,7 +587,7 @@ if __name__ == "__main__":
     oracle = init_oracle(args.oracle_name)
     logger.info("oracle class: %s", oracle.__class__.__name__)
 
-    logger.info(f"Creating UQ model")
+    logger.info("Creating UQ model")
     # if args.acquisition_function_type in ["dts", "infomax", "maxminlcb", "infogain"]:
     if accelerator.is_main_process:
         uq_pipeline = ENNRewardModelPipeline(
@@ -807,7 +804,7 @@ if __name__ == "__main__":
                     f"Dataset path {feature_dataset_path} already exists. Not overwriting."
                 )
 
-    logger.info(f"Starting data generation loop")
+    logger.info("Starting data generation loop")
     replay_buffer = deque(maxlen=args.replay_buffer_size)
 
     total_processes = accelerator.num_processes

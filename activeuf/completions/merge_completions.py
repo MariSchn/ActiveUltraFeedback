@@ -6,8 +6,7 @@ import os.path as path
 from datasets import load_from_disk
 
 from activeuf.schemas import PromptWithCompletions
-from activeuf.configs import *
-from activeuf.utils import *
+from activeuf.utils import get_logger
 
 logger = get_logger(__name__)
 
