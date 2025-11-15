@@ -14,13 +14,17 @@ from rewarduq.models.reward_head_ensemble import (
 
 from activeuf.loop.arguments import ENNConfig
 
+
 def main_process_only(f, accelerator):
     """Decorator to ensure the wrapped logging function runs only on the main process."""
+
     def wrapper(*args, **kwargs):
         if accelerator.is_main_process:
             return f(*args, **kwargs)
         return None
+
     return wrapper
+
 
 def custom_collate(batch):
     out = {}
@@ -70,10 +74,12 @@ def compute_acquisition_function_KPIs(rewards, chosen_idxs, rejected_idxs):
         "rejected_uncertainty_per_sample": rejected_rewards[:, 1].tolist(),
     }
     return kpis
-    
+
+
 WANDB_LOGS_CACHE = []
 TRAINER_LOGS_CACHE = []
 MAX_TRAINER_LOGS_CACHE_SIZE = None
+
 
 class WandbStepLoggerCallback(TrainerCallback):
     def __init__(self, accelerator):
@@ -81,18 +87,18 @@ class WandbStepLoggerCallback(TrainerCallback):
 
     def on_log(self, args, state, control, logs=None, **kwargs):
         """
-        Custom callback for wandb logging with caches. This callback 
-        waits until the trainer's log cache hits the specified maximum size. 
-        Then, it aggregates the cached trainer logs (by taking mean), 
+        Custom callback for wandb logging with caches. This callback
+        waits until the trainer's log cache hits the specified maximum size.
+        Then, it aggregates the cached trainer logs (by taking mean),
         and lets the aggregated logs "piggyback" with the final log in
-        the wandb cache. It ignores logs made at the end of each epoch, 
+        the wandb cache. It ignores logs made at the end of each epoch,
         by checking for the key 'train_runtime'.
         """
         global WANDB_LOGS_CACHE, TRAINER_LOGS_CACHE
 
         if self.accelerator.is_main_process and logs and "train_runtime" not in logs:
             TRAINER_LOGS_CACHE.append(logs)
-            
+
             if len(TRAINER_LOGS_CACHE) == MAX_TRAINER_LOGS_CACHE_SIZE:
                 # aggregate trainer logs by taking mean
                 mean_trainer_logs = {}
@@ -170,7 +176,9 @@ def init_model_trainer(
     return model, trainer
 
 
-def compute_rewards_with_uncertainty_bounds(samples, model, inference_batch_size) -> torch.tensor:
+def compute_rewards_with_uncertainty_bounds(
+    samples, model, inference_batch_size
+) -> torch.tensor:
     n_samples = len(samples)
     n_completions_per_sample = len(samples[0]["completions"])
 
@@ -248,9 +256,7 @@ def compute_kpis(rewards, acquired_idxs) -> list[dict]:
             "mean_rewards_per_sample": mean_rewards_per_sample[i].item(),
             "mean_uncertainty_per_sample": mean_uncertainty_per_sample[i].item(),
             "chosen_rewards_per_sample": _rewards[index, _chosen_idxs][i].item(),
-            "rejected_rewards_per_sample": _rewards[index, _rejected_idxs][
-                i
-            ].item(),
+            "rejected_rewards_per_sample": _rewards[index, _rejected_idxs][i].item(),
             "chosen_uncertainty_per_sample": _uncertainty[index, _chosen_idxs][
                 i
             ].item(),
@@ -258,7 +264,9 @@ def compute_kpis(rewards, acquired_idxs) -> list[dict]:
                 i
             ].item(),
         }
-        kpi["reward_differences_per_sample"] = kpi["chosen_rewards_per_sample"] - kpi["rejected_rewards_per_sample"]
+        kpi["reward_differences_per_sample"] = (
+            kpi["chosen_rewards_per_sample"] - kpi["rejected_rewards_per_sample"]
+        )
         kpis.append(kpi)
     return kpis
 

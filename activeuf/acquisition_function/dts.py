@@ -33,8 +33,7 @@ class DoubleThompsonSampling(BaseAcquisitionFunction):
         selected_ids_batch = []
         for i in range(len(rewards)):
             # step 1 - selecting first response
-            response_1 = self.dts_optimize(
-                rewards[i], std_deviation[i])
+            response_1 = self.dts_optimize(rewards[i], std_deviation[i])
 
             # step 2 - selecting second response
             response_2 = response_1
@@ -43,8 +42,7 @@ class DoubleThompsonSampling(BaseAcquisitionFunction):
                 if iterations == self.max_iterations:
                     response_2 = np.random.randint(0, len(rewards[i]))
                 else:
-                    response_2 = self.dts_optimize(
-                        rewards[i], std_deviation[i])
+                    response_2 = self.dts_optimize(rewards[i], std_deviation[i])
                     iterations += 1
 
             selected_ids_batch.append((response_1, response_2))
@@ -56,7 +54,8 @@ class DoubleThompsonSampling(BaseAcquisitionFunction):
         for j in range(len(reward_list)):
             z = np.random.uniform(-1, 1)
 
-            r_x_y_epistemic_index = reward_list[j] + \
-                self.beta * z * std_deviation_list[j]
+            r_x_y_epistemic_index = (
+                reward_list[j] + self.beta * z * std_deviation_list[j]
+            )
             r_epistemic_index.append(r_x_y_epistemic_index)
         return np.argmax([idx.cpu() for idx in r_epistemic_index])

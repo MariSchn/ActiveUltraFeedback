@@ -5,10 +5,12 @@ from peft import PeftModel
 from tqdm import tqdm
 
 parser = argparse.ArgumentParser(description="Process checkpoints directory.")
-parser.add_argument("--checkpoints_dir", type=str,
-                    required=True, help="Path to checkpoints directory")
-parser.add_argument("--output_txt", type=str,
-                    required=True, help="Path to output text file")
+parser.add_argument(
+    "--checkpoints_dir", type=str, required=True, help="Path to checkpoints directory"
+)
+parser.add_argument(
+    "--output_txt", type=str, required=True, help="Path to output text file"
+)
 args = parser.parse_args()
 
 base_model_name = "allenai/Llama-3.1-Tulu-3-8B-SFT"
@@ -34,7 +36,9 @@ for folder in tqdm(os.listdir(checkpoints_dir)):
     adapter_config_path = os.path.join(checkpoint_path, "adapter_config.json")
     tokenizer = AutoTokenizer.from_pretrained(base_model_name)
     if tokenizer.pad_token is None:
-        print("No pad_token present. Assigning tokenizer.pad_token = tokenizer.eos_token")
+        print(
+            "No pad_token present. Assigning tokenizer.pad_token = tokenizer.eos_token"
+        )
         tokenizer.pad_token = tokenizer.eos_token
 
     if os.path.exists(adapter_config_path):

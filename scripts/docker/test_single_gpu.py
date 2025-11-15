@@ -18,7 +18,9 @@ if __name__ == "__main__":
     print(f"str(torch.__version__)>=2.6: {torch.__version__ >= '2.6'}")
     print(f"str(torch.__version__)>=2.6.0: {torch.__version__ >= '2.6.0'}")
 
-    model = LLM(model="meta-llama/Llama-3.2-3B", enforce_eager=True)  # This will disable torch.compile)
+    model = LLM(
+        model="meta-llama/Llama-3.2-3B", enforce_eager=True
+    )  # This will disable torch.compile)
 
     prompt = "What is the capital of France?"
 

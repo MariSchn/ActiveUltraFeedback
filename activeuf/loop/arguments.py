@@ -144,6 +144,7 @@ class ENNConfig:
         metadata={"help": "Maximum number of training steps per outer batch added."}
     )
 
+
 @dataclass
 class LoopConfig:
     # dataset-related configs
@@ -159,7 +160,16 @@ class LoopConfig:
     acquisition_function_type: str = field(
         metadata={
             "help": "Acquisition function type",
-            "choices": ["random", "ultrafeedback", "dts", "ids", "rucb", "maxminlcb", "infogain", "infomax"],
+            "choices": [
+                "random",
+                "ultrafeedback",
+                "dts",
+                "ids",
+                "rucb",
+                "maxminlcb",
+                "infogain",
+                "infomax",
+            ],
         }
     )
     reward_model_type: str = field(
@@ -211,7 +221,8 @@ def extract_annotator_name(dataset_path: str) -> str:
     for key in ["llama", "qwen"]:
         if key in path.basename(dataset_path):
             return key
-        
+
+
 def recursive_update(base_dict, new_dict):
     """
     Recursively update a dictionary, handling nested dictionaries and dot-notation keys.
@@ -231,8 +242,9 @@ def recursive_update(base_dict, new_dict):
             leaf_dict[keys[-1]] = value
         else:
             base_dict[key] = value
-            
+
     return base_dict
+
 
 def parse_overwrites(remaining_args) -> dict:
     overwrite_dict = {}
@@ -245,14 +257,17 @@ def parse_overwrites(remaining_args) -> dict:
         key_value_pair = arg.split("=", 1)
         if len(key_value_pair) != 2:
             raise ValueError(f"Invalid argument format: {arg}")
-        
+
         key, value = key_value_pair
         value = yaml.safe_load(value)
 
         overwrite_dict[key] = value
 
         # Special case certain keys as they involve variables in the config
-        if key in ["enn.regularization.initial_value", "enn.trainer.regularization_towards_initial_weights"]:
+        if key in [
+            "enn.regularization.initial_value",
+            "enn.trainer.regularization_towards_initial_weights",
+        ]:
             overwrite_dict["enn.regularization.initial_value"] = value
             overwrite_dict["enn.trainer.regularization_towards_initial_weights"] = value
         elif key in ["enn.max_steps", "enn.trainer.max_length"]:
@@ -260,6 +275,7 @@ def parse_overwrites(remaining_args) -> dict:
             overwrite_dict["enn.trainer.max_length"] = value
 
     return overwrite_dict
+
 
 def get_loop_args(timestamp) -> argparse.Namespace:
     cli_parser = argparse.ArgumentParser()
@@ -274,30 +290,40 @@ def get_loop_args(timestamp) -> argparse.Namespace:
     if remaining_args:
         sweep_dict = parse_overwrites(remaining_args)
         config_dict = recursive_update(config_dict, sweep_dict)
-        
+
     # define timestamp, then use it to create a run id
-    config_dict['timestamp'] = timestamp
-    config_dict['run_id'] = "_".join(
+    config_dict["timestamp"] = timestamp
+    config_dict["run_id"] = "_".join(
         [
-            config_dict['acquisition_function_type'],
-            config_dict['reward_model_type'],
-            extract_annotator_name(config_dict['inputs_path']),
-            config_dict['oracle_name'],
-            config_dict['timestamp'],
+            config_dict["acquisition_function_type"],
+            config_dict["reward_model_type"],
+            extract_annotator_name(config_dict["inputs_path"]),
+            config_dict["oracle_name"],
+            config_dict["timestamp"],
         ]
     )
 
     # setup paths
-    config_dict['output_path'] = path.join(config_dict["base_output_dir"], config_dict['run_id'])
-    config_dict['args_path'] = path.join(config_dict["base_logs_dir"], f"{config_dict['run_id']}.args")
-    config_dict['logs_path'] = path.join(config_dict["base_logs_dir"], f"{config_dict['run_id']}.log")
-    if config_dict['reward_model_type'] != "none":
-        config_dict['wandb_project'] = config_dict["base_wandb_project"]
-        config_dict['wandb_dir'] = path.join(config_dict["base_wandb_dir"], config_dict['run_id'])
+    config_dict["output_path"] = path.join(
+        config_dict["base_output_dir"], config_dict["run_id"]
+    )
+    config_dict["args_path"] = path.join(
+        config_dict["base_logs_dir"], f"{config_dict['run_id']}.args"
+    )
+    config_dict["logs_path"] = path.join(
+        config_dict["base_logs_dir"], f"{config_dict['run_id']}.log"
+    )
+    if config_dict["reward_model_type"] != "none":
+        config_dict["wandb_project"] = config_dict["base_wandb_project"]
+        config_dict["wandb_dir"] = path.join(
+            config_dict["base_wandb_dir"], config_dict["run_id"]
+        )
 
-        trainer_args = config_dict[config_dict['reward_model_type']]["trainer"]
+        trainer_args = config_dict[config_dict["reward_model_type"]]["trainer"]
         if not trainer_args.get("output_dir"):
-            trainer_args["output_dir"] = f"{config_dict['base_trainer_dir']}/{config_dict['run_id']}"
+            trainer_args["output_dir"] = (
+                f"{config_dict['base_trainer_dir']}/{config_dict['run_id']}"
+            )
 
     parser = HfArgumentParser(LoopConfig)
     args = parser.parse_dict(config_dict, allow_extra_keys=True)[0]

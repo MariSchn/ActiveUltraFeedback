@@ -6,11 +6,12 @@ from collections import defaultdict
 import numpy as np
 
 # Directory containing your metric JSON files
-results_dir = "/iopsstor/scratch/cscs/dmelikidze/models/reward_models/results/reward_models"
+results_dir = (
+    "/iopsstor/scratch/cscs/dmelikidze/models/reward_models/results/reward_models"
+)
 
 # Metrics to plot
-metrics = ["Factuality", "Focus", "Math",
-           "Precise IF", "Safety", "Ties", "score"]
+metrics = ["Factuality", "Focus", "Math", "Precise IF", "Safety", "Ties", "score"]
 
 # Collect metrics per step
 metrics_by_step = defaultdict(lambda: defaultdict(list))
@@ -52,8 +53,7 @@ for metric in metrics:
     plt.plot(steps, values, marker="o", linestyle="-", label=metric)
     plt.xlabel("Training Step", fontsize=14)
     plt.ylabel(metric, fontsize=14)
-    plt.title(
-        f"{metric} over Steps scheduler=constant", fontsize=16)
+    plt.title(f"{metric} over Steps scheduler=constant", fontsize=16)
     plt.grid(True, linestyle="--", alpha=0.6)
     plt.legend(fontsize=12)
 
@@ -63,12 +63,28 @@ for metric in metrics:
     y_top = max(values)
 
     plt.axvline(mid_step, color="red", linestyle="--", alpha=0.8)
-    plt.text(mid_step - max_step * 0.005, y_top, "Epoch 1", color="red", fontsize=12,
-             ha="right", va="bottom", rotation=0)
+    plt.text(
+        mid_step - max_step * 0.005,
+        y_top,
+        "Epoch 1",
+        color="red",
+        fontsize=12,
+        ha="right",
+        va="bottom",
+        rotation=0,
+    )
 
     plt.axvline(max_step, color="blue", linestyle="--", alpha=0.8)
-    plt.text(max_step - max_step * 0.005, y_top, "Epoch 2", color="blue", fontsize=12,
-             ha="right", va="bottom", rotation=0)
+    plt.text(
+        max_step - max_step * 0.005,
+        y_top,
+        "Epoch 2",
+        color="blue",
+        fontsize=12,
+        ha="right",
+        va="bottom",
+        rotation=0,
+    )
 
     # Save to file
     out_path = os.path.join(output_dir, f"{metric.replace(' ', '_')}.png")

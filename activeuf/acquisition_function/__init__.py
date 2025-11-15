@@ -29,6 +29,7 @@ _acquisition_function_map = {
     "rucb": RelativeUpperConfidenceBound,
 }
 
+
 def init_acquisition_function(key: str, *args, **kwargs):
     if key in _acquisition_function_map:
         return _acquisition_function_map[key](*args, **kwargs)

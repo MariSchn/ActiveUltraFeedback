@@ -20,24 +20,33 @@ def combine_annotations(annotations_folder, completions_folder, output_folder):
     foldernames = []
     for foldername in tqdm(sorted(os.listdir(annotations_folder))):
         dataset = load_from_disk(os.path.join(annotations_folder, foldername))
-        print(f"Loaded annotation dataset from {foldername} with {len(dataset)} entries")
+        print(
+            f"Loaded annotation dataset from {foldername} with {len(dataset)} entries"
+        )
         datasets_annotation.append(dataset)
         foldernames.append(foldername)
 
     for i, foldername in enumerate(tqdm(sorted(os.listdir(completions_folder)))):
-        assert foldername == foldernames[i], f"Folder ordering does not match got {foldername} expected {foldernames[i]}"
+        assert foldername == foldernames[i], (
+            f"Folder ordering does not match got {foldername} expected {foldernames[i]}"
+        )
         dataset = load_from_disk(os.path.join(completions_folder, foldername))
         datasets_completion.append(dataset)
 
     completions_len = len(datasets_completion[0])
     for foldername, dataset in zip(foldernames, datasets_annotation):
         if len(dataset) == completions_len:
-            print(f"\033[92mLoaded annotation dataset from {foldername} with {len(dataset)} entries\033[0m")
+            print(
+                f"\033[92mLoaded annotation dataset from {foldername} with {len(dataset)} entries\033[0m"
+            )
         else:
-            print(f"\033[91mLoaded annotation dataset from {foldername} with {len(dataset)} entries (expected {completions_len})\033[0m")
+            print(
+                f"\033[91mLoaded annotation dataset from {foldername} with {len(dataset)} entries (expected {completions_len})\033[0m"
+            )
 
-    assert len(datasets_annotation) == len(
-        datasets_completion), "Number of annotation datasets must match number of completion datasets"
+    assert len(datasets_annotation) == len(datasets_completion), (
+        "Number of annotation datasets must match number of completion datasets"
+    )
 
     combined_dataset = []
     for i in tqdm(range(len(datasets_annotation[0]))):
@@ -45,45 +54,53 @@ def combine_annotations(annotations_folder, completions_folder, output_folder):
             "prompt": datasets_completion[0][i]["prompt"],
             "prompt_id": datasets_completion[0][i]["prompt_id"],
             "source": datasets_completion[0][i]["source"],
-            "completions": []
+            "completions": [],
         }
 
         for j in range(len(datasets_annotation)):
             dataset = datasets_completion[j]
 
             if j < len(datasets_annotation) - 1:
-                assert dataset[i]["prompt_id"] == datasets_completion[j +
-                                                                      1][i]["prompt_id"], "Prompt ID ordering does not match across datasets"
+                assert (
+                    dataset[i]["prompt_id"]
+                    == datasets_completion[j + 1][i]["prompt_id"]
+                ), "Prompt ID ordering does not match across datasets"
 
-            assert datasets_annotation[j][i]["prompt_id"] == dataset[i][
-                "prompt_id"], "Prompt ID ordering does not match across annotation and completion datasets"
+            assert datasets_annotation[j][i]["prompt_id"] == dataset[i]["prompt_id"], (
+                "Prompt ID ordering does not match across annotation and completion datasets"
+            )
 
             completion = dataset[i]["completions"][0]
-            assert len(dataset[i]["completions"]
-                       ) == 1, "Expected exactly one completion per prompt"
+            assert len(dataset[i]["completions"]) == 1, (
+                "Expected exactly one completion per prompt"
+            )
 
-            try: 
+            try:
                 annotations = datasets_annotation[j][i]["annotation"]
             except Exception as e:
                 # print(f"Error accessing annotation for dataset {j}, index {i}: {e}")
                 annotations = []
-            
+
             try:
                 overall_score = calculate_overall_score(annotations)
             except Exception as e:
                 # print(f"Error calculatincg overall score for dataset {j}, index {i}: {e}")
-                overall_score = datasets_annotation[j][i]["completions"][0]["overall_score"]
-            
-            new_row["completions"].append({
-                "annotations": annotations,
-                "critique": "",  # not required for our purposes
-                "messages": completion["messages"],
-                "model": completion["model"],
-                "overall_score": overall_score,
-                "principle": completion["principle"],
-                "response_text": completion["response_text"],
-                "system_prompt": completion["system_prompt"],
-            })
+                overall_score = datasets_annotation[j][i]["completions"][0][
+                    "overall_score"
+                ]
+
+            new_row["completions"].append(
+                {
+                    "annotations": annotations,
+                    "critique": "",  # not required for our purposes
+                    "messages": completion["messages"],
+                    "model": completion["model"],
+                    "overall_score": overall_score,
+                    "principle": completion["principle"],
+                    "response_text": completion["response_text"],
+                    "system_prompt": completion["system_prompt"],
+                }
+            )
         combined_dataset.append(new_row)
 
     combined_dataset = Dataset.from_list(combined_dataset)
@@ -101,10 +118,27 @@ def combine_annotations(annotations_folder, completions_folder, output_folder):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Combine annotated completions datasets.")
-    parser.add_argument("--annotations_folder", type=str, required=True, help="Path to the folder containing annotation datasets.")
-    parser.add_argument("--completions_folder", type=str, required=True, help="Path to the folder containing completion datasets.")
-    parser.add_argument("--output_folder", type=str, required=True, help="Path to save the combined dataset.")
+    parser = argparse.ArgumentParser(
+        description="Combine annotated completions datasets."
+    )
+    parser.add_argument(
+        "--annotations_folder",
+        type=str,
+        required=True,
+        help="Path to the folder containing annotation datasets.",
+    )
+    parser.add_argument(
+        "--completions_folder",
+        type=str,
+        required=True,
+        help="Path to the folder containing completion datasets.",
+    )
+    parser.add_argument(
+        "--output_folder",
+        type=str,
+        required=True,
+        help="Path to save the combined dataset.",
+    )
 
     args = parser.parse_args()
     annotations_folder = args.annotations_folder
@@ -112,7 +146,8 @@ def main():
     output_folder = args.output_folder
 
     combined_dataset = combine_annotations(
-        annotations_folder, completions_folder, output_folder)
+        annotations_folder, completions_folder, output_folder
+    )
     print(combined_dataset)
     print(combined_dataset.features)
 

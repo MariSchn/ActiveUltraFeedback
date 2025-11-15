@@ -5,8 +5,13 @@ from activeuf.acquisition_function.base import BaseAcquisitionFunction
 
 
 class RelativeUpperConfidenceBound(BaseAcquisitionFunction):
-    def __init__(self, max_iterations: int = 10, beta: float = 1.0, argmax_tol: float = 1e-4, 
-                 decision_buffer: float = 0.0):
+    def __init__(
+        self,
+        max_iterations: int = 10,
+        beta: float = 1.0,
+        argmax_tol: float = 1e-4,
+        decision_buffer: float = 0.0,
+    ):
         super().__init__()
         self.max_iterations = max_iterations
         self.beta = beta
@@ -15,7 +20,7 @@ class RelativeUpperConfidenceBound(BaseAcquisitionFunction):
         self.decision_buffer = decision_buffer
 
     def __call__(
-        self, 
+        self,
         rewards: torch.Tensor,
         lower_bounds: torch.Tensor,
         upper_bounds: torch.Tensor,
@@ -31,7 +36,7 @@ class RelativeUpperConfidenceBound(BaseAcquisitionFunction):
             upper_bounds: tensor of shape (n_prompts, n_completions_per_prompt)
                 containing the upper bound / standard deviation of the reward for each completions
 
-                
+
         Returns:
             list of [i, j] per prompt where i is preferred, j is compared
         """
@@ -39,7 +44,7 @@ class RelativeUpperConfidenceBound(BaseAcquisitionFunction):
         n_prompts = rewards.shape[0]
 
         std_deviation = (upper_bounds - lower_bounds) / 2
-        
+
         for p in range(n_prompts):
             r = rewards[p].cpu().numpy()
             s = std_deviation[p].cpu().numpy()
@@ -47,8 +52,10 @@ class RelativeUpperConfidenceBound(BaseAcquisitionFunction):
             posterior_mean, posterior_std = r, s
             n = posterior_mean.shape[0]
 
-            ucb = posterior_mean + self.beta * posterior_std          # shape (n,)
-            candidate_mask = ucb > (0.5 - self.decision_buffer)       # simplify: it's a 1D condition
+            ucb = posterior_mean + self.beta * posterior_std  # shape (n,)
+            candidate_mask = ucb > (
+                0.5 - self.decision_buffer
+            )  # simplify: it's a 1D condition
 
             if np.sum(candidate_mask) == 1:
                 idx = int(np.argmax(candidate_mask))
@@ -66,8 +73,11 @@ class RelativeUpperConfidenceBound(BaseAcquisitionFunction):
             approx_max_mask = np.abs(ucb_j - max_ucb) < self.argmax_tol
             approx_max_indices = np.flatnonzero(approx_max_mask)
 
-            next_i = int(self.rng.choice(approx_max_indices)) if len(approx_max_indices) else int(np.argmax(ucb_j))
+            next_i = (
+                int(self.rng.choice(approx_max_indices))
+                if len(approx_max_indices)
+                else int(np.argmax(ucb_j))
+            )
             selected_pairs.append([next_i, next_j])
-
 
         return selected_pairs

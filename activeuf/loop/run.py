@@ -15,12 +15,17 @@ from activeuf.acquisition_function import init_acquisition_function
 from activeuf.loop.arguments import get_loop_args
 from activeuf.loop import utils as loop_utils
 from activeuf.oracle.oracles import init_oracle
-from activeuf.utils import get_logger, get_timestamp, set_seed, convert_dataclass_instance_to_yaml_str
+from activeuf.utils import (
+    get_logger,
+    get_timestamp,
+    set_seed,
+    convert_dataclass_instance_to_yaml_str,
+)
 
 # RUN
 # accelerate launch --config_file=configs/accelerate/single_node.yaml -m activeuf.loop.run --config_path configs/loop.yaml
 
-if __name__ == "__main__":    
+if __name__ == "__main__":
     accelerator = Accelerator()
     n_processes = accelerator.num_processes
 
@@ -127,8 +132,10 @@ if __name__ == "__main__":
             samples_local = loop_utils.custom_decollate(collated_minibatch)
 
             start = time.time()
-            rewards_with_uncertainty_bounds_local = loop_utils.compute_rewards_with_uncertainty_bounds(
-                samples_local, model, reward_args.inference_batch_size
+            rewards_with_uncertainty_bounds_local = (
+                loop_utils.compute_rewards_with_uncertainty_bounds(
+                    samples_local, model, reward_args.inference_batch_size
+                )
             )
             logger.info(f"- Reward computation took {time.time() - start:.2f}s")
 
@@ -169,11 +176,11 @@ if __name__ == "__main__":
                     key2 = key.replace("per_sample", "per_batch")
                     if not key2.startswith("mean_"):
                         key2 = f"mean_{key2}"
-                    kpi[key2] = sum(kpi2[key] for kpi2 in kpis_batch) / len(
-                        kpis_batch
-                    )
+                    kpi[key2] = sum(kpi2[key] for kpi2 in kpis_batch) / len(kpis_batch)
 
-        logger.info(f"- Number of samples annotated in this batch: {len(annotated_batch)}")
+        logger.info(
+            f"- Number of samples annotated in this batch: {len(annotated_batch)}"
+        )
         if accelerator.is_main_process:
             # remove features from being saved to disk
             output += [
@@ -204,23 +211,28 @@ if __name__ == "__main__":
         )
         # features are precomputed, so input_ids and attention_mask are not needed and we can just feed a dummy tensor to make trainer happy
         for idx, x in enumerate(annotated_batch):
-            replay_buffer.append({
-                "input_ids_chosen": torch.tensor([0]),
-                "attention_mask_chosen": torch.tensor([0]),
-                "features_chosen": x["features_chosen"],
-                "input_ids_rejected": torch.tensor([0]),
-                "attention_mask_rejected": torch.tensor([0]),
-                "features_rejected": x["features_rejected"],
-            })
+            replay_buffer.append(
+                {
+                    "input_ids_chosen": torch.tensor([0]),
+                    "attention_mask_chosen": torch.tensor([0]),
+                    "features_chosen": x["features_chosen"],
+                    "input_ids_rejected": torch.tensor([0]),
+                    "attention_mask_rejected": torch.tensor([0]),
+                    "features_rejected": x["features_rejected"],
+                }
+            )
 
-        trainer.train_dataset = Dataset.from_list(random.sample(
-            replay_buffer, min(len(replay_buffer), trainsize),
-        ))
+        trainer.train_dataset = Dataset.from_list(
+            random.sample(
+                replay_buffer,
+                min(len(replay_buffer), trainsize),
+            )
+        )
         trainer.train_dataset.set_format(
             type="torch", columns=trainer.train_dataset.column_names
         )
         loop_utils.MAX_TRAINER_LOGS_CACHE_SIZE = len(trainer.get_train_dataloader())
-        
+
         n_done = broadcast_object_list([len(output)])[0]
         new_regularisation = loop_utils.get_new_regularization(
             n_done=n_done,

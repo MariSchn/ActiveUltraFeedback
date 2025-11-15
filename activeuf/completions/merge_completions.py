@@ -20,30 +20,41 @@ Example run command:
         --output_path datasets/merged_completions
 """
 
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--datasets_path", type=str, required=True, help="The path to the folder of datasets with completions")
-    parser.add_argument("--output_path", type=str, help="Where to save the merged dataset")
+    parser.add_argument(
+        "--datasets_path",
+        type=str,
+        required=True,
+        help="The path to the folder of datasets with completions",
+    )
+    parser.add_argument(
+        "--output_path", type=str, help="Where to save the merged dataset"
+    )
     args = parser.parse_args()
 
     if args.output_path is None:
         args.output_path = f"{args.datasets_path.rstrip('/')}-merged"
 
-    assert not path.exists(args.output_path), f"Output path {args.output_path} already exists"
+    assert not path.exists(args.output_path), (
+        f"Output path {args.output_path} already exists"
+    )
 
     return args
+
 
 def extend_completions(sample: dict) -> dict:
     # determine which models have already generated completions for this sample
     models_done = {_["model"] for _ in sample["completions"]}
-    
+
     # identify new completions by models not in models_done
     new_completions = [
-        _ for _ in sample["new_completions"]
-        if _["model"] not in models_done
+        _ for _ in sample["new_completions"] if _["model"] not in models_done
     ]
     sample["completions"] += new_completions
     return sample
+
 
 if __name__ == "__main__":
     args = parse_args()
@@ -69,8 +80,7 @@ if __name__ == "__main__":
 
         # get completions to be added to each sample in merged
         prompt_id2dataset_idx = {
-            prompt_id: i
-            for i, prompt_id in enumerate(dataset["prompt_id"])
+            prompt_id: i for i, prompt_id in enumerate(dataset["prompt_id"])
         }
         new_completions = [
             dataset[prompt_id2dataset_idx[prompt_id]]["completions"]

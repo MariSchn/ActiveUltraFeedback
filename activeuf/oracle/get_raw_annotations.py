@@ -84,9 +84,7 @@ def parse_args() -> argparse.Namespace:
         help="The Huggingface path or API of the model to use for completions (e.g. HuggingFaceTB/SmolLM2-135M-Instruct, gpt-4)",
     )
 
-    parser.add_argument(
-        "--seed", type=int, default=42, help="Seed for random sampling"
-    )
+    parser.add_argument("--seed", type=int, default=42, help="Seed for random sampling")
     parser.add_argument(
         "--max_num_gpus",
         type=int,
@@ -187,6 +185,7 @@ def calculate_probabilities(raw_output, tokenizer, target_words):
         word_probabilities.append(prob_dict)
 
     return word_probabilities
+
 
 def calculate_probabilities_openai(raw_output, target_words):
     """
@@ -296,10 +295,9 @@ if __name__ == "__main__":
         model_name=args.model_name,
         model_class=args.model_class,
         max_num_gpus=4,
-        num_nodes=args.num_nodes
+        num_nodes=args.num_nodes,
     )
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
-
 
     sampling_params = SamplingParams(
         max_tokens=64,  # args.max_tokens,

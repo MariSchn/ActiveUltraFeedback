@@ -28,21 +28,38 @@ def parse_args() -> argparse.Namespace:
     # Parse arguments
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--input_path", type=str, required=True, help="Path to the annotated dataset.")
-    parser.add_argument("--output_path", type=str, help="Path to save the ultrafeedback-style dataset.")
-    parser.add_argument("--formatted_output_path", type=str, help="Path to save the preference formatted dataset.")
+    parser.add_argument(
+        "--input_path", type=str, required=True, help="Path to the annotated dataset."
+    )
+    parser.add_argument(
+        "--output_path", type=str, help="Path to save the ultrafeedback-style dataset."
+    )
+    parser.add_argument(
+        "--formatted_output_path",
+        type=str,
+        help="Path to save the preference formatted dataset.",
+    )
 
-    parser.add_argument("--seed", type=int, default=SEED, help="Random seed for reproducibility.")
+    parser.add_argument(
+        "--seed", type=int, default=SEED, help="Random seed for reproducibility."
+    )
 
     args = parser.parse_args()
 
     if not args.output_path:
         args.output_path = args.input_path
-    assert not os.path.exists(f"{args.output_path}_random"), f"Output path {args.output_path}_random already exists"
-    assert not os.path.exists(f"{args.output_path}_ultrafeedback"), f"Output path {args.output_path}_ultrafeedback already exists"
-    assert not os.path.exists(f"{args.output_path}_max_min"), f"Output path {args.output_path}_max_min already exists"
+    assert not os.path.exists(f"{args.output_path}_random"), (
+        f"Output path {args.output_path}_random already exists"
+    )
+    assert not os.path.exists(f"{args.output_path}_ultrafeedback"), (
+        f"Output path {args.output_path}_ultrafeedback already exists"
+    )
+    assert not os.path.exists(f"{args.output_path}_max_min"), (
+        f"Output path {args.output_path}_max_min already exists"
+    )
 
     return args
+
 
 def convert_to_ultrafeedback(sample):
     """
@@ -52,12 +69,16 @@ def convert_to_ultrafeedback(sample):
 
     num_completions = len(sample["completions"])
     if num_completions < 4:
-        raise ValueError("Need at least 4 completions to convert to ultrafeedback style")
-    
+        raise ValueError(
+            "Need at least 4 completions to convert to ultrafeedback style"
+        )
+
     # Randomly sample 4 completions and sort the by overall score (descending)
     sampled_indices = random.sample(range(num_completions), 4)
     sampled_completions = [sample["completions"][i] for i in sampled_indices]
-    sorted_completions = sorted(sampled_completions, key=lambda x: x["overall_score"], reverse=True)
+    sorted_completions = sorted(
+        sampled_completions, key=lambda x: x["overall_score"], reverse=True
+    )
 
     # Choose the best completion as chosen
     chosen_completion = sorted_completions[0]
@@ -74,6 +95,7 @@ def convert_to_ultrafeedback(sample):
         "chosen_score": chosen_completion["overall_score"],
     }
 
+
 def convert_to_random(sample):
     """
     Converts a sample from a dataset containing completions for every completion into a binarized datastyle
@@ -83,11 +105,13 @@ def convert_to_random(sample):
     num_completions = len(sample["completions"])
     if num_completions < 2:
         raise ValueError("Need at least 2 completions to convert to random style")
-    
+
     # Randomly sample 2 completions
     sampled_indices = random.sample(range(num_completions), 2)
     sampled_completions = [sample["completions"][i] for i in sampled_indices]
-    sampled_completions = sorted(sampled_completions, key=lambda x: x["overall_score"], reverse=True)
+    sampled_completions = sorted(
+        sampled_completions, key=lambda x: x["overall_score"], reverse=True
+    )
 
     # Choose one completion as chosen and the other as rejected
     chosen_completion = sampled_completions[0]
@@ -104,6 +128,7 @@ def convert_to_random(sample):
         "rejected_score": rejected_completion["overall_score"],
     }
 
+
 def convert_to_max_min(sample):
     """
     Converts a sample from a dataset containing completions for every completion into a binarized datastyle
@@ -113,7 +138,7 @@ def convert_to_max_min(sample):
     num_completions = len(sample["completions"])
     if num_completions < 2:
         raise ValueError("Need at least 2 completions to convert to random style")
-    
+
     # Randomly sample 2 completions
     completions = sample["completions"]
     completions = sorted(completions, key=lambda x: x["overall_score"], reverse=True)
@@ -133,10 +158,12 @@ def convert_to_max_min(sample):
         "rejected_score": rejected_completion["overall_score"],
     }
 
+
 def first_sample_of(dataset_path):
     dataset = load_from_disk(dataset_path)
     with open(os.path.join(dataset_path, "first_sample.json"), "w") as f:
         json.dump(dataset[0], f, indent=2)
+
 
 def to_preference_format(dataset_path, output_path):
     dataset = load_from_disk(dataset_path)
@@ -177,24 +204,24 @@ if __name__ == "__main__":
     if args.seed:
         logger.info(f"Setting random seed to {args.seed}")
         set_seed(args.seed)
-    
+
     logger.info("Loading dataset")
     dataset = load_from_disk(args.input_path)
 
     logger.info("Converting dataset to random style")
     random_dataset = dataset.map(
-        convert_to_random, 
+        convert_to_random,
         remove_columns=dataset.column_names,
         desc="Converting to random style",
-        load_from_cache_file=False
+        load_from_cache_file=False,
     )
 
     logger.info("Converting dataset to ultrafeedback style")
     ultrafeedback_dataset = dataset.map(
-        convert_to_ultrafeedback, 
+        convert_to_ultrafeedback,
         remove_columns=dataset.column_names,
         desc="Converting to ultrafeedback style",
-        load_from_cache_file=False
+        load_from_cache_file=False,
     )
 
     logger.info("Converting dataset to max-min style")
@@ -202,7 +229,7 @@ if __name__ == "__main__":
         convert_to_max_min,
         remove_columns=dataset.column_names,
         desc="Converting to max-min style",
-        load_from_cache_file=False
+        load_from_cache_file=False,
     )
 
     print(len(random_dataset))
@@ -219,6 +246,13 @@ if __name__ == "__main__":
 
     if args.formatted_output_path:
         logger.info("Converting datasets to preference format")
-        to_preference_format(f"{args.output_path}/random", f"{args.formatted_output_path}/random")
-        to_preference_format(f"{args.output_path}/ultrafeedback", f"{args.formatted_output_path}/ultrafeedback")
-        to_preference_format(f"{args.output_path}/max_min", f"{args.formatted_output_path}/max_min")
+        to_preference_format(
+            f"{args.output_path}/random", f"{args.formatted_output_path}/random"
+        )
+        to_preference_format(
+            f"{args.output_path}/ultrafeedback",
+            f"{args.formatted_output_path}/ultrafeedback",
+        )
+        to_preference_format(
+            f"{args.output_path}/max_min", f"{args.formatted_output_path}/max_min"
+        )

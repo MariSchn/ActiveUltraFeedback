@@ -152,8 +152,8 @@ if __name__ == "__main__":
             eta = remaining_batches * avg_time_per_batch
             print(
                 f"[Rank {accelerator.process_index}] "
-                f"{batch_idx}/{n_batches} ({batch_idx/n_batches:.2%}) batches "
-                f"done in {elapsed/60:.1f} min, ETA ≈ {eta/60:.1f} min",
+                f"{batch_idx}/{n_batches} ({batch_idx / n_batches:.2%}) batches "
+                f"done in {elapsed / 60:.1f} min, ETA ≈ {eta / 60:.1f} min",
                 flush=True,
             )
 

@@ -5,8 +5,15 @@ from activeuf.acquisition_function.base import BaseAcquisitionFunction
 
 
 class InformationDirectedSampling(BaseAcquisitionFunction):
-    def __init__(self, beta=1.0, argmax_tol=1e-4, decision_buffer=0.0,
-                 prob_grid_size=100, rho2=1.0, **kwargs):
+    def __init__(
+        self,
+        beta=1.0,
+        argmax_tol=1e-4,
+        decision_buffer=0.0,
+        prob_grid_size=100,
+        rho2=1.0,
+        **kwargs,
+    ):
         super().__init__()
         self.beta = beta
         self.argmax_tol = argmax_tol
@@ -15,9 +22,12 @@ class InformationDirectedSampling(BaseAcquisitionFunction):
         self.rho2 = rho2
         self.rng = np.random.default_rng()
 
-    def __call__(self, rewards: torch.Tensor,
-                 lower_bounds: torch.Tensor,
-                 upper_bounds: torch.Tensor) -> list[list[int, int]]:
+    def __call__(
+        self,
+        rewards: torch.Tensor,
+        lower_bounds: torch.Tensor,
+        upper_bounds: torch.Tensor,
+    ) -> list[list[int, int]]:
         """
         IDS (Information Directed Sampling) in vector form (per-arm, not pairwise).
 
@@ -30,8 +40,8 @@ class InformationDirectedSampling(BaseAcquisitionFunction):
         std_deviation = (upper_bounds - lower_bounds) / 2  # (n_prompts, n_completions)
 
         for p in range(rewards.shape[0]):
-            r = rewards[p].cpu().numpy()       # shape (n,)
-            s = std_deviation[p].cpu().numpy() # shape (n,)
+            r = rewards[p].cpu().numpy()  # shape (n,)
+            s = std_deviation[p].cpu().numpy()  # shape (n,)
 
             posterior_mean, posterior_std = r, s
             n = posterior_mean.shape[0]
@@ -49,8 +59,7 @@ class InformationDirectedSampling(BaseAcquisitionFunction):
             greedy_vals = np.where(candidate_mask, posterior_mean, -np.inf)
             max_greedy = np.max(greedy_vals)
             mask_close = np.logical_and(
-                np.abs(posterior_mean - max_greedy) < self.argmax_tol,
-                candidate_mask
+                np.abs(posterior_mean - max_greedy) < self.argmax_tol, candidate_mask
             )
             indices = np.flatnonzero(mask_close)
             if len(indices) == 0:
@@ -70,8 +79,9 @@ class InformationDirectedSampling(BaseAcquisitionFunction):
             prob_grid = prob_grid.reshape(1, -1)
 
             loss_sq = np.power(
-                (1 - prob_grid) * max_reward + prob_grid * suboptimality_gap.reshape(-1, 1),
-                2
+                (1 - prob_grid) * max_reward
+                + prob_grid * suboptimality_gap.reshape(-1, 1),
+                2,
             )
             info_gain = np.log(1 + posterior_std.reshape(-1, 1) / self.rho2)
             ids = (loss_sq / prob_grid) * info_gain

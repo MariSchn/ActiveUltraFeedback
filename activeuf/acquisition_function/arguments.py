@@ -22,6 +22,7 @@ class DTSConfig:
     )
     max_iterations: int = field(metadata={"help": "Maximum iterations for DTS."})
 
+
 @dataclass
 class InfoGainConfig:
     beta: float = field(

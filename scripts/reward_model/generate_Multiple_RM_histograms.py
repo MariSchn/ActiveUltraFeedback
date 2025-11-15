@@ -19,8 +19,7 @@ results_dirs = [
     # "/iopsstor/scratch/cscs/dmelikidze/models/reward_models/results/reward_models/skywork_78000.json",
 ]
 
-metrics = ["Factuality", "Focus", "Math",
-           "Precise IF", "Safety", "Ties", "score"]
+metrics = ["Factuality", "Focus", "Math", "Precise IF", "Safety", "Ties", "score"]
 step_pattern = re.compile(r"skywork_(\d+)\.json")
 output_dir = "multi_histograms"
 os.makedirs(output_dir, exist_ok=True)
@@ -81,8 +80,7 @@ for metric in metrics:
         # plt.text(max_step, y_bottom + y_offset, "Epoch 2", color="red", fontsize=12,
         #          ha="center", va="bottom", rotation=0)
 
-    out_path = os.path.join(
-        output_dir, f"{metric.replace(' ', '_')}_multi.png")
+    out_path = os.path.join(output_dir, f"{metric.replace(' ', '_')}_multi.png")
     plt.savefig(out_path, bbox_inches="tight", dpi=150)
     plt.close()
 
