@@ -51,12 +51,57 @@ Build the container image:
 podman build -t activeuf:latest .
 ```
 
-### Option 2: Conda (For Local Use)
+### Option 2: `uv` (For Local Use)
+
+Create a `uv` environment with all dependencies. To install uv, simply run:
 
 ```bash
-conda env create -f environment.yml
-conda activate activeuf
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source $HOME/.local/bin/env
 ```
+
+Afterwards running the following command will install and synchronize all dependencies:
+
+```bash
+uv sync --dev
+source .venv/bin/activate
+```
+
+Note: 
+
+## 👨‍💻 Development Setup
+
+For contributors and developers working on this project:
+
+### 0. Set Up Environment (see above)
+
+### 1. Set Up Pre-commit Hooks
+
+This project uses `ruff` for linting and formatting. Install the pre-commit hooks to automatically format and lint your code before each commit:
+
+```bash
+pre-commit install
+```
+
+The pre-commit hooks will automatically:
+- Run `ruff check --fix` to lint and auto-fix issues
+- Run `ruff format` to format code
+
+### 2. Manual Linting and Formatting
+
+You can also run these tools manually:
+
+```bash
+# Format code
+ruff format
+
+# Lint code
+ruff check
+
+# Lint and auto-fix issues
+ruff check --fix
+```
+
 
 ## 📄 License
 
