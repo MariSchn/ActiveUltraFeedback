@@ -64,11 +64,22 @@ if __name__ == "__main__":
 
     if accelerator.is_main_process:
         os.environ.setdefault("WANDB_DIR", args.wandb_dir)
-        wandb.init(
+        wandb_run = wandb.init(
             project=args.wandb_project,
             id=args.run_id,
             config=vars(args),
         )
+
+        # Store environment variables for use in later scripts
+        try:
+            path = f"./.tmp/loop_vars_{os.getenv('SLURM_JOB_ID', '')}.sh"
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w") as f:
+                f.write(f"export LOOP_WANDB_RUN_ID='{args.run_id}'\n")
+                f.write(f"export LOOP_DATASET_PATH='{args.output_path}'\n")
+            logger.info(f"Successfully wrote env vars to {path}")
+        except Exception as e:
+            logger.error(f"Failed to write env vars to {path}: {e}")
 
     logger.info(f"Preparing acquisition function ({args.acquisition_function_type})")
     acquisition_function = init_acquisition_function(

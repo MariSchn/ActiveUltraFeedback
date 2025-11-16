@@ -1,5 +1,6 @@
 import argparse
 from dataclasses import dataclass, field
+import os
 import os.path as path
 from transformers import HfArgumentParser
 import yaml
@@ -291,7 +292,7 @@ def get_loop_args(timestamp) -> argparse.Namespace:
         sweep_dict = parse_overwrites(remaining_args)
         config_dict = recursive_update(config_dict, sweep_dict)
 
-    # define timestamp, then use it to create a run id
+    # define timestamp, then use it to create a run id (env var takes precedence over config)
     config_dict["timestamp"] = timestamp
     config_dict["run_id"] = "_".join(
         [
@@ -302,8 +303,24 @@ def get_loop_args(timestamp) -> argparse.Namespace:
             config_dict["timestamp"],
         ]
     )
+    if not os.getenv("WANDB_RUN_ID"):
+        config_dict["run_id"] = "_".join(
+            [
+                config_dict["acquisition_function_type"],
+                config_dict["reward_model_type"],
+                extract_annotator_name(config_dict["inputs_path"]),
+                config_dict["oracle_name"],
+                config_dict["timestamp"],
+            ]
+        )
+    else:
+        config_dict["run_id"] = os.getenv("WANDB_RUN_ID")
 
     # setup paths
+    if os.getenv("WANDB_SWEEP_ID"):
+        config_dict["base_output_dir"] = path.join(
+            config_dict["base_output_dir"], os.getenv("WANDB_SWEEP_ID")
+        )
     config_dict["output_path"] = path.join(
         config_dict["base_output_dir"], config_dict["run_id"]
     )
