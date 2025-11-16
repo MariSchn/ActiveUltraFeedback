@@ -11,8 +11,6 @@ import math
 from accelerate import Accelerator
 from datetime import datetime
 
-os.environ["WANDB_PROJECT"] = "RM-Training"
-
 
 def load_dataset_all(dataset_path):
     try:

@@ -15,6 +15,7 @@
 export GPUS_PER_NODE=4
 export HF_HOME=$SCRATCH/huggingface
 export HF_TOKEN=$HF_TOKEN
+export WANDB_PROJECT="RM-Training"
 ######################
 
 echo $ACCELERATE_DIR
