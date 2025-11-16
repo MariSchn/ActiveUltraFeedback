@@ -66,6 +66,12 @@ def parse_args() -> argparse.Namespace:
         help="Base output directory for model checkpoints and logs",
         default=None,
     )
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        help="Output directory for saving models",
+        required=False,
+    )
     return parser.parse_args()
 
 
@@ -182,7 +188,10 @@ if __name__ == "__main__":
 
     # print(run_name)
     # exit()
-    output_dir = os.path.join(config["base_output_dir"], run_name)
+    if args.output_dir:
+        output_dir = args.output_dir
+    else:
+        output_dir = os.path.join(config["base_output_dir"], run_name)
     if accelerator.is_main_process:
         print(f"Output dir: {output_dir}")
         print(f"Run name: {run_name}")
@@ -246,11 +255,16 @@ if __name__ == "__main__":
 
     # remove samples where prompt+chosen or prompt+rejected exceeds max length
     if training_config["max_length"]:
-        temp = dataset.map(extract_prompt)
+        # Do not load from cache here to avoid race conditions when running on multiple GPUs/nodes
+        temp = dataset.map(
+            extract_prompt,
+            load_from_cache_file=False,
+        )
         temp = temp.map(
             apply_chat_template,
             fn_kwargs={"tokenizer": tokenizer},
             keep_in_memory=True,
+            load_from_cache_file=False,
         )
         temp = temp.map(
             lambda _: NormedDPOTrainer.tokenize_row(
@@ -259,7 +273,8 @@ if __name__ == "__main__":
                 max_prompt_length=None,
                 max_completion_length=None,
                 add_special_tokens=True,
-            )
+            ),
+            load_from_cache_file=False,
         )
 
         old_n = len(dataset)
@@ -287,7 +302,6 @@ if __name__ == "__main__":
 
     if accelerator.is_main_process:
         print(dataset[0]["chosen"][0])
-        print(dataset[6464]["chosen"][0])
 
     # create lora version of model
     model = AutoModelForCausalLM.from_pretrained(
