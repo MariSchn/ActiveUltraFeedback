@@ -1,12 +1,11 @@
 #!/bin/bash
-#SBATCH --job-name=loop_sweep
+#SBATCH --job-name=sweep_runner
 #SBATCH -D .
 #SBATCH -A a-infra01-1
-#SBATCH --output=./logs/loop/O-%x.%j
-#SBATCH --error=./logs/loop/E-%x.%j
-#SBATCH --time=10:00:00
-#SBATCH --environment=activeuf_dev
+#SBATCH --output=./logs/sweeps/%j.out
+#SBATCH --time=12:00:00
 #SBATCH --partition=normal
+#SBATCH --nodes=4
 
 # In order to get a sweep ID, first create a sweep on wandb using:
 #
@@ -16,8 +15,8 @@
 # Then replace <SWEEP_ID> below with the actual sweep ID. 
 # To start all of the jobs in the sweep, use:
 #
-#   sbatch --array=1-<NUMBER_OF_JOBS_FOR_SWEEP> ./activeuf/sweep_runner.sbatch
+#   sbatch --array=1-<NUMBER_OF_JOBS_FOR_SWEEP> ./scripts/sweep_runner.sbatch
 #
 # This will launch <NUMBER_OF_JOBS_FOR_SWEEP>, each retrieving the hyperparameters from wandb.
 
-wandb agent --count=1 <SWEEP_ID>
+wandb agent --count=1 ActiveUF/loop/f6sc9vg9
