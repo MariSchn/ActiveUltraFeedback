@@ -28,5 +28,5 @@ training:
   report_to: wandb
   logging_steps: 1
   beta: 0.1
-  save_steps: 500
+  save_steps: 1000
   normalize_logps: false
