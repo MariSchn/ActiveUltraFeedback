@@ -27,7 +27,7 @@ head_node_ip=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
 ######################
 
 export LAUNCHER="accelerate launch \
-    --config_file=$SCRATCH/ActiveUltraFeedback/configs/accelerate/multi_node.yaml \
+    --config_file=$SCRATCH/ActiveUltraFeedback/configs/accelerate/deepspeed2.yaml \
     --num_processes $((SLURM_NNODES * GPUS_PER_NODE)) \
     --num_machines $SLURM_NNODES \
     --rdzv_backend c10d \

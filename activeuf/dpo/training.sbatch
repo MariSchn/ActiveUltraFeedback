@@ -4,7 +4,7 @@
 #SBATCH --job-name=dpo
 #SBATCH --output=logs/dpo/O-%x.%j
 #SBATCH --error=logs/dpo/E-%x.%j
-#SBATCH --nodes=8
+#SBATCH --nodes=2
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=4
 #SBATCH --cpus-per-task=288
@@ -25,7 +25,7 @@ MAIN_PROCESS_PORT=29500
 NUM_PROCESSES=$(expr $SLURM_NNODES \* $SLURM_GPUS_ON_NODE)
 
 CMD="accelerate launch \
-    --config_file=$SCRATCH/ActiveUltraFeedback/configs/accelerate/multi_node.yaml \
+    --config_file=$SCRATCH/ActiveUltraFeedback/configs/accelerate/deepspeed2.yaml \
     --num_processes $NUM_PROCESSES \
     --num_machines $SLURM_NNODES \
     --machine_rank \$SLURM_NODEID \

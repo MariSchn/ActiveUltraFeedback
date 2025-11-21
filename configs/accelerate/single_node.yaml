@@ -1,3 +1,4 @@
+# Distributed Data Parallel.
 distributed_type: "MULTI_GPU"
 mixed_precision: "bf16"
 num_processes: 4
