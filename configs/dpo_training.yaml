@@ -27,7 +27,7 @@ training:
   report_to: "none"
   logging_steps: 1
   beta: 0.1
-  save_steps: 500
+  save_steps: 1000
   normalize_logps: false
   bf16: true
   bf16_full_eval: true

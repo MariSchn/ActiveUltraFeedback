@@ -324,12 +324,17 @@ def get_loop_args(timestamp) -> argparse.Namespace:
     config_dict["output_path"] = path.join(
         config_dict["base_output_dir"], config_dict["run_id"]
     )
+
+    # If base_logs_dir is empty, use base_output_dir instead
+    if not config_dict.get("base_logs_dir", "").strip():
+        config_dict["base_logs_dir"] = config_dict["base_output_dir"]
     config_dict["args_path"] = path.join(
         config_dict["base_logs_dir"], f"{config_dict['run_id']}.args"
     )
     config_dict["logs_path"] = path.join(
         config_dict["base_logs_dir"], f"{config_dict['run_id']}.log"
     )
+
     if config_dict["reward_model_type"] != "none":
         config_dict["wandb_project"] = config_dict["base_wandb_project"]
         config_dict["wandb_dir"] = path.join(

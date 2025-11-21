@@ -18,7 +18,7 @@ training:
   grad_acc_steps: 1
   logging_steps: 10
   save_strategy: "steps"
-  save_steps: 250
+  save_steps: 1000
   remove_unused_columns: false
   max_length: 4096
   report_to: none
