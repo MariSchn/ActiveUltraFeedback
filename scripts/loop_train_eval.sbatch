@@ -313,9 +313,6 @@ echo -e "\n\n\n===================================="
 echo -e "===== UPDATE METRICS IN WANDB ======"
 echo -e "====================================\n\n\n"
 
-# TODO: Write results to env vars in eval scripts
-# TODO: Write script that takes those env vars and updates the relevant wandb run (LOOP_WANDB_RUN_ID)
-
-srun --environment=activeuf_dev --nodes=1 --ntasks=1 python ./scripts/update_wandb_run.py
+srun --environment=activeuf_dev --nodes=1 --ntasks=1 python ./scripts/update_wandb_run.py --run_id ${LOOP_WANDB_RUN_ID} --rm_output_dir ${RM_OUTPUT_DIR} --dpo_output_dir ${DPO_OUTPUT_DIR} --project loop --entity ${WANDB_ENTITY}
 
 echo "Script completed successfully."

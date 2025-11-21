@@ -1,6 +1,7 @@
 import wandb
 import json
 import os
+import argparse
 from typing import Dict
 
 
@@ -63,32 +64,55 @@ def read_dpo_scores(dpo_output_dir: str) -> Dict[str, float]:
 
 
 if __name__ == "__main__":
-    # Read paths from environment variables. These should be set by the ./scripts/loop_train_eval.sbatch script
-    run_id = os.getenv("LOOP_WANDB_RUN_ID")
-    rm_output_dir = os.getenv("RM_OUTPUT_DIR")
-    dpo_output_dir = os.getenv("DPO_OUTPUT_DIR")
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(
+        description="Update WandB run with RM and DPO evaluation metrics"
+    )
+    parser.add_argument(
+        "--run_id", type=str, required=True, help="WandB run ID to update"
+    )
+    parser.add_argument(
+        "--rm_output_dir", type=str, required=True, help="Reward model output directory"
+    )
+    parser.add_argument(
+        "--dpo_output_dir", type=str, required=True, help="DPO output directory"
+    )
+    parser.add_argument(
+        "--project", type=str, default="loop", help="WandB project name (default: loop)"
+    )
+    parser.add_argument(
+        "--entity",
+        type=str,
+        default="ActiveUF",
+        help="WandB entity name (default: ActiveUF)",
+    )
+    args = parser.parse_args()
 
-    print("Found the following directories from environment variables:")
-    print(f"LOOP_WANDB_RUN_ID={os.getenv('LOOP_WANDB_RUN_ID')}")
-    print(f"RM_OUTPUT_DIR={os.getenv('RM_OUTPUT_DIR')}")
-    print(f"DPO_OUTPUT_DIR={os.getenv('DPO_OUTPUT_DIR')}")
+    print("Received the following arguments:")
+    print(f"run_id={args.run_id}")
+    print(f"rm_output_dir={args.rm_output_dir}")
+    print(f"dpo_output_dir={args.dpo_output_dir}")
+    print(f"project={args.project}")
+    print(f"entity={args.entity}")
 
     # Get wandb run and its existing metrics
-    run = wandb.init(id=run_id, project="loop", entity="ActiveUF", resume="must")
+    run = wandb.init(
+        id=args.run_id, project=args.project, entity=args.entity, resume="must"
+    )
     existing_score_names = set(run.summary.keys()) if run.summary else set()
 
     # Read RM Scores
-    rm_scores = read_rm_scores(rm_output_dir)
+    rm_scores = read_rm_scores(args.rm_output_dir)
     if not rm_scores:
         print(
-            f"\033[91mWARNING\033[0m: No Rewardbench scores found in RM dir: {os.path.join(rm_output_dir, 'results.json')}"
+            f"\033[91mWARNING\033[0m: No Rewardbench scores found in RM dir: {os.path.join(args.rm_output_dir, 'results.json')}"
         )
 
     # Read DPO scores
-    dpo_scores = read_dpo_scores(dpo_output_dir)
+    dpo_scores = read_dpo_scores(args.dpo_output_dir)
     if not dpo_scores:
         print(
-            f"\033[91mWARNING\033[0m: No DPO scores found in DPO dir: {dpo_output_dir}"
+            f"\033[91mWARNING\033[0m: No DPO scores found in DPO dir: {args.dpo_output_dir}"
         )
 
     # Add section prefixes
@@ -97,7 +121,7 @@ if __name__ == "__main__":
         log_dict[f"Rewardbench/{key}"] = value
     for key, value in dpo_scores.items():
         log_dict[f"DPO/{key}"] = value
-    print(f"Candidate metrics to log to run {run_id}: {log_dict}")
+    print(f"Candidate metrics to log to run {args.run_id}: {log_dict}")
 
     # Filter out scores that already exist. This can happen when re-running benchmarks because of a node failure.
     filtered_log_dict = {
@@ -105,10 +129,10 @@ if __name__ == "__main__":
     }
 
     if filtered_log_dict:
-        print(f"Logging new metrics to run {run_id}: {filtered_log_dict}")
+        print(f"Logging new metrics to run {args.run_id}: {filtered_log_dict}")
         run.log(filtered_log_dict)
     else:
-        print(f"All metrics already exist in run {run_id}. Skipping logging.")
+        print(f"All metrics already exist in run {args.run_id}. Skipping logging.")
 
     run.finish()
-    print(f"Run {run_id} finished.")
+    print(f"Run {args.run_id} finished.")
