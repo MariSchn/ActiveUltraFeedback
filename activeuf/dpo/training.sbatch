@@ -8,7 +8,7 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=4
 #SBATCH --cpus-per-task=288
-#SBATCH --time=03:30:00             # maximum execution time (HH:MM:SS)
+#SBATCH --time=09:00:00             # maximum execution time (HH:MM:SS)
 
 BASE_CACHE_DIR="$SCRATCH"
 DATASET_PATH="<DATASET_PATH>"

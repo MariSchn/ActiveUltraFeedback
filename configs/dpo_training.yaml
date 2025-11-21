@@ -11,7 +11,6 @@ lora:
   lora_dropout: 0.1
   bias: none
   task_type: CAUSAL_LM
-  target_module_patterns: all-linear
 
 training:
   gradient_checkpointing: true
@@ -24,7 +23,7 @@ training:
   lr_scheduler_type: linear
   warmup_ratio: 0.1
   num_train_epochs: 3
-  report_to: "none"
+  report_to: "wandb"
   logging_steps: 1
   beta: 0.1
   save_steps: 1000
