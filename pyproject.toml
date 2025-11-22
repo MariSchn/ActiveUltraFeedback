@@ -44,8 +44,8 @@ dev = [
 ]
 
 [tool.ruff]
-# Add "archive" to the list of default exclusions
-extend-exclude = ["archive"]
+# Add "archive" and "resources" to the list of default exclusions
+extend-exclude = ["archive", "resources"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["activeuf"]
