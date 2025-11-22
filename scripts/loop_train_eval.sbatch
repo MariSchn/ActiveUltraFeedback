@@ -42,6 +42,8 @@ export HF_HOME="${SCRATCH}/cache/hf_cache"
 export LOOP_CONFIG="./configs/loop.yaml"
 export DPO_CONFIG="./configs/dpo_training.yaml"
 export RM_CONFIG="./configs/rm_training.yaml"
+export RM_TRAINING_ACCELERATE_CONFIG="./configs/accelerate/deepspeed2.yaml"
+export DPO_TRAINING_ACCELERATE_CONFIG="./configs/accelerate/deepspeed2.yaml"
 export ACCELERATE_CONFIG="./configs/accelerate/multi_node.yaml"
 
 export GPUS_PER_NODE=4
@@ -139,7 +141,7 @@ echo "DPO_OUTPUT_DIR=${DPO_OUTPUT_DIR}"
 echo "WANDB_PROJECT=${WANDB_PROJECT}"
 
 DPO_TRAIN_LAUNCHER="accelerate launch \
-    --config_file $ACCELERATE_CONFIG \
+    --config_file $DPO_TRAINING_ACCELERATE_CONFIG \
     --num_processes $DPO_NUM_PROCESSES \
     --num_machines $DPO_NNODES \
     --rdzv_backend c10d \
@@ -187,7 +189,7 @@ echo "RM_OUTPUT_DIR=${RM_OUTPUT_DIR}"
 echo "WANDB_PROJECT=${WANDB_PROJECT}"
 
 RM_TRAIN_LAUNCHER="accelerate launch \
-    --config_file $ACCELERATE_CONFIG \
+    --config_file $RM_TRAINING_ACCELERATE_CONFIG \
     --num_processes $RM_NUM_PROCESSES \
     --num_machines $RM_NNODES \
     --rdzv_backend c10d \
@@ -301,8 +303,11 @@ echo -e "===================================\n\n\n"
 echo "Starting RM Evaluation"
 echo "Evaluating RM at: $RM_OUTPUT_DIR"
 
-echo "Running command: pip install ./resources/reward-bench && accelerate launch --config_file $ACCELERATE_CONFIG ./resources/reward-bench/scripts/run_v2.py --do_not_save --model=$RM_OUTPUT_DIR"
-srun --environment=activeuf_dev --nodes=1 --ntasks=1 bash -c "pip install ./resources/reward-bench && accelerate launch --config_file $ACCELERATE_CONFIG --num_processes $GPUS_PER_NODE ./resources/reward-bench/scripts/run_v2.py --do_not_save --model=$RM_OUTPUT_DIR" &
+echo "Running command: bash ./activeuf/reward_model/reward_bench_2.sh --model $RM_OUTPUT_DIR"
+srun --output=${RM_OUTPUT_DIR}/eval_%j.out \
+     --environment=activeuf_dev \
+     --nodes=1 --ntasks=1 \
+     bash ./activeuf/reward_model/reward_bench_2.sh --model $RM_OUTPUT_DIR &
 
 # Wait for ALL background jobs (4 DPO evals + 1 RM eval) to finish
 echo "Waiting for all DPO and RM evaluations to complete..."
