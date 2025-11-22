@@ -28,17 +28,17 @@ acquisition_function:
   infogain:
     beta: 1.0
   ids:
-    argmax_tol: 1e-4
+    argmax_tol: 0.0001
     decision_buffer: 0.0
     use_candidate_set: false
   rucb:
     beta: 1
-    argmax_tol: 1e-4
+    argmax_tol: 0.0001
     decision_buffer: 0.0
     use_candidate_set: false
   maxminlcb:
     beta: 1.0
-    argmax_tol: 1e-4
+    argmax_tol: 0.0001
     decision_buffer: 0.0
     use_candidate_set: false
     seed: *a
@@ -66,7 +66,7 @@ enn:
 
   trainer:
     lr_scheduler_type: cosine
-    learning_rate: 1.0e-4
+    learning_rate: 0.0001
     warmup_ratio: 0.05
     num_train_epochs: 1
     max_length: *b
