@@ -12,6 +12,7 @@ from activeuf.acquisition_function.arguments import (
     IDSConfig,
     RUCBConfig,
     InfoGainConfig,
+    MaxMinLCBConfig,
 )
 from activeuf.utils import ensure_dataclass
 
@@ -35,6 +36,9 @@ class AcquisitionFunctionConfig:
     )
     rucb: RUCBConfig = field(
         metadata={"help": "Config for the rucb acquisition function."},
+    )
+    maxminlcb: MaxMinLCBConfig = field(
+        metadata={"help": "Config for the maxminlcb acquisition function."},
     )
 
 

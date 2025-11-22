@@ -36,6 +36,12 @@ acquisition_function:
     argmax_tol: 1e-4
     decision_buffer: 0.0
     use_candidate_set: false
+  maxminlcb:
+    beta: 1.0
+    argmax_tol: 1e-4
+    decision_buffer: 0.0
+    use_candidate_set: false
+    seed: *a
 
 enn:
   previous_checkpoint_path: null

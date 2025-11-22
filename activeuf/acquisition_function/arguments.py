@@ -47,3 +47,14 @@ class RUCBConfig:
     use_candidate_set: bool = field(
         metadata={"help": "Whether to use candidate set in RUCB."}
     )
+
+
+@dataclass
+class MaxMinLCBConfig:
+    beta: float = field(metadata={"help": "Beta parameter for MaxMinLCB."})
+    argmax_tol: float = field(metadata={"help": "Tolerance for argmax in MaxMinLCB."})
+    decision_buffer: float = field(metadata={"help": "Decision buffer for MaxMinLCB."})
+    use_candidate_set: bool = field(
+        metadata={"help": "Whether to use candidate set in MaxMinLCB."}
+    )
+    seed: int = field(metadata={"help": "Random seed for MaxMinLCB."})
