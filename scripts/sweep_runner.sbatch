@@ -15,8 +15,8 @@
 # Then replace <SWEEP_ID> below with the actual sweep ID. 
 # To start all of the jobs in the sweep, use:
 #
-#   sbatch --array=1-<NUMBER_OF_JOBS_FOR_SWEEP> ./scripts/sweep_runner.sbatch
+#   sbatch --array=1-<NUMBER_OF_JOBS_FOR_SWEEP>%20 ./scripts/sweep_runner.sbatch
 #
 # This will launch <NUMBER_OF_JOBS_FOR_SWEEP>, each retrieving the hyperparameters from wandb.
 
-wandb agent --count=1 ActiveUF/loop/f6sc9vg9
+wandb agent --count=1 <SWEEP_ID>
