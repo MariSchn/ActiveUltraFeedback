@@ -1,13 +1,13 @@
 env_local_path: .env.local
-base_output_dir: /iopsstor/scratch/cscs/smarian/datasets/9_preference_datasets/ultrafeedback_with_small/qwen_3_235b/dts
-base_trainer_dir: /iopsstor/scratch/cscs/smarian/trainer_output/loop
-base_logs_dir: ""
-base_wandb_dir: /iopsstor/scratch/cscs/smarian/cache/wandb/loop
+base_output_dir: datasets/loop
+base_trainer_dir: trainer_output/loop
+base_logs_dir: logs/loop
+base_wandb_dir: wandb/loop
 base_wandb_project: loop
 
-inputs_path: /iopsstor/scratch/cscs/smarian/datasets/7_full_with_features/ultrafeedback/qwen_3_235b
+inputs_path: datasets/combined_with_small_qwen_3_235b-features
 oracle_name: ultrafeedback
-acquisition_function_type: dts
+acquisition_function_type: infogain
 reward_model_type: enn
 debug: false
 
