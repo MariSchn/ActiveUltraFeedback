@@ -16,4 +16,4 @@ fi
 MODEL_NAME=$1
 
 # Run the Python script with the provided model
-accelerate launch --config_file=$SCRATCH/ActiveUltraFeedback/configs/accelerate/multi_node.yaml resources/reward-bench/scripts/run_v2.py --model="$MODEL_NAME" --max_length=4096
+accelerate launch --config_file=$SCRATCH/ActiveUltraFeedback/configs/accelerate/single_node.yaml resources/reward-bench/scripts/run_v2.py --model="$MODEL_NAME" --max_length=4096
