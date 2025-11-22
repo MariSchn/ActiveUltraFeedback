@@ -117,7 +117,7 @@ class MaxMinLCB(BaseAcquisitionFunction):
             )
         else:
             candidate_arms_mask = torch.ones(n, dtype=torch.bool)
-            lcb = torch.where(torch.eye(n, dtype=torch.bool), torch.tensor(0.0), lcb)
+            lcb = torch.where(torch.eye(n, dtype=torch.bool), float("nan"), lcb)
 
         # Manual implementation of nanmin for older PyTorch versions
         def nanmin_1d(tensor):
