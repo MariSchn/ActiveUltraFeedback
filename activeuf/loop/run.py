@@ -47,6 +47,7 @@ if __name__ == "__main__":
     else:
         reward_args = None
     if accelerator.is_main_process:
+        os.makedirs(args.output_path, exist_ok=True)
         with open(args.args_path, "w") as f_out:
             print(convert_dataclass_instance_to_yaml_str(args), file=f_out)
 
@@ -93,7 +94,7 @@ if __name__ == "__main__":
     dataset = load_from_disk(args.inputs_path)
     assert "features" in dataset.column_names, "Dataset must have precomputed features"
     if args.debug:
-        dataset = dataset.select(range(2001))
+        dataset = dataset.select(range(1001))
     dataset = dataset.shuffle(seed=args.seed)
     logger.info(f"# Prompts: {len(dataset)}")
 
