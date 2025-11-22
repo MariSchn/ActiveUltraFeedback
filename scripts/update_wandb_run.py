@@ -6,7 +6,7 @@ from typing import Dict
 
 
 def read_rm_scores(rm_output_dir: str) -> Dict[str, float]:
-    results_path = os.path.join(rm_output_dir, "results.json")
+    results_path = os.path.join(rm_output_dir, "metrics.json")
 
     try:
         with open(results_path, "r") as f:
@@ -121,6 +121,12 @@ if __name__ == "__main__":
         log_dict[f"Rewardbench/{key}"] = value
     for key, value in dpo_scores.items():
         log_dict[f"DPO/{key}"] = value
+
+    if "DPO/Mean" in log_dict and "Rewardbench/Mean" in log_dict:
+        log_dict["Final Score/Mean"] = (
+            log_dict["DPO/Mean"] + log_dict["Rewardbench/Mean"]
+        ) / 2
+
     print(f"Candidate metrics to log to run {args.run_id}: {log_dict}")
 
     # Filter out scores that already exist. This can happen when re-running benchmarks because of a node failure.
