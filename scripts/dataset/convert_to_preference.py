@@ -17,8 +17,7 @@ For this the script uses:
     - MaxMin: Chooses the best completion as chosen and the worst as rejected.
 
 Example run command:
-    python -m scripts.dataset.convert_to_preference \
-        --input_path /iopsstor/scratch/cscs/smarian/datasets/ultrafeedback_annotated
+    python -m scripts.dataset.convert_to_preference --input_path /iopsstor/scratch/cscs/smarian/datasets/ultrafeedback_annotated
 """
 
 
@@ -217,19 +216,19 @@ if __name__ == "__main__":
         load_from_cache_file=False,
     )
 
-    random_dataset_formatted = random_dataset.map(
+    random_dataset = random_dataset.map(
         to_conversation_format,
         remove_columns=["chosen", "rejected"],
         desc="Converting to conversation format",
         load_from_cache_file=False,
     )
-    ultrafeedback_dataset_formatted = ultrafeedback_dataset.map(
+    ultrafeedback_dataset = ultrafeedback_dataset.map(
         to_conversation_format,
         remove_columns=["chosen", "rejected"],
         desc="Converting to conversation format",
         load_from_cache_file=False,
     )
-    max_min_dataset_formatted = max_min_dataset.map(
+    max_min_dataset = max_min_dataset.map(
         to_conversation_format,
         remove_columns=["chosen", "rejected"],
         desc="Converting to conversation format",
