@@ -6,7 +6,6 @@ import json
 from datasets import load_from_disk
 
 from activeuf.utils import set_seed, get_logger
-from activeuf.configs import SEED
 
 logger = get_logger(__name__)
 
@@ -15,12 +14,11 @@ This script can be used to convert a dataset with completions and annotations fo
 For this the script uses:
     - Randomly sampling two completions and choosing the one with the highest overall score as chosen and the other as rejected.
     - The approach described in the ultrafeedback paper (https://arxiv.org/abs/2310.01377) which randomly samples 4 models/completions and chooses the best as chosen and randomly samples the rejected from the remaining 3.
+    - MaxMin: Chooses the best completion as chosen and the worst as rejected.
 
 Example run command:
-    python -m activeuf.convert_to_preference \
+    python -m scripts.dataset.convert_to_preference \
         --input_path /iopsstor/scratch/cscs/smarian/datasets/ultrafeedback_annotated
-
-python -m activeuf.convert_to_preference --input_path /iopsstor/scratch/cscs/smarian/datasets/ultrafeedback_annotated
 """
 
 
@@ -32,16 +30,10 @@ def parse_args() -> argparse.Namespace:
         "--input_path", type=str, required=True, help="Path to the annotated dataset."
     )
     parser.add_argument(
-        "--output_path", type=str, help="Path to save the ultrafeedback-style dataset."
+        "--output_path", type=str, help="Path to save the preference datasets to."
     )
     parser.add_argument(
-        "--formatted_output_path",
-        type=str,
-        help="Path to save the preference formatted dataset.",
-    )
-
-    parser.add_argument(
-        "--seed", type=int, default=SEED, help="Random seed for reproducibility."
+        "--seed", type=int, default=42, help="Random seed for reproducibility."
     )
 
     args = parser.parse_args()
@@ -165,36 +157,29 @@ def first_sample_of(dataset_path):
         json.dump(dataset[0], f, indent=2)
 
 
-def to_preference_format(dataset_path, output_path):
-    dataset = load_from_disk(dataset_path)
-
-    def to_conversation_format(example):
-        return {
-            "chosen": [
-                {
-                    "role": "user",
-                    "content": example["prompt"],
-                },
-                {
-                    "role": "assistant",
-                    "content": example["chosen"],
-                },
-            ],
-            "rejected": [
-                {
-                    "role": "user",
-                    "content": example["prompt"],
-                },
-                {
-                    "role": "assistant",
-                    "content": example["rejected"],
-                },
-            ],
-        }
-
-    dataset = dataset.map(to_conversation_format, remove_columns=["chosen", "rejected"])
-    dataset.save_to_disk(output_path)
-    first_sample_of(output_path)
+def to_conversation_format(example):
+    return {
+        "chosen": [
+            {
+                "role": "user",
+                "content": example["prompt"],
+            },
+            {
+                "role": "assistant",
+                "content": example["chosen"],
+            },
+        ],
+        "rejected": [
+            {
+                "role": "user",
+                "content": example["prompt"],
+            },
+            {
+                "role": "assistant",
+                "content": example["rejected"],
+            },
+        ],
+    }
 
 
 if __name__ == "__main__":
@@ -232,9 +217,24 @@ if __name__ == "__main__":
         load_from_cache_file=False,
     )
 
-    print(len(random_dataset))
-    print(len(ultrafeedback_dataset))
-    print(len(max_min_dataset))
+    random_dataset_formatted = random_dataset.map(
+        to_conversation_format,
+        remove_columns=["chosen", "rejected"],
+        desc="Converting to conversation format",
+        load_from_cache_file=False,
+    )
+    ultrafeedback_dataset_formatted = ultrafeedback_dataset.map(
+        to_conversation_format,
+        remove_columns=["chosen", "rejected"],
+        desc="Converting to conversation format",
+        load_from_cache_file=False,
+    )
+    max_min_dataset_formatted = max_min_dataset.map(
+        to_conversation_format,
+        remove_columns=["chosen", "rejected"],
+        desc="Converting to conversation format",
+        load_from_cache_file=False,
+    )
 
     logger.info("Saving datasets")
     random_dataset.save_to_disk(f"{args.output_path}/random")
@@ -243,16 +243,3 @@ if __name__ == "__main__":
     first_sample_of(f"{args.output_path}/ultrafeedback")
     max_min_dataset.save_to_disk(f"{args.output_path}/max_min")
     first_sample_of(f"{args.output_path}/max_min")
-
-    if args.formatted_output_path:
-        logger.info("Converting datasets to preference format")
-        to_preference_format(
-            f"{args.output_path}/random", f"{args.formatted_output_path}/random"
-        )
-        to_preference_format(
-            f"{args.output_path}/ultrafeedback",
-            f"{args.formatted_output_path}/ultrafeedback",
-        )
-        to_preference_format(
-            f"{args.output_path}/max_min", f"{args.formatted_output_path}/max_min"
-        )
