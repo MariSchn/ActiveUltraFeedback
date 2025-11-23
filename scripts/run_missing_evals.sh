@@ -59,7 +59,7 @@ echo "Found ${#rm_dirs[@]} directories (reward models) in $RM_MODEL_BASE_DIR"
 echo "--- Looking for missing RM evaluations... ---"
 missing_rm_evals=()
 for dir_name in "${rm_dirs[@]}"; do
-    results_file="$RM_MODEL_BASE_DIR/$dir_name/results.json"
+    results_file="$RM_MODEL_BASE_DIR/$dir_name/metrics.json"
     if [[ ! -f "$results_file" ]]; then
         echo "  Missing RM evaluation for: $dir_name (no results.json at $results_file)"
         missing_rm_evals+=("$dir_name")
