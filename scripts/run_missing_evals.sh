@@ -90,13 +90,7 @@ else
                --partition=normal \
                --environment=activeuf_dev \
                --wrap="
-                   pip install ./resources/reward-bench
-                   
-                   accelerate launch --config_file ${ACCELERATE_CONFIG} \
-                                     --num_processes ${GPUS_PER_NODE} \
-                                     ./resources/reward-bench/scripts/run_v2.py \
-                                     --do_not_save \
-                                     --model=${rm_path}
+                   bash ./activeuf/reward_model/reward_bench_2.sh --model ${rm_path}
                    
                    # Update WandB run with results
                    python ./scripts/update_wandb_run.py \

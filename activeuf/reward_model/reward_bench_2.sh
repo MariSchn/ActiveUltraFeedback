@@ -32,6 +32,6 @@ if [[ -z "$MODEL_PATH" ]]; then
     exit 1
 fi
 
-pip install resources/reward-bench
+pip install rewardbench
 
 accelerate launch --config_file=$SCRATCH/ActiveUltraFeedback/configs/accelerate/single_node.yaml ./activeuf/reward_model/reward_bench_2.py --model=$MODEL_PATH --max_length=$MAX_LENGTH --batch_size=$BATCH_SIZE
