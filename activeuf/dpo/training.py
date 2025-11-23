@@ -266,14 +266,12 @@ if __name__ == "__main__":
         temp = dataset.map(
             extract_prompt,
             load_from_cache_file=False,
-            num_proc=accelerator.num_processes,
         )
         temp = temp.map(
             apply_chat_template,
             fn_kwargs={"tokenizer": tokenizer},
             keep_in_memory=True,
             load_from_cache_file=False,
-            num_proc=accelerator.num_processes,
         )
         temp = temp.map(
             lambda _: NormedDPOTrainer.tokenize_row(
@@ -284,7 +282,6 @@ if __name__ == "__main__":
                 add_special_tokens=True,
             ),
             load_from_cache_file=False,
-            num_proc=accelerator.num_processes,
         )
 
         old_n = len(dataset)
@@ -301,7 +298,6 @@ if __name__ == "__main__":
         temp = temp.map(
             check_if_short,
             load_from_cache_file=False,
-            num_proc=accelerator.num_processes,
         )
         idxs = [i for i, _ in enumerate(temp["is_short"]) if _]
         dataset = dataset.select(idxs)
