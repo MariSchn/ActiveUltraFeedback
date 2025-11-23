@@ -259,9 +259,11 @@ if __name__ == "__main__":
         logger.info(f"Reward model training took {time.time() - start:.2f}s")
 
         # cleanup
+        start = time.time()
         accelerator.wait_for_everyone()
         accelerator.free_memory()
         torch.cuda.empty_cache()
+        logger.info(f"Cleanup took {time.time() - start:.2f}s")
 
     if accelerator.is_main_process:
         wandb.finish()
