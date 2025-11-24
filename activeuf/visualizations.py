@@ -35,10 +35,43 @@ MODEL_NAMES = [
     "moonshotai/Moonlight-16B-A3B-Instruct",
     "HuggingFaceTB/SmolLM2-1.7B-Instruct",
 ]
+MODEL_TO_TEXT_COLOR = {
+    "Qwen/Qwen2.5-0.5B-Instruct": "purple",
+    "Qwen/Qwen2.5-72B-Instruct": "purple",
+    "Qwen/Qwen3-0.6B": "purple",
+    "Qwen/Qwen3-1.7B": "purple",
+    "Qwen/Qwen3-14B": "purple",
+    "Qwen/Qwen3-30B-A3B": "purple",
+    "Qwen/Qwen3-32B": "purple",
+    "Qwen/Qwen3-235B-A22B": "purple",
+    "meta-llama/Llama-3.1-8B-Instruct": "blue",
+    "meta-llama/Llama-3.2-1B-Instruct": "blue",
+    "meta-llama/Llama-3.2-3B-Instruct": "blue",
+    "meta-llama/Llama-3.3-70B-Instruct": "blue",
+    "nvidia/Llama-3_3-Nemotron-Super-49B-v1": "green",
+    "nvidia/Llama-3.1-Nemotron-70B-Instruct-HF": "green",
+    "nvidia/Llama-3_1-Nemotron-Ultra-253B-v1": "green",
+    "allenai/Llama-3.1-Tulu-3-70B": "pink",
+    "allenai/Llama-3.1-Tulu-3-405B": "pink",
+    "allenai/OLMo-2-0325-32B-Instruct": "pink",
+    "microsoft/Phi-4-mini-instruct": "green",
+    "microsoft/phi-4": "green",
+    "mistralai/Mistral-Small-24B-Instruct-2501": "orange",
+    "mistralai/Mistral-Large-Instruct-2411": "orange",
+    "google/gemma-3-1b-it": "goldenrod",
+    "google/gemma-3-4b-it": "goldenrod",
+    "google/gemma-3-12b-it": "goldenrod",
+    "google/gemma-3-27b-it": "goldenrod",
+    "CohereLabs/c4ai-command-a-03-2025": "black",
+    "deepseek-ai/DeepSeek-V3": "blue",
+    "moonshotai/Moonlight-16B-A3B-Instruct": "black",
+    "HuggingFaceTB/SmolLM2-1.7B-Instruct": "goldenrod",
+}
 
 SINGLE_PLOT_SIZE = (10, 6)
-
+SPACING = 1.5
 DOUBLE_BAR_PLOT_BAR_WIDTH = 0.35
+
 RED_COLOR = "red"
 GREEN_COLOR = "green"
 
@@ -76,7 +109,7 @@ def plot_num_chosen_num_rejected_per_model(
 
     # Create the plot
     fig, ax = plt.subplots(figsize=SINGLE_PLOT_SIZE)
-    x_positions = range(len(models))
+    x_positions = [i * SPACING for i in range(len(models))]
 
     ax.bar(
         [x - DOUBLE_BAR_PLOT_BAR_WIDTH / 2 for x in x_positions],
@@ -98,6 +131,11 @@ def plot_num_chosen_num_rejected_per_model(
     ax.set_title("Chosen vs Rejected Counts per Model", fontsize=14, fontweight="bold")
     ax.set_xticks(x_positions)
     ax.set_xticklabels(models, rotation=45, ha="right")
+
+    # Color the x-axis labels by model family
+    for tick_label, model in zip(ax.get_xticklabels(), models):
+        tick_label.set_color(MODEL_TO_TEXT_COLOR.get(model, "black"))
+
     ax.legend(fontsize=10)
     ax.grid(axis="y", alpha=0.3, linestyle="--")
 
@@ -136,7 +174,14 @@ def plot_score_boxplot_per_model(dataset: Dataset, output_path: str | None = Non
     scores_data = [model_to_scores[model] for model in models]
 
     fig, ax = plt.subplots(figsize=SINGLE_PLOT_SIZE)
-    bp = ax.boxplot(scores_data, labels=models, patch_artist=True, showfliers=False)
+    x_positions = [i * SPACING for i in range(len(models))]
+    bp = ax.boxplot(
+        scores_data,
+        positions=x_positions,
+        labels=models,
+        patch_artist=True,
+        showfliers=False,
+    )
 
     # Customize Colors
     for patch in bp["boxes"]:
@@ -156,7 +201,13 @@ def plot_score_boxplot_per_model(dataset: Dataset, output_path: str | None = Non
     ax.set_xlabel("Model", fontsize=12, fontweight="bold")
     ax.set_ylabel("Overall Score", fontsize=12, fontweight="bold")
     ax.set_title("Score Distribution per Model", fontsize=14, fontweight="bold")
+    ax.set_xticks(x_positions)
     ax.set_xticklabels(models, rotation=45, ha="right")
+
+    # Color the x-axis labels by model family
+    for tick_label, model in zip(ax.get_xticklabels(), models):
+        tick_label.set_color(MODEL_TO_TEXT_COLOR.get(model, "black"))
+
     ax.grid(axis="y", alpha=0.3, linestyle="--")
 
     plt.tight_layout()
