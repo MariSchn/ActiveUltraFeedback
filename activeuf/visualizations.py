@@ -3,6 +3,7 @@ import os
 import json
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 from datasets import load_from_disk, Dataset
 
 MODEL_NAMES = [
@@ -37,6 +38,7 @@ MODEL_NAMES = [
     "moonshotai/Moonlight-16B-A3B-Instruct",
     "HuggingFaceTB/SmolLM2-1.7B-Instruct",
 ]
+
 MODEL_TO_TEXT_COLOR = {
     "Qwen/Qwen2.5-0.5B-Instruct": "purple",
     "Qwen/Qwen2.5-72B-Instruct": "purple",
@@ -70,16 +72,115 @@ MODEL_TO_TEXT_COLOR = {
     "HuggingFaceTB/SmolLM2-1.7B-Instruct": "goldenrod",
 }
 
-SINGLE_PLOT_SIZE = (16, 6)
-SPACING = 1.5
-DOUBLE_BAR_PLOT_BAR_WIDTH = 0.35
+# Plot constants
+PLOT_SIZE = (16, 6)
+SPACING = 1.25
+BAR_WIDTH = 0.5
 
+# Font constants
+TITLE_FONTSIZE = 14
+LABEL_FONTSIZE = 12
+LEGEND_FONTSIZE = 10
+
+# Style constants
 RED_COLOR = "red"
 GREEN_COLOR = "green"
+LIGHTBLUE_COLOR = "lightblue"
+GRAY_COLOR = "gray"
+DARKGREEN_COLOR = "darkgreen"
+DARKRED_COLOR = "darkred"
+BLACK_COLOR = "black"
+DEFAULT_TEXT_COLOR = "black"
+
+ALPHA_VALUE = 0.7
+GRID_ALPHA = 0.3
+
+# Boxplot constants
+WHISKER_LINEWIDTH = 1.5
+MEDIAN_LINEWIDTH = 2
+BOXPLOT_SIDE_BY_SIDE_WIDTH = 0.5
+BOXPLOT_WIDTH_MULTIPLIER = 0.85
+
+# Output constants
+DPI = 300
 
 
 def has_columns(dataset: Dataset, columns: list[str]) -> bool:
+    """Check if dataset has all specified columns."""
     return all(column in dataset.column_names for column in columns)
+
+
+def get_x_positions(num_models: int) -> list[float]:
+    """Generate x-axis positions for models with proper spacing."""
+    return [i * SPACING for i in range(num_models)]
+
+
+def apply_model_family_colors(ax, models: list[str]) -> None:
+    """Apply color coding to x-axis labels based on model families."""
+    for tick_label, model in zip(ax.get_xticklabels(), models):
+        tick_label.set_color(MODEL_TO_TEXT_COLOR.get(model, DEFAULT_TEXT_COLOR))
+
+
+def extract_preference_scores_per_model(
+    dataset: Dataset, include_chosen: bool = True, include_rejected: bool = True
+) -> tuple[dict[str, list], dict[str, list]]:
+    """
+    Extract chosen and rejected scores per model from a preference dataset.
+
+    Returns:
+        (model_to_chosen_scores, model_to_rejected_scores)
+    """
+    model_to_chosen_scores = {model: [] for model in MODEL_NAMES}
+    model_to_rejected_scores = {model: [] for model in MODEL_NAMES}
+
+    def extract_scores(sample):
+        if include_chosen:
+            model_to_chosen_scores[sample["chosen_model"]].append(
+                sample["chosen_score"]
+            )
+        if include_rejected:
+            model_to_rejected_scores[sample["rejected_model"]].append(
+                sample["rejected_score"]
+            )
+
+    dataset.map(
+        extract_scores,
+        load_from_cache_file=False,
+    )
+    return model_to_chosen_scores, model_to_rejected_scores
+
+
+def extract_annotated_scores_per_model(dataset: Dataset) -> dict[str, list]:
+    """Extract scores per model from an annotated dataset with completions."""
+    model_to_scores = {model: [] for model in MODEL_NAMES}
+
+    def extract_scores(sample):
+        for completion in sample["completions"]:
+            model_to_scores[completion["model"]].append(completion["overall_score"])
+
+    dataset.map(
+        extract_scores,
+        load_from_cache_file=False,
+    )
+    return model_to_scores
+
+
+def style_boxplot_elements(
+    bp: dict, face_color: str, whisker_color: str, median_color: str = BLACK_COLOR
+) -> None:
+    """Apply consistent styling to boxplot elements."""
+    for patch in bp["boxes"]:
+        patch.set_facecolor(face_color)
+        patch.set_alpha(ALPHA_VALUE)
+
+    for whisker in bp["whiskers"]:
+        whisker.set(color=whisker_color, linewidth=WHISKER_LINEWIDTH)
+
+    for cap in bp["caps"]:
+        cap.set(color=whisker_color, linewidth=WHISKER_LINEWIDTH)
+
+    for median in bp["medians"]:
+        median.set(color=median_color, linewidth=MEDIAN_LINEWIDTH)
 
 
 def plot_num_chosen_num_rejected_per_model(
@@ -92,7 +193,7 @@ def plot_num_chosen_num_rejected_per_model(
     """
     if not has_columns(dataset, ["chosen_model", "rejected_model"]):
         raise ValueError(
-            "Dataset must have 'chosen_model', 'rejected_model' columns."
+            "Dataset must have 'chosen_model', 'rejected_model' columns. "
             "Make sure that the dataset is a preference dataset"
         )
 
@@ -103,47 +204,52 @@ def plot_num_chosen_num_rejected_per_model(
         model_to_chosen_counts[sample["chosen_model"]] += 1
         model_to_rejected_counts[sample["rejected_model"]] += 1
 
-    dataset.map(extract_data, load_from_cache_file=False)
+    dataset.map(
+        extract_data,
+        load_from_cache_file=False,
+    )
 
     models = MODEL_NAMES
     chosen_counts = [model_to_chosen_counts[model] for model in models]
     rejected_counts = [model_to_rejected_counts[model] for model in models]
 
     # Create the plot
-    fig, ax = plt.subplots(figsize=SINGLE_PLOT_SIZE)
-    x_positions = [i * SPACING for i in range(len(models))]
+    fig, ax = plt.subplots(figsize=PLOT_SIZE)
+    x_positions = get_x_positions(len(models))
 
     ax.bar(
-        [x - DOUBLE_BAR_PLOT_BAR_WIDTH / 2 for x in x_positions],
+        [x - BAR_WIDTH / 2 for x in x_positions],
         chosen_counts,
-        DOUBLE_BAR_PLOT_BAR_WIDTH,
+        BAR_WIDTH,
         label="Chosen",
         color=GREEN_COLOR,
     )
     ax.bar(
-        [x + DOUBLE_BAR_PLOT_BAR_WIDTH / 2 for x in x_positions],
+        [x + BAR_WIDTH / 2 for x in x_positions],
         rejected_counts,
-        DOUBLE_BAR_PLOT_BAR_WIDTH,
+        BAR_WIDTH,
         label="Rejected",
         color=RED_COLOR,
     )
 
-    ax.set_xlabel("Model", fontsize=12, fontweight="bold")
-    ax.set_ylabel("Count", fontsize=12, fontweight="bold")
-    ax.set_title("Chosen vs Rejected Counts per Model", fontsize=14, fontweight="bold")
+    ax.set_xlabel("Model", fontsize=LABEL_FONTSIZE, fontweight="bold")
+    ax.set_ylabel("Count", fontsize=LABEL_FONTSIZE, fontweight="bold")
+    ax.set_title(
+        "Chosen vs Rejected Counts per Model",
+        fontsize=TITLE_FONTSIZE,
+        fontweight="bold",
+    )
     ax.set_xticks(x_positions)
     ax.set_xticklabels(models, rotation=45, ha="right")
 
-    # Color the x-axis labels by model family
-    for tick_label, model in zip(ax.get_xticklabels(), models):
-        tick_label.set_color(MODEL_TO_TEXT_COLOR.get(model, "black"))
+    apply_model_family_colors(ax, models)
 
-    ax.legend(fontsize=10)
-    ax.grid(axis="y", alpha=0.3, linestyle="--")
+    ax.legend(fontsize=LEGEND_FONTSIZE)
+    ax.grid(axis="y", alpha=GRID_ALPHA, linestyle="--")
 
     plt.tight_layout()
     if output_path:
-        plt.savefig(output_path, dpi=300, bbox_inches="tight")
+        plt.savefig(output_path, dpi=DPI, bbox_inches="tight")
         print(f"Num Chosen Num Rejected Per Model Plot saved to {output_path}")
 
     return fig
@@ -162,42 +268,32 @@ def plot_score_boxplot_per_model(
     - a "completions" column which has an attribute "overall_score"
     - a "chosen_model", "rejected_model", "chosen_score", "rejected_score" columns
     """
-    model_to_scores = {model: [] for model in MODEL_NAMES}
-
-    def extract_scores_annotated_dataset(sample):
-        for completion in sample["completions"]:
-            model_name = completion["model"]
-            score = completion["overall_score"]
-
-            model_to_scores[model_name].append(score)
-
-    def extract_scores_preference_dataset(sample):
-        if plot_chosen:
-            chosen_model = sample["chosen_model"]
-            chosen_score = sample["chosen_score"]
-            model_to_scores[chosen_model].append(chosen_score)
-        if plot_rejected:
-            rejected_model = sample["rejected_model"]
-            rejected_score = sample["rejected_score"]
-            model_to_scores[rejected_model].append(rejected_score)
-
+    # Extract scores based on dataset type
     if has_columns(dataset, ["completions"]):
-        dataset.map(extract_scores_annotated_dataset, load_from_cache_file=False)
+        model_to_scores = extract_annotated_scores_per_model(dataset)
     elif has_columns(
         dataset, ["chosen_model", "rejected_model", "chosen_score", "rejected_score"]
     ):
-        dataset.map(extract_scores_preference_dataset, load_from_cache_file=False)
+        model_to_chosen, model_to_rejected = extract_preference_scores_per_model(
+            dataset, include_chosen=plot_chosen, include_rejected=plot_rejected
+        )
+        # Combine chosen and rejected scores
+        model_to_scores = {model: [] for model in MODEL_NAMES}
+        for model in MODEL_NAMES:
+            model_to_scores[model].extend(model_to_chosen[model])
+            model_to_scores[model].extend(model_to_rejected[model])
     else:
         raise ValueError(
-            "Dataset must have 'completions' or 'chosen_model', 'rejected_model', 'chosen_score', 'rejected_score' columns."
+            "Dataset must have 'completions' or 'chosen_model', 'rejected_model', "
+            "'chosen_score', 'rejected_score' columns. "
             "Make sure that the dataset is a fully annotated dataset or a preference dataset"
         )
 
     models = MODEL_NAMES
     scores_data = [model_to_scores[model] for model in models]
 
-    fig, ax = plt.subplots(figsize=SINGLE_PLOT_SIZE)
-    x_positions = [i * SPACING for i in range(len(models))]
+    fig, ax = plt.subplots(figsize=PLOT_SIZE)
+    x_positions = get_x_positions(len(models))
     bp = ax.boxplot(
         scores_data,
         positions=x_positions,
@@ -206,21 +302,10 @@ def plot_score_boxplot_per_model(
         showfliers=False,
     )
 
-    # Customize Colors
-    for patch in bp["boxes"]:
-        patch.set_facecolor("lightblue")
-        patch.set_alpha(0.7)
+    # Customize boxplot
+    style_boxplot_elements(bp, LIGHTBLUE_COLOR, GRAY_COLOR, RED_COLOR)
 
-    for whisker in bp["whiskers"]:
-        whisker.set(color="gray", linewidth=1.5)
-
-    for cap in bp["caps"]:
-        cap.set(color="gray", linewidth=1.5)
-
-    for median in bp["medians"]:
-        median.set(color=RED_COLOR, linewidth=2)
-
-    # Customize Plot
+    # Set title based on what's being plotted
     if plot_chosen and plot_rejected:
         title = "Score Distribution per Model"
     elif plot_chosen:
@@ -228,23 +313,19 @@ def plot_score_boxplot_per_model(
     elif plot_rejected:
         title = "Rejected Score Distribution per Model"
 
-    ax.set_xlabel("Model", fontsize=12, fontweight="bold")
-    ax.set_ylabel("Overall Score", fontsize=12, fontweight="bold")
-    ax.set_title(title, fontsize=14, fontweight="bold")
+    ax.set_xlabel("Model", fontsize=LABEL_FONTSIZE, fontweight="bold")
+    ax.set_ylabel("Overall Score", fontsize=LABEL_FONTSIZE, fontweight="bold")
+    ax.set_title(title, fontsize=TITLE_FONTSIZE, fontweight="bold")
     ax.set_xticks(x_positions)
     ax.set_xticklabels(models, rotation=45, ha="right")
 
-    # Color the x-axis labels by model family
-    for tick_label, model in zip(ax.get_xticklabels(), models):
-        tick_label.set_color(MODEL_TO_TEXT_COLOR.get(model, "black"))
+    apply_model_family_colors(ax, models)
 
-    ax.grid(axis="y", alpha=0.3, linestyle="--")
-
-    plt.tight_layout()
+    ax.grid(axis="y", alpha=GRID_ALPHA, linestyle="--")
 
     plt.tight_layout()
     if output_path:
-        plt.savefig(output_path, dpi=300, bbox_inches="tight")
+        plt.savefig(output_path, dpi=DPI, bbox_inches="tight")
         print(f"Score Boxplot saved to {output_path}")
 
     return fig
@@ -262,41 +343,31 @@ def plot_score_boxplot_chosen_vs_rejected_per_model(
         dataset, ["chosen_model", "rejected_model", "chosen_score", "rejected_score"]
     ):
         raise ValueError(
-            "Dataset must have 'chosen_model', 'rejected_model', 'chosen_score', 'rejected_score' columns. "
-            "Make sure that the dataset is a preference dataset"
+            "Dataset must have 'chosen_model', 'rejected_model', 'chosen_score', "
+            "'rejected_score' columns. Make sure that the dataset is a preference dataset"
         )
 
-    model_to_chosen_scores = {model: [] for model in MODEL_NAMES}
-    model_to_rejected_scores = {model: [] for model in MODEL_NAMES}
-
-    def extract_scores(sample):
-        chosen_model = sample["chosen_model"]
-        rejected_model = sample["rejected_model"]
-        chosen_score = sample["chosen_score"]
-        rejected_score = sample["rejected_score"]
-
-        model_to_chosen_scores[chosen_model].append(chosen_score)
-        model_to_rejected_scores[rejected_model].append(rejected_score)
-
-    dataset.map(extract_scores, load_from_cache_file=False)
+    # Extract scores
+    model_to_chosen, model_to_rejected = extract_preference_scores_per_model(
+        dataset, include_chosen=True, include_rejected=True
+    )
 
     models = MODEL_NAMES
-    chosen_scores_data = [model_to_chosen_scores[model] for model in models]
-    rejected_scores_data = [model_to_rejected_scores[model] for model in models]
+    chosen_scores_data = [model_to_chosen[model] for model in models]
+    rejected_scores_data = [model_to_rejected[model] for model in models]
 
-    fig, ax = plt.subplots(figsize=SINGLE_PLOT_SIZE)
+    fig, ax = plt.subplots(figsize=PLOT_SIZE)
 
     # Create positions for side-by-side boxplots
-    x_positions = [i * SPACING for i in range(len(models))]
-    width = (
-        0.6  # Width offset for side-by-side boxplots (increased for better visibility)
-    )
+    x_positions = get_x_positions(len(models))
+    offset = BOXPLOT_SIDE_BY_SIDE_WIDTH / 2
+    box_width = BOXPLOT_SIDE_BY_SIDE_WIDTH * BOXPLOT_WIDTH_MULTIPLIER
 
     # Create chosen boxplots
     bp_chosen = ax.boxplot(
         chosen_scores_data,
-        positions=[x - width / 2 for x in x_positions],
-        widths=width * 0.85,
+        positions=[x - offset for x in x_positions],
+        widths=box_width,
         patch_artist=True,
         showfliers=False,
     )
@@ -304,63 +375,41 @@ def plot_score_boxplot_chosen_vs_rejected_per_model(
     # Create rejected boxplots
     bp_rejected = ax.boxplot(
         rejected_scores_data,
-        positions=[x + width / 2 for x in x_positions],
-        widths=width * 0.85,
+        positions=[x + offset for x in x_positions],
+        widths=box_width,
         patch_artist=True,
         showfliers=False,
     )
 
-    # Customize chosen boxplots (green)
-    for patch in bp_chosen["boxes"]:
-        patch.set_facecolor(GREEN_COLOR)
-        patch.set_alpha(0.7)
-    for whisker in bp_chosen["whiskers"]:
-        whisker.set(color="darkgreen", linewidth=1.5)
-    for cap in bp_chosen["caps"]:
-        cap.set(color="darkgreen", linewidth=1.5)
-    for median in bp_chosen["medians"]:
-        median.set(color="black", linewidth=2)
-
-    # Customize rejected boxplots (red)
-    for patch in bp_rejected["boxes"]:
-        patch.set_facecolor(RED_COLOR)
-        patch.set_alpha(0.7)
-    for whisker in bp_rejected["whiskers"]:
-        whisker.set(color="darkred", linewidth=1.5)
-    for cap in bp_rejected["caps"]:
-        cap.set(color="darkred", linewidth=1.5)
-    for median in bp_rejected["medians"]:
-        median.set(color="black", linewidth=2)
+    # Style boxplots
+    style_boxplot_elements(bp_chosen, GREEN_COLOR, DARKGREEN_COLOR, BLACK_COLOR)
+    style_boxplot_elements(bp_rejected, RED_COLOR, DARKRED_COLOR, BLACK_COLOR)
 
     # Customize Plot
-    ax.set_xlabel("Model", fontsize=12, fontweight="bold")
-    ax.set_ylabel("Overall Score", fontsize=12, fontweight="bold")
+    ax.set_xlabel("Model", fontsize=LABEL_FONTSIZE, fontweight="bold")
+    ax.set_ylabel("Overall Score", fontsize=LABEL_FONTSIZE, fontweight="bold")
     ax.set_title(
         "Chosen vs Rejected Score Distribution per Model",
-        fontsize=14,
+        fontsize=TITLE_FONTSIZE,
         fontweight="bold",
     )
     ax.set_xticks(x_positions)
     ax.set_xticklabels(models, rotation=45, ha="right")
 
-    # Color the x-axis labels by model family
-    for tick_label, model in zip(ax.get_xticklabels(), models):
-        tick_label.set_color(MODEL_TO_TEXT_COLOR.get(model, "black"))
+    apply_model_family_colors(ax, models)
 
     # Create legend
-    from matplotlib.patches import Patch
-
     legend_elements = [
-        Patch(facecolor=GREEN_COLOR, alpha=0.7, label="Chosen"),
-        Patch(facecolor=RED_COLOR, alpha=0.7, label="Rejected"),
+        Patch(facecolor=GREEN_COLOR, alpha=ALPHA_VALUE, label="Chosen"),
+        Patch(facecolor=RED_COLOR, alpha=ALPHA_VALUE, label="Rejected"),
     ]
-    ax.legend(handles=legend_elements, fontsize=10)
+    ax.legend(handles=legend_elements, fontsize=LEGEND_FONTSIZE)
 
-    ax.grid(axis="y", alpha=0.3, linestyle="--")
+    ax.grid(axis="y", alpha=GRID_ALPHA, linestyle="--")
 
     plt.tight_layout()
     if output_path:
-        plt.savefig(output_path, dpi=300, bbox_inches="tight")
+        plt.savefig(output_path, dpi=DPI, bbox_inches="tight")
         print(f"Chosen vs Rejected Score Boxplot saved to {output_path}")
 
     return fig
@@ -376,7 +425,13 @@ def calculate_statistics(dataset: Dataset, output_path: str | None = None) -> di
 
     This only works on preference datasets.
     """
-    statistics = {}
+    if not has_columns(
+        dataset, ["chosen_model", "rejected_model", "chosen_score", "rejected_score"]
+    ):
+        raise ValueError(
+            "Dataset must have 'chosen_model', 'rejected_model', 'chosen_score', "
+            "'rejected_score' columns. Make sure that the dataset is a preference dataset"
+        )
 
     chosen_scores = []
     rejected_scores = []
@@ -387,13 +442,15 @@ def calculate_statistics(dataset: Dataset, output_path: str | None = None) -> di
 
     dataset.map(extract_scores, load_from_cache_file=False)
 
-    statistics["mean_score_chosen"] = np.mean(chosen_scores)
-    statistics["mean_score_rejected"] = np.mean(rejected_scores)
-    statistics["mean_score_delta"] = np.mean(chosen_scores) - np.mean(rejected_scores)
+    statistics = {
+        "mean_score_chosen": float(np.mean(chosen_scores)),
+        "mean_score_rejected": float(np.mean(rejected_scores)),
+        "mean_score_delta": float(np.mean(chosen_scores) - np.mean(rejected_scores)),
+    }
 
     if output_path:
         with open(output_path, "w") as f:
-            json.dump(statistics, f)
+            json.dump(statistics, f, indent=2)
             print(f"Statistics saved to {output_path}")
 
     return statistics
