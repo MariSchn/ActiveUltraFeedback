@@ -36,6 +36,8 @@ MODEL_NAMES = [
     "HuggingFaceTB/SmolLM2-1.7B-Instruct",
 ]
 
+SINGLE_PLOT_SIZE = (10, 6)
+
 DOUBLE_BAR_PLOT_BAR_WIDTH = 0.35
 RED_COLOR = "red"
 GREEN_COLOR = "green"
@@ -46,11 +48,12 @@ def has_columns(dataset: Dataset, columns: list[str]) -> bool:
 
 
 def plot_num_chosen_num_rejected_per_model(
-    dataset: Dataset, output_path: str = "./plots/chosen_rejected_counts.png"
+    dataset: Dataset, output_path: str | None = None
 ):
     """
     Plots the number of times each model was used as chosen vs rejected.
-    Only works if `dataset` is a preference dataset with 'chosen_model' and 'rejected_model' columns.
+    This is meant to be run on a preference dataset and only works
+    if the dataset has 'chosen_model' and 'rejected_model' columns.
     """
     if not has_columns(dataset, ["chosen_model", "rejected_model"]):
         raise ValueError(
@@ -65,14 +68,14 @@ def plot_num_chosen_num_rejected_per_model(
         model_to_chosen_counts[sample["chosen_model"]] += 1
         model_to_rejected_counts[sample["rejected_model"]] += 1
 
-    dataset.map(extract_data)
+    dataset.map(extract_data, load_from_cache_file=False)
 
     models = MODEL_NAMES
     chosen_counts = [model_to_chosen_counts[model] for model in models]
     rejected_counts = [model_to_rejected_counts[model] for model in models]
 
     # Create the plot
-    fig, ax = plt.subplots(figsize=(16, 8))
+    fig, ax = plt.subplots(figsize=SINGLE_PLOT_SIZE)
     x_positions = range(len(models))
 
     ax.bar(
@@ -99,12 +102,71 @@ def plot_num_chosen_num_rejected_per_model(
     ax.grid(axis="y", alpha=0.3, linestyle="--")
 
     plt.tight_layout()
+    if output_path:
+        plt.savefig(output_path, dpi=300, bbox_inches="tight")
+        print(f"Num Chosen Num Rejected Per Model Plot saved to {output_path}")
 
-    # Save the plot
-    plt.savefig(output_path, dpi=300, bbox_inches="tight")
-    plt.close()
+    return fig
 
-    print(f"Plot saved to {output_path}")
+
+def plot_score_boxplot_per_model(dataset: Dataset, output_path: str | None = None):
+    """
+    Creates a boxplot for the scores of each model.
+    This is meant to be run on a fully annotated dataset and only works
+    if the dataset has a "completions" column which has an attribute "overall_score".
+    """
+    if not has_columns(dataset, ["completions"]):
+        raise ValueError(
+            "Dataset must have 'completions' column."
+            "Make sure that the dataset is a fully annotated dataset"
+        )
+
+    model_to_scores = {model: [] for model in MODEL_NAMES}
+
+    def extract_scores(sample):
+        for completion in sample["completions"]:
+            model_name = completion["model"]
+            score = completion["overall_score"]
+
+            model_to_scores[model_name].append(score)
+
+    dataset.map(extract_scores, load_from_cache_file=False)
+
+    models = MODEL_NAMES
+    scores_data = [model_to_scores[model] for model in models]
+
+    fig, ax = plt.subplots(figsize=SINGLE_PLOT_SIZE)
+    bp = ax.boxplot(scores_data, labels=models, patch_artist=True, showfliers=False)
+
+    # Customize Colors
+    for patch in bp["boxes"]:
+        patch.set_facecolor("lightblue")
+        patch.set_alpha(0.7)
+
+    for whisker in bp["whiskers"]:
+        whisker.set(color="gray", linewidth=1.5)
+
+    for cap in bp["caps"]:
+        cap.set(color="gray", linewidth=1.5)
+
+    for median in bp["medians"]:
+        median.set(color=RED_COLOR, linewidth=2)
+
+    # Customize Plot
+    ax.set_xlabel("Model", fontsize=12, fontweight="bold")
+    ax.set_ylabel("Overall Score", fontsize=12, fontweight="bold")
+    ax.set_title("Score Distribution per Model", fontsize=14, fontweight="bold")
+    ax.set_xticklabels(models, rotation=45, ha="right")
+    ax.grid(axis="y", alpha=0.3, linestyle="--")
+
+    plt.tight_layout()
+
+    plt.tight_layout()
+    if output_path:
+        plt.savefig(output_path, dpi=300, bbox_inches="tight")
+        print(f"Score Boxplot saved to {output_path}")
+
+    return fig
 
 
 if __name__ == "__main__":
@@ -114,6 +176,15 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     dataset = load_from_disk(args.dataset_path)
-    plot_num_chosen_num_rejected_per_model(
-        dataset, os.path.join(args.output_dir, "chosen_rejected_counts.png")
-    )
+    is_preference = "chosen" in dataset.column_names
+
+    if is_preference:
+        # Preference Dataset Plots
+        plot_num_chosen_num_rejected_per_model(
+            dataset, os.path.join(args.output_dir, "chosen_rejected_counts.png")
+        )
+    else:
+        # Annotated Dataset Plots
+        plot_score_boxplot_per_model(
+            dataset, os.path.join(args.output_dir, "score_boxplot.png")
+        )
