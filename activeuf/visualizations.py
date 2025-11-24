@@ -150,25 +150,40 @@ def plot_num_chosen_num_rejected_per_model(
 def plot_score_boxplot_per_model(dataset: Dataset, output_path: str | None = None):
     """
     Creates a boxplot for the scores of each model.
-    This is meant to be run on a fully annotated dataset and only works
-    if the dataset has a "completions" column which has an attribute "overall_score".
+    This can run on both fully annotated datasets and preference datasets.
+    This means it needs to either have:
+    - a "completions" column which has an attribute "overall_score"
+    - a "chosen_model", "rejected_model", "chosen_score", "rejected_score" columns
     """
-    if not has_columns(dataset, ["completions"]):
-        raise ValueError(
-            "Dataset must have 'completions' column."
-            "Make sure that the dataset is a fully annotated dataset"
-        )
-
     model_to_scores = {model: [] for model in MODEL_NAMES}
 
-    def extract_scores(sample):
+    def extract_scores_annotated_dataset(sample):
         for completion in sample["completions"]:
             model_name = completion["model"]
             score = completion["overall_score"]
 
             model_to_scores[model_name].append(score)
 
-    dataset.map(extract_scores, load_from_cache_file=False)
+    def extract_scores_preference_dataset(sample):
+        chosen_model = sample["chosen_model"]
+        rejected_model = sample["rejected_model"]
+        chosen_score = sample["chosen_score"]
+        rejected_score = sample["rejected_score"]
+
+        model_to_scores[chosen_model].append(chosen_score)
+        model_to_scores[rejected_model].append(rejected_score)
+
+    if has_columns(dataset, ["completions"]):
+        dataset.map(extract_scores_annotated_dataset, load_from_cache_file=False)
+    elif has_columns(
+        dataset, ["chosen_model", "rejected_model", "chosen_score", "rejected_score"]
+    ):
+        dataset.map(extract_scores_preference_dataset, load_from_cache_file=False)
+    else:
+        raise ValueError(
+            "Dataset must have 'completions' or 'chosen_model', 'rejected_model', 'chosen_score', 'rejected_score' columns."
+            "Make sure that the dataset is a fully annotated dataset or a preference dataset"
+        )
 
     models = MODEL_NAMES
     scores_data = [model_to_scores[model] for model in models]
