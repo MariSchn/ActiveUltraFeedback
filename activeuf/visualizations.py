@@ -193,7 +193,7 @@ def plot_score_boxplot_per_model(dataset: Dataset, output_path: str | None = Non
     bp = ax.boxplot(
         scores_data,
         positions=x_positions,
-        labels=models,
+        tick_labels=models,
         patch_artist=True,
         showfliers=False,
     )
