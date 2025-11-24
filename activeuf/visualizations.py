@@ -238,8 +238,12 @@ def plot_score_boxplot_per_model(dataset: Dataset, output_path: str | None = Non
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset_path", type=str, required=True)
-    parser.add_argument("--output_dir", type=str, default="./plots")
+    parser.add_argument("--output_dir", type=str, default="")
     args = parser.parse_args()
+
+    if not args.output_dir:
+        args.output_dir = os.path.join(args.dataset_path, "plots")
+        os.makedirs(args.output_dir, exist_ok=True)
 
     dataset = load_from_disk(args.dataset_path)
     is_preference = "chosen" in dataset.column_names
@@ -249,8 +253,11 @@ if __name__ == "__main__":
         plot_num_chosen_num_rejected_per_model(
             dataset, os.path.join(args.output_dir, "chosen_rejected_counts.png")
         )
+        plot_score_boxplot_per_model(
+            dataset, os.path.join(args.output_dir, "score_boxplot_preference.png")
+        )
     else:
         # Annotated Dataset Plots
         plot_score_boxplot_per_model(
-            dataset, os.path.join(args.output_dir, "score_boxplot.png")
+            dataset, os.path.join(args.output_dir, "score_boxplot_annotated.png")
         )
