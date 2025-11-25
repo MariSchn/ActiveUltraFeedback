@@ -6,6 +6,7 @@ from activeuf.acquisition_function.infogain import InfoGain
 from activeuf.acquisition_function.ultrafeedback import UltraFeedback
 from activeuf.acquisition_function.ids import InformationDirectedSampling
 from activeuf.acquisition_function.rucb import RelativeUpperConfidenceBound
+from activeuf.acquisition_function.drts import DoubleReverseThompsonSampling
 
 __all__ = [
     "RandomAcquisitionFunction",
@@ -27,6 +28,7 @@ _acquisition_function_map = {
     "infogain": InfoGain,
     "ids": InformationDirectedSampling,
     "rucb": RelativeUpperConfidenceBound,
+    "drts": DoubleReverseThompsonSampling,
 }
 
 

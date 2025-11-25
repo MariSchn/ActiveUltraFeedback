@@ -1,0 +1,29 @@
+command:
+  - scripts/loop_train_eval.sbatch
+  - ${args}
+method: grid
+metric:
+  goal: maximize
+  name: Rewardbench/Mean
+name: acquisition_comparison
+parameters:
+  acquisition_function_type:
+    values:
+      - dts
+      - infogain
+      - infomax
+      - maxminlcb
+      - drts
+  enn.regularization.exponential_decay_base:
+    values:
+      - 0.9
+  enn.regularization.initial_value:
+    values:
+      - 1.0
+  outer_loop_batch_size:
+    values:
+      - 64
+  replay_buffer_factor:
+    values:
+      - 100
+program: scripts/loop_train_eval.sbatch
