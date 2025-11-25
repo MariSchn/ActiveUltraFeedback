@@ -263,47 +263,47 @@ if __name__ == "__main__":
     # remove samples where prompt+chosen or prompt+rejected exceeds max length
     if training_config["max_length"]:
         # Do not load from cache here to avoid race conditions when running on multiple GPUs/nodes
-        temp = dataset.map(
-            extract_prompt,
-            load_from_cache_file=False,
-        )
-        temp = temp.map(
-            apply_chat_template,
-            fn_kwargs={"tokenizer": tokenizer},
-            keep_in_memory=True,
-            load_from_cache_file=False,
-        )
-        temp = temp.map(
-            lambda _: NormedDPOTrainer.tokenize_row(
-                _,
-                processing_class=tokenizer,
-                max_prompt_length=None,
-                max_completion_length=None,
-                add_special_tokens=True,
-            ),
-            load_from_cache_file=False,
-        )
+        with accelerator.main_process_first():
+            temp = dataset.map(
+                extract_prompt,
+                num_proc=os.cpu_count(),
+            )
+            temp = temp.map(
+                apply_chat_template,
+                fn_kwargs={"tokenizer": tokenizer},
+                num_proc=os.cpu_count(),
+            )
+            temp = temp.map(
+                lambda _: NormedDPOTrainer.tokenize_row(
+                    _,
+                    processing_class=tokenizer,
+                    max_prompt_length=None,
+                    max_completion_length=None,
+                    add_special_tokens=True,
+                ),
+                num_proc=os.cpu_count(),
+            )
 
-        old_n = len(dataset)
-        print(f"Original number of samples: {old_n}")
+            old_n = len(dataset)
+            print(f"Original number of samples: {old_n}")
 
-        def check_if_short(x: dict) -> dict[str, bool]:
-            return {
-                "is_short": len(x["prompt_input_ids"]) + len(x["chosen_input_ids"])
-                <= training_config["max_length"]
-                or len(x["prompt_input_ids"]) + len(x["rejected_input_ids"])
-                <= training_config["max_length"]
-            }
+            def check_if_short(x: dict) -> dict[str, bool]:
+                return {
+                    "is_short": len(x["prompt_input_ids"]) + len(x["chosen_input_ids"])
+                    <= training_config["max_length"]
+                    or len(x["prompt_input_ids"]) + len(x["rejected_input_ids"])
+                    <= training_config["max_length"]
+                }
 
-        temp = temp.map(
-            check_if_short,
-            load_from_cache_file=False,
-        )
-        idxs = [i for i, _ in enumerate(temp["is_short"]) if _]
-        dataset = dataset.select(idxs)
-        print(
-            f"Number of samples removed due to length constraints: {old_n - len(dataset)}"
-        )
+            temp = temp.map(
+                check_if_short,
+                num_proc=os.cpu_count(),
+            )
+            idxs = [i for i, _ in enumerate(temp["is_short"]) if _]
+            dataset = dataset.select(idxs)
+            print(
+                f"Number of samples removed due to length constraints: {old_n - len(dataset)}"
+            )
 
     dataset = dataset.select_columns(["chosen", "rejected"])
 

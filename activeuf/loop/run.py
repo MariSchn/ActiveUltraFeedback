@@ -67,6 +67,7 @@ if __name__ == "__main__":
         os.environ.setdefault("WANDB_DIR", args.wandb_dir)
         wandb_run = wandb.init(
             project=args.wandb_project,
+            entity="ActiveUF",
             id=args.run_id,
             config=vars(args),
         )
@@ -182,13 +183,26 @@ if __name__ == "__main__":
             )
 
         # put batch-level KPIs alongside KPIs for final microbatch
-        for idx, kpi in enumerate(kpis_batch):
-            if idx == len(kpis_batch) - 1:
-                for key, val in kpi.copy().items():
-                    key2 = key.replace("per_sample", "per_batch")
-                    if not key2.startswith("mean_"):
-                        key2 = f"mean_{key2}"
-                    kpi[key2] = sum(kpi2[key] for kpi2 in kpis_batch) / len(kpis_batch)
+        for key, val in kpis_batch[len(kpis_batch) - 1].copy().items():
+            key2 = key.replace("per_sample", "per_batch")
+            if not key2.startswith("mean_"):
+                key2 = f"mean_{key2}"
+            kpis_batch[len(kpis_batch) - 1][key2] = sum(
+                kpi2[key] for kpi2 in kpis_batch
+            ) / len(kpis_batch)
+
+        # including actual chosen/rejected scores in the kpis
+        for idx in range(len(annotated_batch)):
+            kpis_batch[idx]["actual_chosen_score_per_sample"] = annotated_batch[idx][
+                "chosen_score"
+            ]
+            kpis_batch[idx]["actual_rejected_score_per_sample"] = annotated_batch[idx][
+                "rejected_score"
+            ]
+            kpis_batch[idx]["actual_score_difference_per_sample"] = (
+                annotated_batch[idx]["chosen_score"]
+                - annotated_batch[idx]["rejected_score"]
+            )
 
         logger.info(
             f"- Number of samples annotated in this batch: {len(annotated_batch)}"
@@ -245,9 +259,10 @@ if __name__ == "__main__":
         )
         loop_utils.MAX_TRAINER_LOGS_CACHE_SIZE = len(trainer.get_train_dataloader())
 
-        n_done = broadcast_object_list([len(output)])[0]
         new_regularisation = loop_utils.get_new_regularization(
-            n_done=n_done,
+            n_done=min(
+                expected_output_size, (outer_batch_idx + 1) * args.outer_loop_batch_size
+            ),
             n_total=expected_output_size,
             **asdict(reward_args.regularization),
         )

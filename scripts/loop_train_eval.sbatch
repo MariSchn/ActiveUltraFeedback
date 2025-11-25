@@ -89,7 +89,7 @@ export TEMP_VARS_FILE="./.tmp/loop_vars_${SLURM_JOB_ID}.sh"  # ! This needs to b
 # * "$@" passes all CLI args to the script, which is used for sweeps
 export LOOP_LAUNCHER="accelerate launch \
     --config_file $ACCELERATE_CONFIG \
-    --num_processes $GPUS_PER_NODE \
+    --num_processes $NUM_PROCESSES \
     --num_machines $SLURM_JOB_NUM_NODES \
     --rdzv_backend c10d \
     --main_process_ip $HEAD_NODE_IP \
@@ -99,7 +99,7 @@ export LOOP_ARGS="--config_path $LOOP_CONFIG $@"
 export LOOP_CMD="$LOOP_LAUNCHER -m activeuf.loop.run $LOOP_ARGS"
 
 echo "Running command: $LOOP_CMD"
-srun --environment=activeuf_dev $LOOP_CMD
+srun --nodes=$SLURM_JOB_NUM_NODES --ntasks=$SLURM_JOB_NUM_NODES --ntasks-per-node=1 --environment=activeuf_dev $LOOP_CMD
 
 # Env vars "LOOP_WANDB_RUN_ID", "LOOP_DATASET_PATH", "SWEEP_ID" are set in the $TEMP_VARS_FILE which is written by the loop run script
 if [ ! -f "$TEMP_VARS_FILE" ]; then
@@ -114,6 +114,7 @@ echo "LOOP_WANDB_RUN_ID=${LOOP_WANDB_RUN_ID}"
 echo "LOOP_DATASET_PATH=${LOOP_DATASET_PATH}"
 echo "SWEEP_ID=${SWEEP_ID}"
 
+wait
 
 echo -e "\n\n\n========================"
 echo -e "===== DPO TRAINING ====="
@@ -157,10 +158,7 @@ DPO_TRAIN_ARGS=" \
 DPO_TRAIN_CMD="$DPO_TRAIN_LAUNCHER -m activeuf.dpo.training $DPO_TRAIN_ARGS"
 
 echo "Running command: $DPO_TRAIN_CMD"
-srun --nodes=2 --nodelist=$DPO_NODELIST --output=${DPO_OUTPUT_DIR}/training.log --environment=activeuf_dev $DPO_TRAIN_CMD &
-
-
-
+srun --nodes=$DPO_NNODES --ntasks=$DPO_NNODES --ntasks-per-node=1 --nodelist=$DPO_NODELIST --output=${DPO_OUTPUT_DIR}/training.log --environment=activeuf_dev $DPO_TRAIN_CMD &
 
 
 echo -e "\n\n\n================================="
@@ -202,7 +200,7 @@ RM_TRAIN_ARGS=" \
 RM_TRAIN_CMD="$RM_TRAIN_LAUNCHER ./activeuf/reward_model/training.py $RM_TRAIN_ARGS"
 
 echo "Running command: $RM_TRAIN_CMD"
-srun --nodes=2 --nodelist=$RM_NODELIST --output=${RM_OUTPUT_DIR}/training.log --environment=activeuf_dev $RM_TRAIN_CMD &
+srun --nodes=$RM_NNODES --ntasks=$RM_NNODES --ntasks-per-node=1 --nodelist=$RM_NODELIST --output=${RM_OUTPUT_DIR}/training.log --environment=activeuf_dev $RM_TRAIN_CMD &
 
 echo "Waiting for DPO and RM training to complete..."
 wait
@@ -288,7 +286,7 @@ echo "Starting truthfulqa (on ${NODELIST[3]})"
 srun --output=${DPO_OUTPUT_DIR}/results/truthfulqa_tulu/log.out \
      --nodes=1 --ntasks=1 --gpus-per-task=4 -w "${NODELIST[3]}" \
      ${CONTAINER_ARGS} \
-     bash -c "exec python3 -m oe_eval.launch --task=truthfulqa::tulu --output-dir=${DPO_OUTPUT_DIR}/results/truthfulqa_tulu ${DPO_EVAL_ARGS}" &
+     bash -c "exec python3 -m oe_eval.launch --task=truthfulqa::tulu --output-dir=${DPO_OUTPUT_DIR}/results/truthfulqa_tulu ${DPO_EVAL_ARGS}"
 
 echo "All DPO evals launched."
 
@@ -306,7 +304,7 @@ echo "Evaluating RM at: $RM_OUTPUT_DIR"
 echo "Running command: bash ./activeuf/reward_model/reward_bench_2.sh --model $RM_OUTPUT_DIR"
 srun --output=${RM_OUTPUT_DIR}/eval_%j.out \
      --environment=activeuf_dev \
-     --nodes=1 --ntasks=1 \
+     --nodes=1 --ntasks=1 --nodelist="${NODELIST[3]}" \
      bash ./activeuf/reward_model/reward_bench_2.sh --model $RM_OUTPUT_DIR &
 
 # Wait for ALL background jobs (4 DPO evals + 1 RM eval) to finish

@@ -32,7 +32,7 @@ def load_dataset_all(dataset_path):
     return dataset
 
 
-def process_dataset(dataset, num_processes=1):
+def process_dataset(dataset):
     # Dataset processing (Determining splits, restructuring (chosen/rejected columns))
     if isinstance(dataset, dict):
         if "train_prefs" in dataset:
@@ -59,7 +59,7 @@ def process_dataset(dataset, num_processes=1):
                     {"content": x["rejected"], "role": "assistant"},
                 ],
             },
-            num_proc=num_processes,
+            num_proc=os.cpu_count(),
         )
 
     # remove all columns except 'chosen' and 'rejected'
@@ -185,16 +185,16 @@ def train_reward_model(config, args):
         max_steps=training_config.get("max_steps", -1),
         lr_scheduler_type=training_config.get("lr_scheduler_type", "linear"),
         run_name=os.path.basename(os.path.normpath(output_dir)),
-        dataset_num_proc=num_processes,
+        dataset_num_proc=os.cpu_count(),
     )
 
     if is_main_process:
         print("==== Trainer Configuration ====")
         pprint.pprint(trainer_config)
 
-    train_dataset = process_dataset(dataset, num_processes=num_processes)
+    train_dataset = process_dataset(dataset)
     if dataset_2 is not None:
-        train_dataset_2 = process_dataset(dataset_2, num_processes=num_processes)
+        train_dataset_2 = process_dataset(dataset_2)
         train_dataset = concatenate_datasets([train_dataset, train_dataset_2])
 
     if args.shuffle:
