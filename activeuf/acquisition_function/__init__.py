@@ -7,6 +7,7 @@ from activeuf.acquisition_function.ultrafeedback import UltraFeedback
 from activeuf.acquisition_function.ids import InformationDirectedSampling
 from activeuf.acquisition_function.rucb import RelativeUpperConfidenceBound
 from activeuf.acquisition_function.drts import DoubleReverseThompsonSampling
+from activeuf.acquisition_function.deltaucb import DeltaUCB
 
 __all__ = [
     "RandomAcquisitionFunction",
@@ -17,6 +18,7 @@ __all__ = [
     "InfoGain",
     "InformationDirectedSampling",
     "RelativeUpperConfidenceBound",
+    "DeltaUCB",
 ]
 
 _acquisition_function_map = {
@@ -29,6 +31,7 @@ _acquisition_function_map = {
     "ids": InformationDirectedSampling,
     "rucb": RelativeUpperConfidenceBound,
     "drts": DoubleReverseThompsonSampling,
+    "deltaucb": DeltaUCB,
 }
 
 

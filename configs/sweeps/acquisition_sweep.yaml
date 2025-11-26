@@ -14,6 +14,7 @@ parameters:
       - infomax
       - maxminlcb
       - drts
+      - deltaucb
   enn.regularization.exponential_decay_base:
     values:
       - 0.9
