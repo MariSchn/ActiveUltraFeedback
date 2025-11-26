@@ -7,7 +7,7 @@ base_wandb_project: loop
 
 inputs_path: datasets/ultrafeedback/qwen_3_235b
 oracle_name: ultrafeedback
-acquisition_function_type: infogain
+acquisition_function_type: deltaquantile
 reward_model_type: enn
 debug: false
 
@@ -45,6 +45,9 @@ acquisition_function:
     decision_buffer: 0.0
     use_candidate_set: false
     seed: *a
+  deltaquantile:
+    beta: 1.0
+    quantile: 0.1
 
 enn:
   previous_checkpoint_path: null

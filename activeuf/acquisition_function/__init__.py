@@ -8,6 +8,7 @@ from activeuf.acquisition_function.ids import InformationDirectedSampling
 from activeuf.acquisition_function.rucb import RelativeUpperConfidenceBound
 from activeuf.acquisition_function.drts import DoubleReverseThompsonSampling
 from activeuf.acquisition_function.deltaucb import DeltaUCB
+from activeuf.acquisition_function.deltaquantile import DeltaQuantile
 
 __all__ = [
     "RandomAcquisitionFunction",
@@ -18,7 +19,9 @@ __all__ = [
     "InfoGain",
     "InformationDirectedSampling",
     "RelativeUpperConfidenceBound",
+    "DoubleReverseThompsonSampling",
     "DeltaUCB",
+    "DeltaQuantile",
 ]
 
 _acquisition_function_map = {
@@ -32,6 +35,7 @@ _acquisition_function_map = {
     "rucb": RelativeUpperConfidenceBound,
     "drts": DoubleReverseThompsonSampling,
     "deltaucb": DeltaUCB,
+    "deltaquantile": DeltaQuantile,
 }
 
 

@@ -15,6 +15,7 @@ parameters:
       - maxminlcb
       - drts
       - deltaucb
+      - deltaquantile
   enn.regularization.exponential_decay_base:
     values:
       - 0.9
