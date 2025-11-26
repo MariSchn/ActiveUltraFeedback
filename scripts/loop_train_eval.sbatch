@@ -99,7 +99,7 @@ export LOOP_ARGS="--config_path $LOOP_CONFIG $@"
 export LOOP_CMD="$LOOP_LAUNCHER -m activeuf.loop.run $LOOP_ARGS"
 
 echo "Running command: $LOOP_CMD"
-srun --nodes=$SLURM_JOB_NUM_NODES --ntasks=$SLURM_JOB_NUM_NODES --ntasks-per-node=1 --environment=activeuf_dev $LOOP_CMD
+srun --nodes=$SLURM_JOB_NUM_NODES --ntasks=$SLURM_JOB_NUM_NODES --ntasks-per-node=1 --environment=activeuf_dev --output=./logs/loop/loop_%j.out $LOOP_CMD
 
 # Env vars "LOOP_WANDB_RUN_ID", "LOOP_DATASET_PATH", "SWEEP_ID" are set in the $TEMP_VARS_FILE which is written by the loop run script
 if [ ! -f "$TEMP_VARS_FILE" ]; then

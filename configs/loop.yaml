@@ -5,7 +5,7 @@ base_logs_dir: logs/loop
 base_wandb_dir: wandb/loop
 base_wandb_project: loop
 
-inputs_path: datasets/combined_with_small_qwen_3_235b-features
+inputs_path: datasets/ultrafeedback/qwen_3_235b
 oracle_name: ultrafeedback
 acquisition_function_type: infogain
 reward_model_type: enn

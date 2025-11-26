@@ -11,6 +11,8 @@ import math
 from accelerate import Accelerator
 from datetime import datetime
 
+os.environ["WANDB_ENTITY"] = "ActiveUF"
+
 """ Example command to run training with accelerate:
 accelerate launch --num_processes=4 --config_file configs/accelerate/single_node.yaml \
     activeuf/reward_model/training.py \

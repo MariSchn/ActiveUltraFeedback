@@ -214,7 +214,7 @@ if __name__ == "__main__":
 
     # send config file to wandb
     if accelerator.is_main_process and training_config.get("report_to") == "wandb":
-        wandb.init(name=run_name)
+        wandb.init(name=run_name, entity="ActiveUF")
         wandb.config.update(config)
         artifact = wandb.Artifact(run_name, type="config")
         artifact.add_file(args.config_path)
