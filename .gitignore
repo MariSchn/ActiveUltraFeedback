@@ -178,3 +178,4 @@ playground.sh
 resources/reward-bench/
 resources/rewarduq/
 RM-Training/
+.tmp/
