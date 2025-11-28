@@ -47,7 +47,8 @@ acquisition_function:
     seed: *a
   deltaquantile:
     beta: 1.0
-    quantile: 0.1
+    quantile: 0.05
+    epsilon: 0.0
 
 enn:
   previous_checkpoint_path: null
