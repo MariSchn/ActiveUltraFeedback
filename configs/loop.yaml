@@ -7,7 +7,7 @@ base_wandb_project: loop
 
 inputs_path: datasets/ultrafeedback/qwen_3_235b
 oracle_name: ultrafeedback
-acquisition_function_type: deltaquantile
+acquisition_function_type: drts
 reward_model_type: enn
 debug: false
 
