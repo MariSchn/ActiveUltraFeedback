@@ -15,16 +15,9 @@ def generate_model_frequency_histograms(
         files_to_process = os.listdir(data_dir)
 
     for fname in files_to_process:
-        # fname = "/iopsstor/scratch/cscs/dmelikidze/datasets/7_preference_datasets/combined_with_small/qwen_3_235b/random"
-        if "dts" in fname or "infomax" in fname or "maxmin" in fname:
-            continue
-        # fname = data_dir[0]
         print("Processing file:", fname)
         data_path = os.path.join(data_dir, fname)
-        # data_path = "/iopsstor/scratch/cscs/dmelikidze/datasets/active/centered_cosine_correct/dts_qwen_rgl100_wdcb0.99_obs1024_rbs102400_steps100"  # "/iopsstor/scratch/cscs/dmelikidze/datasets/my_experiments21"
         dataset = load_from_disk(data_path)
-        # range_intervals = (80000, len(dataset))
-        # dataset = dataset.select(range(range_intervals[0], range_intervals[1]))
         chosen_model_counter = defaultdict(int)
         rejected_model_counter = defaultdict(int)
         chosen_scores = []
@@ -36,7 +29,6 @@ def generate_model_frequency_histograms(
             if chosen_model == rejected_model:
                 identical_counter += 1
                 continue
-            # assert chosen_model != rejected_model
             chosen_model_counter[chosen_model] += 1
             rejected_model_counter[rejected_model] += 1
             chosen_scores.append(row["chosen_score"])
