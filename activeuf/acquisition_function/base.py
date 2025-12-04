@@ -6,6 +6,9 @@ class BaseAcquisitionFunction(ABC):
     Abstract base class for acquisition functions.
     """
 
+    def __init__(self, **kwargs):
+        pass
+
     @abstractmethod
     def __call__(self, *args, **kwargs) -> list[list[int, int]]:
         """

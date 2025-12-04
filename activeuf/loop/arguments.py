@@ -13,33 +13,34 @@ from activeuf.acquisition_function.arguments import (
     RUCBConfig,
     InfoGainConfig,
     MaxMinLCBConfig,
+    DRTSConfig,
+    DeltaUCBConfig,
+    DeltaQuantileConfig,
 )
 from activeuf.utils import ensure_dataclass
 
 
 @dataclass
 class AcquisitionFunctionConfig:
-    random: RandomConfig = field(
-        metadata={"help": "Config for the random acquisition function."},
+    beta: float = field(
+        default=1.0,
+        metadata={
+            "help": "Global Beta parameter applied to all relevant acquisition functions."
+        },
     )
-    ultrafeedback: UltraFeedbackConfig = field(
-        metadata={"help": "Config for the ultrafeedback acquisition function."},
-    )
-    dts: DTSConfig = field(
-        metadata={"help": "Config for the dts acquisition function."},
-    )
-    infogain: InfoGainConfig = field(
-        metadata={"help": "Config for the infogain acquisition function."},
-    )
-    ids: IDSConfig = field(
-        metadata={"help": "Config for the ids acquisition function."},
-    )
-    rucb: RUCBConfig = field(
-        metadata={"help": "Config for the rucb acquisition function."},
-    )
-    maxminlcb: MaxMinLCBConfig = field(
-        metadata={"help": "Config for the maxminlcb acquisition function."},
-    )
+
+    # Specific Configs with default_factory
+    random: RandomConfig = field(default_factory=RandomConfig)
+    ultrafeedback: UltraFeedbackConfig = field(default_factory=UltraFeedbackConfig)
+
+    dts: DTSConfig = field(default_factory=DTSConfig)
+    infogain: InfoGainConfig = field(default_factory=InfoGainConfig)
+    ids: IDSConfig = field(default_factory=IDSConfig)
+    rucb: RUCBConfig = field(default_factory=RUCBConfig)
+    maxminlcb: MaxMinLCBConfig = field(default_factory=MaxMinLCBConfig)
+    drts: DRTSConfig = field(default_factory=DRTSConfig)
+    deltaucb: DeltaUCBConfig = field(default_factory=DeltaUCBConfig)
+    deltaquantile: DeltaQuantileConfig = field(default_factory=DeltaQuantileConfig)
 
 
 @dataclass
@@ -295,6 +296,31 @@ def get_loop_args(timestamp) -> argparse.Namespace:
     if remaining_args:
         sweep_dict = parse_overwrites(remaining_args)
         config_dict = recursive_update(config_dict, sweep_dict)
+
+    acq_config = config_dict.get("acquisition_function", {})
+    global_beta = acq_config.get("beta", 1.0)
+
+    beta_dependent_keys = [
+        "dts",
+        "drts",
+        "infogain",
+        "rucb",
+        "maxminlcb",
+        "deltaucb",
+        "deltaquantile",
+    ]
+
+    # Inject beta into sub-dictionaries
+    for key in beta_dependent_keys:
+        # Ensure the sub-dict exists
+        if key not in acq_config or acq_config[key] is None:
+            acq_config[key] = {}
+
+        # Overwrite/Set beta
+        acq_config[key]["beta"] = global_beta
+
+    # Update the main config dict
+    config_dict["acquisition_function"] = acq_config
 
     # define timestamp, then use it to create a run id (env var takes precedence over config)
     config_dict["timestamp"] = timestamp

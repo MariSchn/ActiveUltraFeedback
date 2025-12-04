@@ -64,6 +64,10 @@ if __name__ == "__main__":
         set_seed(args.seed)
 
     if accelerator.is_main_process:
+        logger.info("Logging configuration: ")
+        logger.info(convert_dataclass_instance_to_yaml_str(args))
+
+    if accelerator.is_main_process:
         os.environ.setdefault("WANDB_DIR", args.wandb_dir)
         wandb_run = wandb.init(
             project=args.wandb_project,

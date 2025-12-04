@@ -7,32 +7,32 @@ metric:
   name: DPO/Mean
 name: acquisition_comparison
 parameters:
+  acquisition_function.beta:
+    values:
+      - 1.0
+      - 2.0
   acquisition_function_type:
     values:
-      # - dts
-      # - infogain
-      # - infomax
-      # - maxminlcb
+      - dts
+      - infomax
+      - maxminlcb
       - drts
-      # - deltaucb
-      # - deltaquantile
+      - deltaucb
   enn.regularization.exponential_decay_base:
     values:
-      - 0.9
       - 0.99
+      - 0.9
   enn.regularization.initial_value:
     values:
       - 1.0
-      - 10.0
   outer_loop_batch_size:
     values:
       - 64
-      - 256
   replay_buffer_factor:
     values:
       - 100
+      - 1000
   enn.effective_batch_size:
     values:
       - 64
-      - 128
 program: scripts/loop_train_eval.sbatch
