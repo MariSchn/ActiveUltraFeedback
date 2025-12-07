@@ -3,7 +3,6 @@ import pandas as pd
 import argparse
 import sys
 import numpy as np
-import pprint  # Added for pretty printing
 
 # ==============================================================================
 #                               CONFIGURATION
@@ -33,11 +32,13 @@ SFT_BASE = {
 }
 
 # 2. OTHER BASELINES (Deltas)
+# Note: The order here determines the order in the table.
 OTHER_BASELINES_DELTAS = {
     "DPO": {
         "Random": [+0.048, -0.011, +0.033, +0.053, +0.032],
         "UltraFeedback": [+0.045, -0.083, +0.039, +0.046, +0.012],
         "MaxMin": [+0.025, -0.018, +0.089, +0.152, +0.062],
+        # --- Midrule will be inserted here ---
         "DeltaQwen": [+0.064, +0.041, +0.068, +0.126, +0.074],
         "DeltaQwenBig": [+0.002, +0.013, +0.002, +0.013, +0.008],
     },
@@ -45,6 +46,7 @@ OTHER_BASELINES_DELTAS = {
         "Random": [+0.409, +0.252, +0.164, +0.104, +0.422, +0.228, +0.264],
         "Ultrafeedback": [+0.392, +0.183, +0.200, +0.064, +0.405, +0.288, +0.256],
         "MaxMin": [+0.373, +0.392, +0.156, +0.164, +0.367, +0.366, +0.303],
+        # --- Midrule will be inserted here ---
         "DeltaQwen": [+0.183, -0.050, +0.030, +0.077, +0.209, +0.109, +0.093],
         "DeltaQwenBig": [+0.137, +0.008, +0.071, +0.095, +0.077, -0.183, +0.034],
     },
@@ -71,20 +73,26 @@ KEY_MAPPING = {
 
 
 def format_delta(val, is_best=False):
+    """Formats a float delta into LaTeX: +0.00 (Black). Bolds if best."""
     if val is None or np.isnan(val):
         return "-"
+
     sign = "+" if val >= 0 else ""
+    # Standard black text
     text = f"{sign}{val:.3f}"
+
     if is_best:
         return f"\\textbf{{{text}}}"
     return text
 
 
 def format_sft(val):
+    """Formats absolute score for SFT row."""
     return f"{val:.3f}"
 
 
 def process_section_dataframe(df_numeric, cols):
+    """Calculates max per column and applies formatting."""
     if df_numeric.empty:
         return pd.DataFrame()
 
@@ -105,6 +113,7 @@ def process_section_dataframe(df_numeric, cols):
 
 
 def get_static_data():
+    # 1. SFT
     dpo_sft = pd.DataFrame([SFT_BASE["DPO"]], index=["SFT Base Model"])
     for c in dpo_sft.columns:
         dpo_sft[c] = dpo_sft[c].apply(format_sft)
@@ -113,6 +122,7 @@ def get_static_data():
     for c in rm_sft.columns:
         rm_sft[c] = rm_sft[c].apply(format_sft)
 
+    # 2. Other Baselines (Numeric)
     dpo_base_dict = {}
     for name, deltas in OTHER_BASELINES_DELTAS["DPO"].items():
         dpo_base_dict[name] = dict(zip(DPO_COLS, deltas))
@@ -134,54 +144,10 @@ def fetch_wandb_runs(entity, project, sweep_id):
     dpo_data = {}
     rm_data = {}
 
-    for i, run in enumerate(runs):
-        # ---------------------------------------------------------
-        # DEBUG: PRINT CONFIG
-        # ---------------------------------------------------------
-        print(f"\n[{i}] Processing Run: {run.name}")
-        # pprint.pprint(run.config) # Uncomment to see full config again if needed
-        # ---------------------------------------------------------
+    for run in runs:
+        name = run.name.replace("_", "\\_")
 
-        config = run.config
-
-        # 1. Outer Loop Batch Size (Top level)
-        obs = config.get("outer_loop_batch_size", "?")
-
-        # 2. Effective Batch Size (Inside 'enn' dict or flat key)
-        # Try finding it in config['enn']['effective_batch_size']
-        if "enn" in config and isinstance(config["enn"], dict):
-            ebs = config["enn"].get("effective_batch_size", "?")
-        else:
-            # Fallback to dot notation or flat key if W&B flattened it
-            ebs = config.get(
-                "enn.effective_batch_size", config.get("effective_batch_size", "?")
-            )
-
-        # 3. Regularization Params (Inside 'enn' -> 'regularization')
-        iv = "?"
-        edb = "?"
-
-        # Access path: enn -> regularization
-        if "enn" in config and isinstance(config["enn"], dict):
-            enn_cfg = config["enn"]
-            if "regularization" in enn_cfg and isinstance(
-                enn_cfg["regularization"], dict
-            ):
-                reg_cfg = enn_cfg["regularization"]
-                iv = reg_cfg.get("initial_value", "?")
-                edb = reg_cfg.get("exponential_decay_base", "?")
-
-        # Fallback for flattened keys (often happens in sweeps)
-        if iv == "?":
-            iv = config.get("enn.regularization.initial_value", "?")
-        if edb == "?":
-            edb = config.get("enn.regularization.exponential_decay_base", "?")
-
-        # Construct readable name
-        name = f"OBS:{obs}, EBS:{ebs}, IV:{iv}, EDB:{edb}"
-        name = name.replace("_", "\\_")  # Escape for LaTeX
-
-        # --- DPO Data Collection ---
+        # DPO
         dpo_row = {}
         has_dpo = False
         for col in DPO_COLS:
@@ -199,7 +165,7 @@ def fetch_wandb_runs(entity, project, sweep_id):
         if has_dpo:
             dpo_data[name] = dpo_row
 
-        # --- RM Data Collection ---
+        # RM
         rm_row = {}
         has_rm = False
         for col in RM_COLS:
@@ -220,17 +186,17 @@ def fetch_wandb_runs(entity, project, sweep_id):
     df_dpo_wandb = pd.DataFrame.from_dict(dpo_data, orient="index")
     if not df_dpo_wandb.empty:
         df_dpo_wandb = df_dpo_wandb[DPO_COLS]
-        df_dpo_wandb.sort_index(inplace=True)
 
     df_rm_wandb = pd.DataFrame.from_dict(rm_data, orient="index")
     if not df_rm_wandb.empty:
         df_rm_wandb = df_rm_wandb[RM_COLS]
-        df_rm_wandb.sort_index(inplace=True)
 
     return df_dpo_wandb, df_rm_wandb
 
 
 def write_latex_table(f, title, df_sft, df_base_fmt, df_wandb_fmt):
+    """Stitches sections together with specific midrules."""
+
     num_cols = len(DPO_COLS) if "DPO" in title else len(RM_COLS)
     col_fmt = "l" + "c" * num_cols
 
@@ -240,23 +206,24 @@ def write_latex_table(f, title, df_sft, df_base_fmt, df_wandb_fmt):
     f.write(f"\\begin{{tabular}}{{{col_fmt}}}\n")
     f.write("\\toprule\n")
 
-    # SFT
+    # 1. SFT Row
     header_tex = df_sft.to_latex(header=True, index=True)
     lines = header_tex.splitlines()
-    f.write(lines[2] + "\n")
+    f.write(lines[2] + "\n")  # Header
     f.write("\\midrule\n")
-    f.write(lines[4] + "\n")
+    f.write(lines[4] + "\n")  # Data
 
-    # Baselines
+    # 2. Baselines (With check for MaxMin separation)
     f.write("\\midrule\n")
     if not df_base_fmt.empty:
         body = df_base_fmt.to_latex(header=False, index=True, escape=False)
         for line in body.splitlines()[2:-2]:
             f.write(line + "\n")
+            # Specific logic: insert midrule after MaxMin
             if line.strip().startswith("MaxMin"):
                 f.write("\\midrule\n")
 
-    # WandB
+    # 3. WandB Runs
     f.write("\\midrule\n")
     if not df_wandb_fmt.empty:
         body = df_wandb_fmt.to_latex(header=False, index=True, escape=False)
@@ -267,7 +234,7 @@ def write_latex_table(f, title, df_sft, df_base_fmt, df_wandb_fmt):
 
     f.write("\\bottomrule\n")
     f.write("\\end{tabular}\n")
-    f.write("}\n")
+    f.write("}\n")  # End resizebox
     f.write(f"\\caption{{{title} (SFT: Absolute, Others: Deltas. Best in bold.)}}\n")
     f.write("\\end{table}\n\n")
 
@@ -278,7 +245,8 @@ def save_latex(filename, dpo_pack, rm_pack):
 
     with open(filename, "w") as f:
         f.write("% ========================================================\n")
-        f.write("% REQUIRED PACKAGES: \\usepackage{booktabs}, \\usepackage{graphicx}\n")
+        f.write("% REQUIRED PACKAGES:\n")
+        f.write("% \\usepackage{booktabs}, \\usepackage{graphicx}\n")
         f.write("% ========================================================\n\n")
 
         write_latex_table(
@@ -299,17 +267,21 @@ if __name__ == "__main__":
     parser.add_argument("--output", type=str, default="tables.tex")
     args = parser.parse_args()
 
+    # 1. Get Static Data
     (dpo_sft, dpo_base_num), (rm_sft, rm_base_num) = get_static_data()
 
+    # 2. Get WandB Data (Numeric)
     dpo_wandb_num, rm_wandb_num = fetch_wandb_runs(
         args.entity, args.project, args.sweep_id
     )
 
+    # 3. Format Data (Bolding logic, Black text)
     dpo_base_fmt = process_section_dataframe(dpo_base_num, DPO_COLS)
     rm_base_fmt = process_section_dataframe(rm_base_num, RM_COLS)
     dpo_wandb_fmt = process_section_dataframe(dpo_wandb_num, DPO_COLS)
     rm_wandb_fmt = process_section_dataframe(rm_wandb_num, RM_COLS)
 
+    # 4. Generate LaTeX
     save_latex(
         args.output,
         (dpo_sft, dpo_base_fmt, dpo_wandb_fmt),

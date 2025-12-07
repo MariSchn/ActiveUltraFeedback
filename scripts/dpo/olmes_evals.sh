@@ -284,7 +284,7 @@ for model_dir in "${SUBSAMPLE_MODELS[@]}"; do
             "gpu-memory-utilization": 0.75
         },
         "minerva_math::tulu": {
-            "sbatch_time": "8:00:00"
+            "sbatch_time": "12:00:00"
         },
         "bbh:cot-v1::tulu": {
             "sbatch_time": "4:00:00"

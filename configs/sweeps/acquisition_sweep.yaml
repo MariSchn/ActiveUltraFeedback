@@ -20,6 +20,7 @@ parameters:
       - deltaucb
   enn.regularization.exponential_decay_base:
     values:
+      - 0.999
       - 0.99
       - 0.9
   enn.regularization.initial_value:
