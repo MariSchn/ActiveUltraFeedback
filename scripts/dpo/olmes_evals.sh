@@ -123,7 +123,7 @@ echo "----------------------------------------"
 # ==============================================================================
 
 # All possible tasks
-ALL_TASKS=("gsm8k::tulu" "minerva_math::tulu" "ifeval::tulu" "truthfulqa::tulu")
+ALL_TASKS=("gsm8k::tulu" "ifeval::tulu" "truthfulqa::tulu")
 
 # Checks if the directory contains actual model weights (.safetensors, .bin, .pt)
 # It deliberately ignores subdirectories (like checkpoint-*) by using -maxdepth 1

@@ -130,14 +130,14 @@ echo "Found ${#dpo_dirs[@]} directories (DPO models) in $DPO_MODEL_BASE_DIR"
 dpo_benchmark_files=(
     "results/gsm8k_tulu/metrics.json"
     "results/ifeval_tulu/metrics.json"
-    "results/minerva_math_tulu/metrics.json"
+    # "results/minerva_math_tulu/metrics.json"
     "results/truthfulqa_tulu/metrics.json"
 )
 
 # Declare arrays to store missing dirs per benchmark
 declare -A missing_gsm8k_dirs
 declare -A missing_ifeval_dirs
-declare -A missing_minerva_math_dirs
+# declare -A missing_minerva_math_dirs
 declare -A missing_truthfulqa_dirs
 
 # Check for missing DPO evaluations
@@ -151,8 +151,8 @@ for dir_name in "${dpo_dirs[@]}"; do
                 missing_gsm8k_dirs["$dir_name"]=1
             elif [[ "$benchmark_file" == *"ifeval"* ]]; then
                 missing_ifeval_dirs["$dir_name"]=1
-            elif [[ "$benchmark_file" == *"minerva_math"* ]]; then
-                missing_minerva_math_dirs["$dir_name"]=1
+            # elif [[ "$benchmark_file" == *"minerva_math"* ]]; then
+            #     missing_minerva_math_dirs["$dir_name"]=1
             elif [[ "$benchmark_file" == *"truthfulqa"* ]]; then
                 missing_truthfulqa_dirs["$dir_name"]=1
             fi
@@ -164,7 +164,7 @@ done
 declare -A all_missing_dirs
 for dir in "${!missing_gsm8k_dirs[@]}"; do all_missing_dirs["$dir"]=1; done
 for dir in "${!missing_ifeval_dirs[@]}"; do all_missing_dirs["$dir"]=1; done
-for dir in "${!missing_minerva_math_dirs[@]}"; do all_missing_dirs["$dir"]=1; done
+# for dir in "${!missing_minerva_math_dirs[@]}"; do all_missing_dirs["$dir"]=1; done
 for dir in "${!missing_truthfulqa_dirs[@]}"; do all_missing_dirs["$dir"]=1; done
 
 total_missing=${#all_missing_dirs[@]}
@@ -280,15 +280,15 @@ ${SCRATCH},\
         echo ""
     fi
 
-    # Launch jobs for missing Minerva Math evaluations
-    if [[ ${#missing_minerva_math_dirs[@]} -gt 0 ]]; then
-        echo "--- Launching Minerva Math evaluations (${#missing_minerva_math_dirs[@]} jobs) ---"
-        for dir_name in "${!missing_minerva_math_dirs[@]}"; do
-            model_path="$DPO_MODEL_BASE_DIR/$dir_name"
-            launch_dpo_eval "$model_path" "minerva_math_tulu" "minerva_math::tulu"
-        done
-        echo ""
-    fi
+    # # Launch jobs for missing Minerva Math evaluations
+    # if [[ ${#missing_minerva_math_dirs[@]} -gt 0 ]]; then
+    #     echo "--- Launching Minerva Math evaluations (${#missing_minerva_math_dirs[@]} jobs) ---"
+    #     for dir_name in "${!missing_minerva_math_dirs[@]}"; do
+    #         model_path="$DPO_MODEL_BASE_DIR/$dir_name"
+    #         launch_dpo_eval "$model_path" "minerva_math_tulu" "minerva_math::tulu"
+    #     done
+    #     echo ""
+    # fi
 
     # Launch jobs for missing TruthfulQA evaluations
     if [[ ${#missing_truthfulqa_dirs[@]} -gt 0 ]]; then
@@ -301,7 +301,7 @@ ${SCRATCH},\
     fi
 
     # Calculate total jobs submitted
-    total_dpo_jobs=$((${#missing_gsm8k_dirs[@]} + ${#missing_ifeval_dirs[@]} + ${#missing_minerva_math_dirs[@]} + ${#missing_truthfulqa_dirs[@]}))
+    total_dpo_jobs=$((${#missing_gsm8k_dirs[@]} + ${#missing_ifeval_dirs[@]} + ${#missing_truthfulqa_dirs[@]}))
 else
     total_dpo_jobs=0
     echo "No DPO evaluations to launch."
@@ -313,5 +313,5 @@ echo -e "==========================\n"
 echo "RM eval jobs submitted: ${#missing_rm_evals[@]}"
 echo "GSM8K eval jobs submitted: ${#missing_gsm8k_dirs[@]}"
 echo "IFEval eval jobs submitted: ${#missing_ifeval_dirs[@]}"
-echo "Minerva Math eval jobs submitted: ${#missing_minerva_math_dirs[@]}"
+# echo "Minerva Math eval jobs submitted: ${#missing_minerva_math_dirs[@]}"
 echo "TruthfulQA eval jobs submitted: ${#missing_truthfulqa_dirs[@]}"

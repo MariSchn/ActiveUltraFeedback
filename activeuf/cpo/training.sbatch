@@ -4,12 +4,12 @@
 #SBATCH --job-name=cpo
 #SBATCH --output=logs/cpo/O-%x.%j
 #SBATCH --error=logs/cpo/E-%x.%j
-#SBATCH --nodes=2
+#SBATCH --nodes=4
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=4
 #SBATCH --cpus-per-task=288
 #SBATCH --time=05:00:00
-#SBATCH --environment=activeuf_dev
+#SBATCH --environment=activeuf
 
 BASE_CACHE_DIR="$SCRATCH"
 DATASET_PATH="/iopsstor/scratch/cscs/dmelikidze/ActiveUltraFeedback/datasets/my/actives/datasets/MaxMinLCB_60829"
@@ -38,9 +38,7 @@ echo "Starting training on $NUM_PROCESSES processes across $SLURM_NNODES nodes..
 echo "Master Node: $MAIN_PROCESS_IP"
 
 srun bash -c "
-pip install git+https://github.com/huggingface/transformers.git && \
-pip install git+https://github.com/huggingface/trl.git && \
-unset SSL_CERT_FILE && \
+pip install --upgrade trl && \
 accelerate launch \
     --config_file=$SCRATCH/ActiveUltraFeedback/configs/accelerate/deepspeed2.yaml \
     --num_processes $NUM_PROCESSES \

@@ -13,6 +13,7 @@ import random
 from dotenv import load_dotenv
 import huggingface_hub
 from accelerate import Accelerator
+from trl.data_utils import maybe_extract_prompt, maybe_apply_chat_template
 
 
 # Problem with version of vllm and transformers,
@@ -45,11 +46,9 @@ pip install transformers trl peft
 
 accelerate launch --num_processes=4 --config_file=$SCRATCH/ActiveUltraFeedback/configs/accelerate/deepspeed2.yaml ./activeuf/cpo/training.py
 
-accelerate launch --num_processes=4 --config_file=$SCRATCH/ActiveUltraFeedback/configs/accelerate/deepspeed2.yaml -m activeuf.cpo.training --config_path=$SCRATCH/ActiveUltraFeedback/configs/cpo_training.yaml --dataset_path=allenai/ultrafeedback_binarized_cleaned --output_dir=$SCRATCH/models/cpo --debug
+accelerate launch --num_processes=4 --config_file=$SCRATCH/ActiveUltraFeedback/configs/accelerate/deepspeed2.yaml -m activeuf.cpo.training --config_path=$SCRATCH/ActiveUltraFeedback/configs/cpo_training.yaml --dataset_path=allenai/ultrafeedback_binarized_cleaned --output_dir=$SCRATCH/models/cpo
 
-pip install git+https://github.com/huggingface/transformers.git
-pip install git+https://github.com/huggingface/trl.git
-unset SSL_CERT_FILE
+pip install --upgrade trl
 """
 
 
@@ -134,26 +133,98 @@ def main(args):
     dataset = dataset.select_columns(["chosen", "rejected"])
     if args.debug:
         print("Debug mode enabled: using a smaller subset of the dataset.")
-        dataset = dataset.select(range(128))
+        dataset = dataset.select(range(16))
 
-    print("Formatting dataset...")
-    dataset = dataset.map(
-        lambda examples: {
-            "prompt": tokenizer.apply_chat_template(
-                examples["chosen"][:-1], tokenize=False
-            ),
-            "chosen": tokenizer.apply_chat_template(
-                [examples["chosen"][-1]], tokenize=False
-            ),
-            "rejected": tokenizer.apply_chat_template(
-                [examples["rejected"][-1]], tokenize=False
-            ),
-        },
+    def filter_prompts(example):
+        prompt_msgs = example["chosen"][:-1]
+
+        prompt_ids = tokenizer.apply_chat_template(
+            prompt_msgs, tokenize=True, add_generation_prompt=True
+        )
+
+        whole_thing_chosen = tokenizer.apply_chat_template(
+            example["chosen"], tokenize=True, add_generation_prompt=True
+        )
+        whole_thing_rejected = tokenizer.apply_chat_template(
+            example["rejected"], tokenize=True, add_generation_prompt=True
+        )
+        return (
+            len(prompt_ids) < training_config["max_prompt_length"]
+            and len(whole_thing_chosen) < training_config["max_length"]
+            and len(whole_thing_rejected) < training_config["max_length"]
+        )
+
+    print(f"Original dataset size: {len(dataset)}")
+
+    # Run the filter
+    dataset = dataset.filter(
+        filter_prompts,
         num_proc=os.cpu_count(),
-        remove_columns=["chosen", "rejected"],
-        desc="Formatting to strings",
+        desc=f"Filtering prompts > {training_config['max_prompt_length']}",
     )
+    print(f"Filtered dataset size: {len(dataset)} examples.")
 
+    # Necessary fix for now...
+    def filter_rows(example):
+        example = maybe_extract_prompt(example)
+        example = maybe_apply_chat_template(example, tokenizer=tokenizer)
+        prompt = example["prompt"]
+        chosen = example["chosen"]
+        rejected = example["rejected"]
+
+        def build_tokenized_answer(prompt, answer):
+            full_tokenized = tokenizer(prompt + answer, add_special_tokens=False)
+            prompt_input_ids = tokenizer(prompt, add_special_tokens=False)["input_ids"]
+            answer_input_ids = full_tokenized["input_ids"][len(prompt_input_ids) :]
+            answer_attention_mask = full_tokenized["attention_mask"][
+                len(prompt_input_ids) :
+            ]
+            full_concat_input_ids = np.concatenate([prompt_input_ids, answer_input_ids])
+            full_input_ids = np.array(full_tokenized["input_ids"])
+            if len(full_input_ids) != len(full_concat_input_ids):
+                raise ValueError(
+                    "Prompt input ids and answer input ids should have the same length."
+                )
+            response_token_ids_start_idx = len(prompt_input_ids)
+            if (
+                prompt_input_ids
+                != full_tokenized["input_ids"][:response_token_ids_start_idx]
+            ):
+                response_token_ids_start_idx -= 1
+            prompt_input_ids = full_tokenized["input_ids"][
+                :response_token_ids_start_idx
+            ]
+            prompt_attention_mask = full_tokenized["attention_mask"][
+                :response_token_ids_start_idx
+            ]
+            if len(prompt_input_ids) != len(prompt_attention_mask):
+                raise ValueError(
+                    "Prompt input ids and attention mask should have the same length."
+                )
+            answer_input_ids = full_tokenized["input_ids"][
+                response_token_ids_start_idx:
+            ]
+            answer_attention_mask = full_tokenized["attention_mask"][
+                response_token_ids_start_idx:
+            ]
+            return dict(
+                prompt_input_ids=prompt_input_ids,
+                prompt_attention_mask=prompt_attention_mask,
+                input_ids=answer_input_ids,
+                attention_mask=answer_attention_mask,
+            )
+
+        chosen_tokens = build_tokenized_answer(prompt, chosen)
+        rejected_tokens = build_tokenized_answer(prompt, rejected)
+        if len(chosen_tokens["prompt_input_ids"]) != len(
+            rejected_tokens["prompt_input_ids"]
+        ):
+            return False
+        return True
+
+    dataset = dataset.filter(filter_rows, num_proc=os.cpu_count())
+    print(f"Final dataset size after further filtering: {len(dataset)} examples.")
+    print(dataset)
     # --- 4. Model & PEFT ---
     model = AutoModelForCausalLM.from_pretrained(
         config["model_path"],
