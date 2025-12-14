@@ -71,7 +71,7 @@ for config in "${CONFIGS[@]}"; do
 #SBATCH --time=12:00:00
 #SBATCH --container-writable
 #SBATCH --job-name=$JOB_NAME
-#SBATCH --output=./logs/completions/$MODEL_NAME/%j.out
+#SBATCH --output=./logs/completions/ultrafeedback/$MODEL_NAME/%j.out
 #SBATCH --environment=activeuf_dev
 
 export RAY_CGRAPH_get_timeout=300
@@ -83,7 +83,7 @@ export WANDB_DIR=$CACHE_DIR/wandb
 export TRANSFORMERS_CACHE=$CACHE_DIR/transformers
 export HF_DATASETS_CACHE=$CACHE_DIR/datasets
 export TORCH_HOME=$CACHE_DIR/torch
-export XDG_CACHE_HOME=$CACHE_DIR/.cache
+export XDG_CACHE_HOME=$CACHE_DIR
 export TORCH_EXTENSIONS_DIR=\$XDG_CACHE_HOME/torch_extensions
 
 # Getting the node names and assigning a head node
@@ -155,15 +155,15 @@ sleep 10
 
 ray status
 
-python -u -m activeuf.generate_completions \\
-  --dataset_path $DATASETS_DIR/allenai/ultrafeedback_binarized_cleaned/train_prefs \\
-  --model_name $MODEL \\
-  --model_class vllm_server \\
-  --output_path $OUTPUT_PATH \\
-  --seed $SEED \\
-  --num_nodes \$num_nodes_per_instance \\
-  --data_parallel_size \$((SLURM_JOB_NUM_NODES / num_nodes_per_instance)) \\
-$MAX_MODEL_LEN_ARG
+python -u -m activeuf.completions.generate_completions \
+  --dataset_path $DATASETS_DIR/allenai/ultrafeedback_binarized_cleaned/train_prefs \
+  --model_name $MODEL \
+  --model_class vllm_server \
+  --output_path $OUTPUT_PATH \
+  --seed $SEED \
+  --num_nodes \$num_nodes_per_instance \
+  --data_parallel_size \$((SLURM_JOB_NUM_NODES / num_nodes_per_instance)) \
+  $MAX_MODEL_LEN_ARG \
 $CHUNK_ARGS
 EOF
 done

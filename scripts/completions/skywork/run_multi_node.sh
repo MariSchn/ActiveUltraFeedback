@@ -64,7 +64,7 @@ for config in "${CONFIGS[@]}"; do
 #SBATCH --time=12:00:00
 #SBATCH --container-writable
 #SBATCH --job-name=$JOB_NAME
-#SBATCH --output=./logs/completions/$MODEL_NAME/%j.out
+#SBATCH --output=./logs/completions/skywork/$MODEL_NAME/%j.out
 #SBATCH --environment=activeuf_dev
 
 export RAY_CGRAPH_get_timeout=300
@@ -76,7 +76,7 @@ export WANDB_DIR=$CACHE_DIR/wandb
 export TRANSFORMERS_CACHE=$CACHE_DIR/transformers
 export HF_DATASETS_CACHE=$CACHE_DIR/datasets
 export TORCH_HOME=$CACHE_DIR/torch
-export XDG_CACHE_HOME=$CACHE_DIR/.cache
+export XDG_CACHE_HOME=$CACHE_DIR
 export TORCH_EXTENSIONS_DIR=\$XDG_CACHE_HOME/torch_extensions
 
 # Getting the node names and assigning a head node
@@ -148,16 +148,16 @@ sleep 10
 
 ray status
 
-python -u -m activeuf.completions.generate_completions \\
-  --dataset_path $DATASETS_DIR/0_raw_datasets/Skywork-Reward-Preference-80K-v0.2/train \\
-  --model_name $MODEL \\
-  --model_class vllm_server \\
-  --output_path $OUTPUT_PATH \\
-  --seed $SEED \\
-  --num_nodes \$num_nodes_per_instance \\
-  --data_parallel_size \$((SLURM_JOB_NUM_NODES / num_nodes_per_instance)) \\
+python -u -m activeuf.completions.generate_completions \
+  --dataset_path ${DATASETS_DIR}/0_raw_datasets/llama-3.1-tulu-3-8b-preference-mixture/ \
+  --model_name $MODEL \
+  --model_class vllm_server \
+  --output_path $OUTPUT_PATH \
+  --seed $SEED \
+  --num_nodes \$num_nodes_per_instance \
+  --data_parallel_size \$((SLURM_JOB_NUM_NODES / num_nodes_per_instance)) \
 $MAX_MODEL_LEN_ARG
-  --num_chunks $NUM_CHUNKS \\
+  --num_chunks $NUM_CHUNKS \
   --chunk_index $CHUNK_IDX
 EOF
 done

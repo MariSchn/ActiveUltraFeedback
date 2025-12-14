@@ -33,7 +33,6 @@ CONFIGS=(
 "google/gemma-3-4b-it:47"
 "Qwen/Qwen3-0.6B:48"
 "Qwen/Qwen3-1.7B:49"
-"HuggingFaceTB/SmolLM3-3B:50"
 "microsoft/Phi-4-mini-instruct:51"
 "meta-llama/Llama-3.2-1B-Instruct:52"
 "meta-llama/Llama-3.2-3B-Instruct:53"
@@ -49,32 +48,23 @@ for pair in "${CONFIGS[@]}"; do
     echo "Submitting job for model: $MODEL_NAME ($MODEL) with seed: $SEED"
     
     sbatch <<EOF
-for i in "${!MODELS[@]}"; do
-    MODEL="${MODELS[$i]}"
-    MODEL_NAME="${MODEL##*/}"
-    SEED="${SEEDS[$i]}"
-
-
-    echo "Submitting job for model: $MODEL_NAME ($MODEL) with seed: $SEED"
-    
-    sbatch <<EOF
 #!/bin/bash
 #SBATCH --account=a-infra01-1
 #SBATCH --partition=normal
 #SBATCH --time=12:00:00
 #SBATCH --container-writable
 #SBATCH --job-name=$MODEL_NAME
-#SBATCH --output=./logs/completions/$MODEL_NAME/%j.out
+#SBATCH --output=./logs/completions/ultrafeedback/$MODEL_NAME/%j.out
 
 export HF_HOME=${CACHE_DIR}/hf_cache
 export WANDB_DIR=${CACHE_DIR}/wandb
 export TRANSFORMERS_CACHE=${CACHE_DIR}/transformers
 export HF_DATASETS_CACHE=${CACHE_DIR}/datasets
 export TORCH_HOME=${CACHE_DIR}/torch
-export XDG_CACHE_HOME=${CACHE_DIR}/.cache
+export XDG_CACHE_HOME=${CACHE_DIR}
 export TORCH_EXTENSIONS_DIR=${XDG_CACHE_HOME}/torch_extensions
 
-srun --environment=activeuf_new_xformers python -u -m activeuf.generate_completions \
+srun --environment=activeuf_new_xformers python -u -m activeuf.completions.generate_completions \
     --dataset_path ${DATASETS_DIR}/0_raw_datasets/ultrafeedback_binarized_cleaned/train_prefs \
     --model_name $MODEL \
     --model_class vllm \
