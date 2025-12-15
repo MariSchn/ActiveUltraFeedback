@@ -179,7 +179,7 @@ ANNOTATOR_CONFIG="${ANNOTATOR_CONFIG_DIR}/configs.yaml"
 mkdir -p "${ANNOTATOR_CONFIG_DIR}"
 
 cat > "${ANNOTATOR_CONFIG}" <<EOF
-activeuf:
+${ANNOTATOR_CONFIG_NAME}:
   prompt_template: "alpaca_eval_clf_gpt4_turbo/alpaca_eval_clf.txt"
   fn_completions: "openai_completions"
   completions_kwargs:
