@@ -28,7 +28,7 @@ ANNOTATOR_API_KEY="${ANNOTATOR_API_KEY:-token-abc123}"
 ANNOTATOR_MODEL_NAME="${ANNOTATOR_MODEL_NAME:-meta-llama/Llama-3.3-70B-Instruct}"
 ANNOTATOR_GPU_MEM_UTILIZATION="${ANNOTATOR_GPU_MEM_UTILIZATION:-0.7}"
 ANNOTATOR_TENSOR_PARALLEL_SIZE="${ANNOTATOR_TENSOR_PARALLEL_SIZE:-4}"
-ANNOTATOR_CONFIG_NAME="${ANNOTATOR_CONFIG_NAME:-weighted_alpaca_eval_vllm_llama3_70b}"
+ANNOTATOR_CONFIG_NAME="${ANNOTATOR_CONFIG_NAME:-activeuf}"
 
 # ==============================================================================
 # ARGUMENT PARSING
@@ -40,7 +40,7 @@ help_function() {
     echo "  --results_dir <path>          Base directory for evaluation results"
     echo ""
     echo "Optional Options:"
-    echo "  --annotator_config_name <name>     Annotator config name (default: weighted_alpaca_eval_vllm_llama3_70b)"
+    echo "  --annotator_config_name <name>     Annotator config name (default: activeuf)"
     echo "  --annotator_model_name <name>      Annotator model name (default: meta-llama/Llama-3.3-70B-Instruct)"
     echo "  --annotator_gpu_mem_utilization <float>   GPU memory utilization for annotator (default: 0.7)"
     echo "  --annotator_tensor_parallel_size <int>          Tensor parallel size for annotator (default: 4)"
@@ -169,6 +169,36 @@ if [ ! -d "${ALPACA_EVAL_DIR}" ]; then
 else
     echo "Alpaca eval repo already exists at ${ALPACA_EVAL_DIR}"
 fi
+
+# ==============================================================================
+# STEP 2.5: Create annotator config
+# ==============================================================================
+echo "Creating annotator config..."
+ANNOTATOR_CONFIG_DIR="${ALPACA_EVAL_DIR}/src/alpaca_eval/evaluators_configs/${ANNOTATOR_CONFIG_NAME}"
+ANNOTATOR_CONFIG="${ANNOTATOR_CONFIG_DIR}/configs.yaml"
+mkdir -p "${ANNOTATOR_CONFIG_DIR}"
+
+cat > "${ANNOTATOR_CONFIG}" <<EOF
+activeuf:
+  prompt_template: "alpaca_eval_clf_gpt4_turbo/alpaca_eval_clf.txt"
+  fn_completions: "openai_completions"
+  completions_kwargs:
+    model_name: "${ANNOTATOR_MODEL_NAME}"
+    max_tokens: 1
+    temperature: 1 # temperature should be applied for sampling, so that should make no effect.
+    logprobs: true
+    top_logprobs: 5
+    requires_chatml: true
+  fn_completion_parser: "logprob_parser"
+  completion_parser_kwargs:
+    numerator_token: "m"
+    denominator_tokens: ["m", "M"]
+    is_binarize: false
+  completion_key: "completions_all"
+  batch_size: 1
+EOF
+
+echo "Created annotator config at: ${ANNOTATOR_CONFIG}"
 
 # ==============================================================================
 # STEP 3: Install alpaca_eval in edit mode
