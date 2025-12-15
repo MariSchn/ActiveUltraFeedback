@@ -213,7 +213,7 @@ ${MODEL_NAME}:
 EOF
 
 echo "Created custom config at: ${CUSTOM_CONFIG}"
-echo "Model path set to: ${MODEL_PATH}"
+echo "Model path set to: ${MODELS_DIR}/${MODEL_NAME}"
 
 # ==============================================================================
 # STEP 6: Wait for vLLM server to be ready
