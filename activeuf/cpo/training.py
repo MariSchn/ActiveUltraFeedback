@@ -70,6 +70,29 @@ def process_dataset(dataset):
     return train_dataset
 
 
+def argument_override(args, training_config, lora_config):
+    if args.learning_rate is not None:
+        training_config["learning_rate"] = args.learning_rate
+    if args.beta is not None:
+        training_config["beta"] = args.beta
+    if args.simpo_gamma is not None:
+        training_config["simpo_gamma"] = args.simpo_gamma
+    if args.per_device_train_batch_size is not None:
+        training_config["per_device_train_batch_size"] = (
+            args.per_device_train_batch_size
+        )
+    if args.gradient_accumulation_steps is not None:
+        training_config["gradient_accumulation_steps"] = (
+            args.gradient_accumulation_steps
+        )
+    if args.warmup_ratio is not None:
+        training_config["warmup_ratio"] = args.warmup_ratio
+    if args.lora_r is not None:
+        lora_config["r"] = args.lora_r
+    if args.lora_alpha is not None:
+        lora_config["lora_alpha"] = args.lora_alpha
+
+
 def main(args):
     setup()
     accelerator = Accelerator()
@@ -84,20 +107,42 @@ def main(args):
         torch_dtype = torch.bfloat16
     else:
         torch_dtype = torch.float32
+    argument_override(args, training_config, lora_config)
+    peft_config = LoraConfig(**lora_config) if lora_config else None
+
+    if process_id == 0:
+        print("args:")
+        print(args)
+        print("Using config:")
+        print(yaml.dump(config, default_flow_style=False))
+        print("Using training config:")
+        print(yaml.dump(training_config, default_flow_style=False))
+        print("Using LoRA config:")
+        print(yaml.dump(lora_config, default_flow_style=False))
+        if peft_config:
+            print("LoRA Config:")
+            print(peft_config)
+        else:
+            print("Full parameter training (no LoRA).")
 
     # set seed for reproducibility
     if isinstance(config.get("seed"), int):
         set_seed(config.get("seed"))
-
-    peft_config = LoraConfig(
-        **lora_config,
-    )
 
     def sanitize_name(name):
         # Replace / and . with _
         return re.sub(r"[/.]", "-", name)
 
     run_name = f"{os.environ['SLURM_JOB_ID']}-{sanitize_name(os.path.basename(args.dataset_path.rstrip('/')))}"
+    # adding HPs to run name (lr_rate, simpo_gamma, beta)
+    run_name += f"-lr{training_config['learning_rate']}-sg{training_config['simpo_gamma']}-b{training_config['beta']}"
+    # if using LoRA, add lora_r and lora_alpha to run name
+    if peft_config is not None:
+        run_name += f"-loraR{peft_config.r}-loraA{peft_config.lora_alpha}"
+    else:
+        run_name += "-full"
+    print(f"Run name: {run_name}")
+
     output_dir = os.path.join(args.output_dir, run_name)
 
     # send config file to wandb
@@ -115,116 +160,100 @@ def main(args):
         dataset_num_proc=os.cpu_count(),
     )
 
+    if process_id == 0:
+        print("Training arguments:")
+        print(training_args)
+
     # --- 2. Tokenizer ---
     tokenizer = AutoTokenizer.from_pretrained(config["model_path"])
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    # --- 3. Data ---
-    try:
-        dataset = load_dataset(args.dataset_path)
-    except Exception:
+    with accelerator.main_process_first():
+        # --- 3. Data ---
         try:
-            dataset = load_from_disk(args.dataset_path)
-        except Exception as e:
-            print(f"Failed to load remote or local datasets: {e}")
-            exit(-1)
-    dataset = process_dataset(dataset)
-    dataset = dataset.select_columns(["chosen", "rejected"])
-    if args.debug:
-        print("Debug mode enabled: using a smaller subset of the dataset.")
-        dataset = dataset.select(range(16))
+            dataset = load_dataset(args.dataset_path)
+        except Exception:
+            try:
+                dataset = load_from_disk(args.dataset_path)
+            except Exception as e:
+                print(f"Failed to load remote or local datasets: {e}")
+                exit(-1)
+        dataset = process_dataset(dataset)
+        dataset = dataset.select_columns(["chosen", "rejected"])
+        if args.debug:
+            print("Debug mode enabled: using a smaller subset of the dataset.")
+            dataset = dataset.select(range(64))
 
-    def filter_prompts(example):
-        prompt_msgs = example["chosen"][:-1]
+        print(f"Original dataset size: {len(dataset)}")
 
-        prompt_ids = tokenizer.apply_chat_template(
-            prompt_msgs, tokenize=True, add_generation_prompt=True
-        )
+        # Necessary fix for now...
+        def filter_rows(example):
+            example = maybe_extract_prompt(example)
+            example = maybe_apply_chat_template(example, tokenizer=tokenizer)
+            prompt = example["prompt"]
+            chosen = example["chosen"]
+            rejected = example["rejected"]
 
-        whole_thing_chosen = tokenizer.apply_chat_template(
-            example["chosen"], tokenize=True, add_generation_prompt=True
-        )
-        whole_thing_rejected = tokenizer.apply_chat_template(
-            example["rejected"], tokenize=True, add_generation_prompt=True
-        )
-        return (
-            len(prompt_ids) < training_config["max_prompt_length"]
-            and len(whole_thing_chosen) < training_config["max_length"]
-            and len(whole_thing_rejected) < training_config["max_length"]
-        )
-
-    print(f"Original dataset size: {len(dataset)}")
-
-    # Run the filter
-    dataset = dataset.filter(
-        filter_prompts,
-        num_proc=os.cpu_count(),
-        desc=f"Filtering prompts > {training_config['max_prompt_length']}",
-    )
-    print(f"Filtered dataset size: {len(dataset)} examples.")
-
-    # Necessary fix for now...
-    def filter_rows(example):
-        example = maybe_extract_prompt(example)
-        example = maybe_apply_chat_template(example, tokenizer=tokenizer)
-        prompt = example["prompt"]
-        chosen = example["chosen"]
-        rejected = example["rejected"]
-
-        def build_tokenized_answer(prompt, answer):
-            full_tokenized = tokenizer(prompt + answer, add_special_tokens=False)
-            prompt_input_ids = tokenizer(prompt, add_special_tokens=False)["input_ids"]
-            answer_input_ids = full_tokenized["input_ids"][len(prompt_input_ids) :]
-            answer_attention_mask = full_tokenized["attention_mask"][
-                len(prompt_input_ids) :
-            ]
-            full_concat_input_ids = np.concatenate([prompt_input_ids, answer_input_ids])
-            full_input_ids = np.array(full_tokenized["input_ids"])
-            if len(full_input_ids) != len(full_concat_input_ids):
-                raise ValueError(
-                    "Prompt input ids and answer input ids should have the same length."
+            def build_tokenized_answer(prompt, answer):
+                full_tokenized = tokenizer(prompt + answer, add_special_tokens=False)
+                prompt_input_ids = tokenizer(prompt, add_special_tokens=False)[
+                    "input_ids"
+                ]
+                answer_input_ids = full_tokenized["input_ids"][len(prompt_input_ids) :]
+                answer_attention_mask = full_tokenized["attention_mask"][
+                    len(prompt_input_ids) :
+                ]
+                full_concat_input_ids = np.concatenate(
+                    [prompt_input_ids, answer_input_ids]
                 )
-            response_token_ids_start_idx = len(prompt_input_ids)
-            if (
-                prompt_input_ids
-                != full_tokenized["input_ids"][:response_token_ids_start_idx]
+                full_input_ids = np.array(full_tokenized["input_ids"])
+                if len(full_input_ids) != len(full_concat_input_ids):
+                    raise ValueError(
+                        "Prompt input ids and answer input ids should have the same length."
+                    )
+                response_token_ids_start_idx = len(prompt_input_ids)
+                if (
+                    prompt_input_ids
+                    != full_tokenized["input_ids"][:response_token_ids_start_idx]
+                ):
+                    response_token_ids_start_idx -= 1
+                prompt_input_ids = full_tokenized["input_ids"][
+                    :response_token_ids_start_idx
+                ]
+                prompt_attention_mask = full_tokenized["attention_mask"][
+                    :response_token_ids_start_idx
+                ]
+                if len(prompt_input_ids) != len(prompt_attention_mask):
+                    raise ValueError(
+                        "Prompt input ids and attention mask should have the same length."
+                    )
+                answer_input_ids = full_tokenized["input_ids"][
+                    response_token_ids_start_idx:
+                ]
+                answer_attention_mask = full_tokenized["attention_mask"][
+                    response_token_ids_start_idx:
+                ]
+                return dict(
+                    prompt_input_ids=prompt_input_ids,
+                    prompt_attention_mask=prompt_attention_mask,
+                    input_ids=answer_input_ids,
+                    attention_mask=answer_attention_mask,
+                )
+
+            chosen_tokens = build_tokenized_answer(prompt, chosen)
+            rejected_tokens = build_tokenized_answer(prompt, rejected)
+            if len(chosen_tokens["prompt_input_ids"]) != len(
+                rejected_tokens["prompt_input_ids"]
             ):
-                response_token_ids_start_idx -= 1
-            prompt_input_ids = full_tokenized["input_ids"][
-                :response_token_ids_start_idx
-            ]
-            prompt_attention_mask = full_tokenized["attention_mask"][
-                :response_token_ids_start_idx
-            ]
-            if len(prompt_input_ids) != len(prompt_attention_mask):
-                raise ValueError(
-                    "Prompt input ids and attention mask should have the same length."
-                )
-            answer_input_ids = full_tokenized["input_ids"][
-                response_token_ids_start_idx:
-            ]
-            answer_attention_mask = full_tokenized["attention_mask"][
-                response_token_ids_start_idx:
-            ]
-            return dict(
-                prompt_input_ids=prompt_input_ids,
-                prompt_attention_mask=prompt_attention_mask,
-                input_ids=answer_input_ids,
-                attention_mask=answer_attention_mask,
-            )
+                return False
+            return True
 
-        chosen_tokens = build_tokenized_answer(prompt, chosen)
-        rejected_tokens = build_tokenized_answer(prompt, rejected)
-        if len(chosen_tokens["prompt_input_ids"]) != len(
-            rejected_tokens["prompt_input_ids"]
-        ):
-            return False
-        return True
+        dataset = dataset.filter(filter_rows, num_proc=os.cpu_count())
 
-    dataset = dataset.filter(filter_rows, num_proc=os.cpu_count())
     print(f"Final dataset size after further filtering: {len(dataset)} examples.")
     print(dataset)
+
     # --- 4. Model & PEFT ---
     model = AutoModelForCausalLM.from_pretrained(
         config["model_path"],
@@ -232,17 +261,16 @@ def main(args):
         attn_implementation="flash_attention_2",
     )
 
-    model = get_peft_model(model, peft_config)
-
-    if training_args.process_index == 0:
-        model.print_trainable_parameters()
-
     trainer = CPOTrainer(
         model=model,
         args=training_args,
         train_dataset=dataset,
         processing_class=tokenizer,
+        peft_config=peft_config,
     )
+
+    if training_args.process_index == 0 and peft_config is not None:
+        trainer.model.print_trainable_parameters()
 
     if training_args.process_index == 0:
         print("Starting SimPO training...")
@@ -250,13 +278,29 @@ def main(args):
     trainer.train()
 
     if trainer.is_world_process_zero():
-        model = model.merge_and_unload()
-        model.save_pretrained(output_dir)
         tokenizer.save_pretrained(output_dir)
-        print(f"Model and tokenizer saved to {output_dir}")
+        # Save the config for reproducibility
         os.makedirs(os.path.dirname(output_dir), exist_ok=True)
         with open(os.path.join(output_dir, "config_used.yaml"), "w") as f_out:
             yaml.dump(config, f_out, default_flow_style=False)
+
+    if peft_config is not None:
+        if trainer.is_world_process_zero():
+            print("LoRA detected: Unwrapping and merging adapters...")
+
+        unwrapped_model = trainer.accelerator.unwrap_model(trainer.model)
+
+        unwrapped_model = unwrapped_model.merge_and_unload()
+
+        unwrapped_model.save_pretrained(
+            output_dir,
+            is_main_process=trainer.is_world_process_zero(),
+            safe_serialization=True,
+        )
+    else:
+        if trainer.is_world_process_zero():
+            print("Full Finetune: Saving model (Collective Operation)...")
+        trainer.save_model(output_dir)
 
     if (
         process_id == 0
@@ -281,6 +325,32 @@ if __name__ == "__main__":
         "--debug",
         action="store_true",
         help="If set, runs in debug mode with smaller dataset",
+    )
+    parser.add_argument(
+        "--learning_rate", type=float, default=None, help="Override learning rate"
+    )
+    parser.add_argument("--beta", type=float, default=None, help="Override beta value")
+    parser.add_argument(
+        "--simpo_gamma", type=float, default=None, help="Override simpo gamma"
+    )
+    parser.add_argument(
+        "--per_device_train_batch_size",
+        type=int,
+        default=None,
+        help="Override batch size",
+    )
+    parser.add_argument(
+        "--gradient_accumulation_steps",
+        type=int,
+        default=None,
+        help="Override gradient accumulation steps",
+    )
+    parser.add_argument(
+        "--warmup_ratio", type=float, default=None, help="Override warmup ratio"
+    )
+    parser.add_argument("--lora_r", type=int, default=None, help="Override LoRA rank")
+    parser.add_argument(
+        "--lora_alpha", type=int, default=None, help="Override LoRA alpha"
     )
 
     args = parser.parse_args()

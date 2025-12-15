@@ -14,19 +14,19 @@ lora:
 training:
   loss_type: simpo
   cpo_alpha: 0.0
-  beta: 2.0
+  beta: 1.5
   simpo_gamma: 1.4
 
   max_length: 4096
   max_prompt_length: 2048
 
   per_device_train_batch_size: 4
-  gradient_accumulation_steps: 1
+  gradient_accumulation_steps: 4
   
-  learning_rate: 2.0e-5
+  learning_rate: 1.5e-6
   lr_scheduler_type: cosine
-  warmup_ratio: 0.1
-  num_train_epochs: 3
+  warmup_ratio: 0.03
+  num_train_epochs: 1
 
   report_to: "wandb"
   logging_steps: 1
@@ -35,3 +35,7 @@ training:
 
   bf16: true
   bf16_full_eval: true
+
+  gradient_checkpointing: true
+  gradient_checkpointing_kwargs:
+    use_reentrant: false
