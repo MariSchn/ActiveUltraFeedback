@@ -90,7 +90,7 @@ export XDG_CACHE_HOME=${CACHE_DIR}
 export TORCH_EXTENSIONS_DIR=${XDG_CACHE_HOME}/torch_extensions
 
 # Note: Mistral Models and MoE models need the activeuf_dev container (given in Dockerfile)
-srun --environment=activeuf_new_xformers python -u -m activeuf.completions.generate_completions \
+srun --environment=activeuf_dev python -u -m activeuf.completions.generate_completions \
     --dataset_path ${DATASETS_DIR}/0_raw_datasets/llama-3.1-tulu-3-8b-preference-mixture/ \
     --model_name $MODEL \
     --model_class vllm \
