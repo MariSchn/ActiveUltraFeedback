@@ -8,12 +8,42 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=4
 #SBATCH --cpus-per-task=288
-#SBATCH --time=09:00:00             # maximum execution time (HH:MM:SS)
+#SBATCH --time=09:00:00
+
+# --- ARGUMENT PARSING ---
+# 1. Dataset Path
+if [[ -n "$MyDatasetPath" ]]; then
+    export DATASET_PATH="$MyDatasetPath"
+    echo "Using Custom Dataset Path: $DATASET_PATH"
+else
+    echo "Error: 'MyDatasetPath' environment variable is required."
+    exit 1
+fi
+
+# 2. Output Directory
+if [[ -n "$MyOutputDir" ]]; then
+    export BASE_OUTPUT_DIR="$MyOutputDir"
+    echo "Using Custom Base Output Dir: $BASE_OUTPUT_DIR"
+else
+    export BASE_OUTPUT_DIR="$SCRATCH/models/dpo"
+    echo "Using Default Base Output Dir: $BASE_OUTPUT_DIR"
+fi
+
+# 3. Seed
+if [[ -n "$MySeed" ]]; then
+    export SEED="$MySeed"
+    echo "Using Custom Seed: $SEED"
+else
+    export SEED="42"
+    echo "Using Default Seed: $SEED"
+fi
+
+echo "Dataset Path: $DATASET_PATH"
+echo "Seed:         $SEED"
+echo "Base Output Dir: $BASE_OUTPUT_DIR"
+# ------------------------
 
 BASE_CACHE_DIR="$SCRATCH"
-DATASET_PATH="<DATASET_PATH>"
-SEED="<SEED>"
-
 export HF_HOME=$BASE_CACHE_DIR/hf_home
 export VLLM_CACHE_DIR=$BASE_CACHE_DIR/vllm_cache
 export WANDB_PROJECT=DPO
@@ -35,10 +65,11 @@ CMD="accelerate launch \
     --config_path $SCRATCH/ActiveUltraFeedback/configs/dpo_training.yaml \
     --slurm_job_id $SLURM_JOB_ID \
     --dataset_path $DATASET_PATH \
+    --base_output_dir $BASE_OUTPUT_DIR \
     --beta 0.1 \
-    --learning_rate 2e-5 \
+    --learning_rate 5e-6 \
     --seed $SEED \
-    --num_epochs 3"
+    --num_epochs 1"
 
 echo $CMD
 

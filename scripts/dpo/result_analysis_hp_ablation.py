@@ -41,7 +41,7 @@ def parse_model_name(name):
         meta["LoRA R"] = np.nan
         meta["LoRA A"] = np.nan
 
-    # 4. Extract Hyperparameters
+    # 4. Extract Hyperparameters (Including Seed)
     hp_string = "-".join(parts[1:])
     patterns = {
         "LR": r"lr([0-9\.eE-]+)",
@@ -49,6 +49,7 @@ def parse_model_name(name):
         "Beta": r"b([\d\.]+)",
         "LoRA R": r"loraR(\d+)",
         "LoRA A": r"loraA(\d+)",
+        "Seed": r"seed(\d+)",
     }
 
     for hp_name, pattern in patterns.items():
@@ -60,7 +61,7 @@ def parse_model_name(name):
             val_str = match.group(1).rstrip("-.")
             try:
                 val = float(val_str)
-                if hp_name in ["LoRA R", "LoRA A"]:
+                if hp_name in ["LoRA R", "LoRA A", "Seed"]:
                     meta[hp_name] = int(val)
                 elif hp_name == "LR":
                     meta[hp_name] = val
@@ -146,35 +147,80 @@ def collect_data(results_dir, min_job_id=0, max_job_id=None):
     return pd.DataFrame(records)
 
 
-def format_latex_row(row_data, columns, is_best_dict=None):
-    tex_parts = []
+def write_latex_table(
+    f, df, display_cols, caption, is_best_dict=None, is_summary=False
+):
+    # Calculate column alignment (l for HPs, c for metrics)
+    col_def = "l" * (len(display_cols) - 4) + "c" * 4
+    if len(display_cols) < 4:
+        col_def = "l" * len(display_cols)  # fallback
 
-    hp_cols = ["Method", "Type", "LR", "Lambda", "Beta", "LoRA R", "LoRA A"]
-    for col in hp_cols:
-        if col in columns:
-            val = row_data.get(col, "-")
-            if pd.isna(val):
-                tex_parts.append("-")
-            elif col == "LR":
-                tex_parts.append(f"{val:.0e}")
-            elif col == "Method":
-                tex_parts.append(str(val).title().replace("Deltaqwen", "Delta\_Qwen"))
-            else:
-                tex_parts.append(str(val))
+    f.write("\\begin{table}[h]\n\\centering\n\\resizebox{\\textwidth}{!}{\n")
+    f.write(f"\\begin{{tabular}}{{{col_def}}}\n")
+    f.write("\\toprule\n")
 
-    score_cols = [c for c in columns if c not in hp_cols and c != "Job ID"]
-
-    for col in score_cols:
-        val = row_data.get(col, np.nan)
-        if pd.isna(val):
-            tex_parts.append("-")
+    # --- Header ---
+    headers = []
+    for c in display_cols:
+        if c == "Lambda":
+            headers.append(r"$\lambda$")
+        elif c == "Beta":
+            headers.append(r"$\beta$")
+        elif c == "LoRA R":
+            headers.append(r"$r$")
+        elif c == "LoRA A":
+            headers.append(r"$\alpha$")
         else:
-            val_str = f"{val:+.3f}"
-            if is_best_dict and abs(val - is_best_dict.get(col, -999)) < 1e-9:
-                val_str = f"\\textbf{{{val_str}}}"
-            tex_parts.append(val_str)
+            headers.append(c.title())
+    f.write(" & ".join(headers) + " \\\\\n")
+    f.write("\\midrule\n")
 
-    return " & ".join(tex_parts) + " \\\\"
+    # --- Rows ---
+    for _, row in df.iterrows():
+        tex_parts = []
+        for col in display_cols:
+            val = row.get(col, "-")
+
+            # Formatting based on column type
+            if col in ["Method", "Type", "Job ID", "Seed"]:
+                if col == "Method":
+                    tex_parts.append(
+                        str(val).title().replace("Deltaqwen", "Delta\_Qwen")
+                    )
+                else:
+                    tex_parts.append(str(val))
+            elif col in ["LR", "Lambda", "Beta", "LoRA R", "LoRA A"]:
+                if col == "LR" and isinstance(val, (int, float)):
+                    tex_parts.append(f"{val:.0e}")
+                elif pd.isna(val):
+                    tex_parts.append("-")
+                else:
+                    tex_parts.append(str(val))
+            else:
+                # Score Columns
+                if is_summary:
+                    # Expecting a pre-formatted string "Mean \pm Std"
+                    tex_parts.append(str(val))
+                else:
+                    if pd.isna(val):
+                        tex_parts.append("-")
+                    else:
+                        # Float formatting with optional Bold for best score
+                        val_str = f"{val:+.3f}"
+                        if (
+                            is_best_dict
+                            and isinstance(val, (int, float))
+                            and abs(val - is_best_dict.get(col, -999)) < 1e-9
+                        ):
+                            val_str = f"\\textbf{{{val_str}}}"
+                        tex_parts.append(val_str)
+
+        f.write(" & ".join(tex_parts) + " \\\\\n")
+
+    f.write("\\bottomrule\n")
+    f.write("\\end{tabular}\n}\n")
+    f.write(f"\\caption{{{caption}}}\n")
+    f.write("\\end{table}\n\n")
 
 
 def main():
@@ -184,9 +230,19 @@ def main():
     parser.add_argument("--max_job_id", type=int, default=None)
     parser.add_argument("--top_n", type=int, default=10)
     parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Print all results sorted by hyperparameters (Standard Mode)",
+    )
+    parser.add_argument(
         "--filter_negatives",
         action="store_true",
         help="Remove rows with any negative delta score",
+    )
+    parser.add_argument(
+        "--summary",
+        action="store_true",
+        help="Enable Summary Mode: Prints Individual Run table AND Aggregated Mean/Std table",
     )
     parser.add_argument("--output_file", type=str, default="ablation_table.tex")
     args = parser.parse_args()
@@ -198,7 +254,7 @@ def main():
         return
 
     # Pivot Data
-    hp_cols = ["Method", "Type", "LR", "Lambda", "Beta", "LoRA R", "LoRA A"]
+    hp_cols = ["Method", "Type", "LR", "Lambda", "Beta", "LoRA R", "LoRA A", "Seed"]
     active_hp_cols = [c for c in hp_cols if c in df.columns]
 
     pivot_df = df.pivot_table(
@@ -219,63 +275,102 @@ def main():
     for task in valid_tasks:
         pivot_df[task] = pivot_df[task] - SFT_SCORES[task]
 
-    # --- FILTER NEGATIVES ---
+    # Filter Negatives (Common to all modes)
     if args.filter_negatives:
         initial_len = len(pivot_df)
-        # Identify rows where ANY task score is negative (< 0)
         neg_mask = (pivot_df[valid_tasks] < 0).any(axis=1)
         pivot_df = pivot_df[~neg_mask]
         print(f"Filtered out {initial_len - len(pivot_df)} rows with negative scores.")
 
-    # Mean & Sort
+    # Calculate Mean
     pivot_df["Mean"] = pivot_df[valid_tasks].mean(axis=1)
-    pivot_df = pivot_df.sort_values(by="Mean", ascending=False)
 
-    top_df = pivot_df.head(args.top_n).copy()
-
-    # Generate LaTeX
-    display_cols = active_hp_cols + valid_tasks + ["Mean"]
-
-    best_stats = {}
-    if not top_df.empty:
-        for col in valid_tasks + ["Mean"]:
-            best_stats[col] = top_df[col].max()
-
-    col_def = "l" * len(active_hp_cols) + "c" * (len(valid_tasks) + 1)
-
+    # ================= MODE SELECTION =================
     with open(args.output_file, "w") as f:
-        f.write(
-            f"% Ablation Study: Top {args.top_n} (Filter Negatives: {args.filter_negatives})\n"
-        )
-        f.write("\\begin{table}[h]\n\\centering\n\\resizebox{\\textwidth}{!}{\n")
-        f.write(f"\\begin{{tabular}}{{{col_def}}}\n")
-        f.write("\\toprule\n")
+        f.write("% Auto-generated Tables\n")
 
-        headers = []
-        for c in display_cols:
-            if c == "Lambda":
-                headers.append(r"$\lambda$")
-            elif c == "Beta":
-                headers.append(r"$\beta$")
-            elif c == "LoRA R":
-                headers.append(r"$r$")
-            elif c == "LoRA A":
-                headers.append(r"$\alpha$")
+        if args.summary:
+            # ---------------- SUMMARY MODE ----------------
+            print("Mode: Summary (Aggregating Seeds)")
+
+            # Table 1: Individual Rows (Sorted by HP then Seed)
+            sort_cols = [c for c in active_hp_cols if c != "Seed"]
+            if "Seed" in active_hp_cols:
+                sort_cols.append("Seed")
+
+            table1_df = pivot_df.sort_values(by=sort_cols, ascending=True)
+            display_cols_1 = active_hp_cols + valid_tasks + ["Mean"]
+
+            write_latex_table(
+                f,
+                table1_df,
+                display_cols_1,
+                "Individual Experimental Results (All Seeds)",
+            )
+
+            # Table 2: Aggregated Summary
+            group_cols = [c for c in active_hp_cols if c not in ["Seed", "Job ID"]]
+            if not group_cols:
+                print(
+                    "Warning: Cannot group (no hyperparameters found). Skipping summary table."
+                )
             else:
-                headers.append(c.title())
+                target_cols = valid_tasks + ["Mean"]
+                agg_df = (
+                    pivot_df.groupby(group_cols)[target_cols]
+                    .agg(["mean", "std"])
+                    .reset_index()
+                )
 
-        f.write(" & ".join(headers) + " \\\\\n")
-        f.write("\\midrule\n")
+                # Format as "Mean +/- Std"
+                summary_rows = []
+                for _, row in agg_df.iterrows():
+                    new_row = {}
+                    for hp in group_cols:
+                        new_row[hp] = row[(hp, "")]
+                    for task in target_cols:
+                        m = row[(task, "mean")]
+                        s = row[(task, "std")]
+                        new_row[task] = f"{m:+.3f}_{{ \\pm {s:.3f} }}"
+                    summary_rows.append(new_row)
 
-        for _, row in top_df.iterrows():
-            f.write(format_latex_row(row, display_cols, best_stats) + "\n")
+                summary_df = pd.DataFrame(summary_rows)
+                display_cols_2 = group_cols + valid_tasks + ["Mean"]
 
-        f.write("\\bottomrule\n")
-        f.write("\\end{tabular}\n}\n")
-        f.write(f"\\caption{{Ablation Study: Top {args.top_n} Configurations}}\n")
-        f.write("\\end{table}\n")
+                write_latex_table(
+                    f,
+                    summary_df,
+                    display_cols_2,
+                    "Aggregated Results (Mean $\\pm$ Std Dev)",
+                    is_summary=True,
+                )
 
-    print(f"Ablation table saved to {args.output_file}")
+        else:
+            # ---------------- STANDARD MODE ----------------
+            print("Mode: Standard (Top N / All)")
+
+            if args.all:
+                # Sort by Hyperparameters
+                final_df = pivot_df.sort_values(by=active_hp_cols, ascending=True)
+                caption = "Ablation Study: All Configurations"
+            else:
+                # Sort by Score (Top N)
+                pivot_df = pivot_df.sort_values(by="Mean", ascending=False)
+                final_df = pivot_df.head(args.top_n).copy()
+                caption = f"Ablation Study: Top {args.top_n} Configurations"
+
+            # Calculate Best Stats for Bolding
+            best_stats = {}
+            if not final_df.empty:
+                for col in valid_tasks + ["Mean"]:
+                    best_stats[col] = final_df[col].max()
+
+            display_cols = active_hp_cols + valid_tasks + ["Mean"]
+            write_latex_table(
+                f, final_df, display_cols, caption, is_best_dict=best_stats
+            )
+
+    print(f"Tables saved to {args.output_file}")
 
 
 if __name__ == "__main__":

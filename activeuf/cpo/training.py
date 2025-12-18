@@ -87,10 +87,14 @@ def argument_override(args, training_config, lora_config):
         )
     if args.warmup_ratio is not None:
         training_config["warmup_ratio"] = args.warmup_ratio
+    if args.loss_type is not None:
+        training_config["loss_type"] = args.loss_type
     if args.lora_r is not None:
         lora_config["r"] = args.lora_r
     if args.lora_alpha is not None:
         lora_config["lora_alpha"] = args.lora_alpha
+    if args.seed is not None:
+        training_config["seed"] = args.seed
 
 
 def main(args):
@@ -108,6 +112,9 @@ def main(args):
     else:
         torch_dtype = torch.float32
     argument_override(args, training_config, lora_config)
+    if args.seed is not None:
+        config["seed"] = args.seed
+
     peft_config = LoraConfig(**lora_config) if lora_config else None
 
     if process_id == 0:
@@ -135,7 +142,7 @@ def main(args):
 
     run_name = f"{os.environ['SLURM_JOB_ID']}-{sanitize_name(os.path.basename(args.dataset_path.rstrip('/')))}"
     # adding HPs to run name (lr_rate, simpo_gamma, beta)
-    run_name += f"-lr{training_config['learning_rate']}-sg{training_config['simpo_gamma']}-b{training_config['beta']}"
+    run_name += f"-{training_config['loss_type']}-lr{training_config['learning_rate']}-sg{training_config['simpo_gamma']}-b{training_config['beta']}-seed{config.get('seed', 'NA')}"
     # if using LoRA, add lora_r and lora_alpha to run name
     if peft_config is not None:
         run_name += f"-loraR{peft_config.r}-loraA{peft_config.lora_alpha}"
@@ -253,6 +260,8 @@ def main(args):
 
     print(f"Final dataset size after further filtering: {len(dataset)} examples.")
     print(dataset)
+    print("Shuffling dataset...")
+    dataset = dataset.shuffle(seed=config.get("seed"))
 
     # --- 4. Model & PEFT ---
     model = AutoModelForCausalLM.from_pretrained(
@@ -352,6 +361,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--lora_alpha", type=int, default=None, help="Override LoRA alpha"
     )
+    parser.add_argument(
+        "--loss_type", type=str, default=None, help="Override loss type (cpo/simpo)"
+    )
+
+    parser.add_argument("--seed", type=int, default=None, help="Override random seed")
 
     args = parser.parse_args()
     main(args)

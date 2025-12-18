@@ -2,13 +2,13 @@
 
 #SBATCH -A a-infra01-1
 #SBATCH --job-name=cpo
-#SBATCH --output=logs/cpo_new_new/O-%x.%j
-#SBATCH --error=logs/cpo_new_new/E-%x.%j
+#SBATCH --output=logs/cpo_new_new_new_new/O-%x.%j
+#SBATCH --error=logs/cpo_new_new_new_new/E-%x.%j
 #SBATCH --nodes=2
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=4
 #SBATCH --cpus-per-task=288
-#SBATCH --time=03:00:00
+#SBATCH --time=07:00:00
 #SBATCH --environment=activeuf_dev
 
 export NCCL_SOCKET_IFNAME=^lo,docker0
@@ -21,8 +21,17 @@ if [[ -n "$MyDatasetPath" ]]; then
     export DATASET_PATH="$MyDatasetPath"
     echo "Using Custom Dataset Path: $DATASET_PATH"
 else
-    export DATASET_PATH="/iopsstor/scratch/cscs/dmelikidze/ActiveUltraFeedback/datasets/my/actives/datasets/MaxMinLCB_60829"
+    export DATASET_PATH="allenai/ultrafeedback_binarized_cleaned"
     echo "Using Default Dataset Path: $DATASET_PATH"
+fi
+
+#checking output_dir existence, replacing output dir with it.
+if [[ -n "$MyOutputDir" ]]; then
+    export OUTPUT_DIR="$MyOutputDir"
+    echo "Using Custom Output Dir: $OUTPUT_DIR"
+else
+    export OUTPUT_DIR="$SCRATCH/models/cpo"
+    echo "Using Default Output Dir: $OUTPUT_DIR"
 fi
 
 export HF_HOME=$SCRATCH/hf_home
@@ -46,6 +55,8 @@ if [[ -n "$MyBeta" ]]; then EXTRA_ARGS="$EXTRA_ARGS --beta $MyBeta"; fi
 if [[ -n "$MyGamma" ]]; then EXTRA_ARGS="$EXTRA_ARGS --simpo_gamma $MyGamma"; fi
 if [[ -n "$MyBS" ]]; then EXTRA_ARGS="$EXTRA_ARGS --per_device_train_batch_size $MyBS"; fi
 if [[ -n "$MyGAS" ]]; then EXTRA_ARGS="$EXTRA_ARGS --gradient_accumulation_steps $MyGAS"; fi
+if [[ -n "$MyLossType" ]]; then EXTRA_ARGS="$EXTRA_ARGS --loss_type $MyLossType"; fi
+if [[ -n "$MySeed" ]]; then EXTRA_ARGS="$EXTRA_ARGS --seed $MySeed"; fi
 
 if [[ "$MyUseLora" == "true" ]]; then
     EXTRA_ARGS="$EXTRA_ARGS --lora_r $MyRank --lora_alpha $MyAlpha"
@@ -68,7 +79,7 @@ accelerate launch \
     -m activeuf.cpo.training \
     --config_path "$SCRATCH/ActiveUltraFeedback/configs/cpo_training.yaml" \
     --dataset_path "$DATASET_PATH" \
-    --output_dir "$SCRATCH/models/cpo" '"$EXTRA_ARGS"
+    --output_dir "$OUTPUT_DIR" '"$EXTRA_ARGS"
     
 END=$(date +%s)
 DURATION=$(( END - START ))

@@ -31,7 +31,7 @@ for dataset in "${DATASETS[@]}"; do
     
     # Submit job, passing the path variable
     sbatch \
-        --export=ALL,MyLR="7.0e-6",MyDatasetPath="$dataset",MyBeta="10.0",MyGamma="1.4",MyUseLora="$USE_LORA",MyRank="64",MyAlpha="16" \
+        --export=ALL,MyLR="7.0e-6",MyDatasetPath="$dataset",MyBeta="10.0",MyGamma="1.4",MyUseLora="$USE_LORA",MyRank="16",MyAlpha="32" \
         "$SBATCH_SCRIPT"
         
     sleep 1
