@@ -3,58 +3,113 @@ import pandas as pd
 import argparse
 import sys
 import numpy as np
-import pprint  # Added for pretty printing
+from collections import defaultdict
+
+# ==============================================================================
+#                               RAW BASELINE DATA
+# ==============================================================================
+
+# DPO RAW SCORES
+DPO_TASK_BASELINES = {
+    "GSM8K": {
+        "SFT": 0.758,
+        "DeltaQwen": 0.813,
+        "MaxMin": 0.780,
+        "Random": 0.782,
+        "UltraFeedback": 0.795,
+    },
+    "IF Eval": {
+        "SFT": 0.713,
+        "DeltaQwen": 0.760,
+        "MaxMin": 0.697,
+        "Random": 0.741,
+        "UltraFeedback": 0.712,
+    },
+    "Truthful QA": {
+        "SFT": 0.468,
+        "DeltaQwen": 0.598,
+        "MaxMin": 0.618,
+        "Random": 0.524,
+        "UltraFeedback": 0.507,
+    },
+}
+
+# Recalculated Means
+DPO_MEAN_BASELINES = {
+    "SFT": 0.646,
+    "DeltaQwen": 0.724,
+    "MaxMin": 0.698,
+    "Random": 0.682,
+    "UltraFeedback": 0.671,
+}
+
+# RM RAW SCORES
+RM_MEAN_BASELINES = {
+    "SFT": 0.290,
+    "DeltaQwen": 0.390,
+    "MaxMin": 0.608,
+    "Random": 0.568,
+    "UltraFeedback": 0.577,
+}
+
+RM_TASK_BASELINES = {
+    "Factuality": {
+        "SFT": 0.316,
+        "DeltaQwen": 0.511,
+        "MaxMin": 0.693,
+        "Random": 0.759,
+        "UltraFeedback": 0.759,
+    },
+    "Focus": {
+        "SFT": 0.277,
+        "DeltaQwen": 0.243,
+        "MaxMin": 0.760,
+        "Random": 0.486,
+        "UltraFeedback": 0.465,
+    },
+    "Math": {
+        "SFT": 0.445,
+        "DeltaQwen": 0.473,
+        "MaxMin": 0.601,
+        "Random": 0.601,
+        "UltraFeedback": 0.658,
+    },
+    "Precise IF": {
+        "SFT": 0.261,
+        "DeltaQwen": 0.328,
+        "MaxMin": 0.384,
+        "Random": 0.394,
+        "UltraFeedback": 0.375,
+    },
+    "Safety": {
+        "SFT": 0.347,
+        "DeltaQwen": 0.563,
+        "MaxMin": 0.717,
+        "Random": 0.764,
+        "UltraFeedback": 0.828,
+    },
+    "Ties": {
+        "SFT": 0.095,
+        "DeltaQwen": 0.221,
+        "MaxMin": 0.495,
+        "Random": 0.405,
+        "UltraFeedback": 0.379,
+    },
+}
 
 # ==============================================================================
 #                               CONFIGURATION
 # ==============================================================================
 
-DPO_COLS = ["GSM8K", "IF Eval", "Minerva Math", "Truthful QA", "Mean"]
+DPO_COLS = ["GSM8K", "IF Eval", "Truthful QA", "Mean"]
 RM_COLS = ["Factuality", "Focus", "Math", "Precise IF", "Safety", "Ties", "Mean"]
 
-# 1. ABSOLUTE BASELINE (SFT Base Model)
-SFT_BASE = {
-    "DPO": {
-        "GSM8K": 0.758,
-        "IF Eval": 0.713,
-        "Minerva Math": 0.309,
-        "Truthful QA": 0.468,
-        "Mean": 0.562,
-    },
-    "RM": {
-        "Factuality": 0.316,
-        "Focus": 0.277,
-        "Math": 0.445,
-        "Precise IF": 0.261,
-        "Safety": 0.347,
-        "Ties": 0.095,
-        "Mean": 0.290,
-    },
-}
-
-# 2. OTHER BASELINES (Deltas)
-OTHER_BASELINES_DELTAS = {
-    "DPO": {
-        "Random": [+0.048, -0.011, +0.033, +0.053, +0.032],
-        "UltraFeedback": [+0.045, -0.083, +0.039, +0.046, +0.012],
-        "MaxMin": [+0.025, -0.018, +0.089, +0.152, +0.062],
-        "DeltaQwen": [+0.064, +0.041, +0.068, +0.126, +0.074],
-        "DeltaQwenBig": [+0.002, +0.013, +0.002, +0.013, +0.008],
-    },
-    "RM": {
-        "Random": [+0.409, +0.252, +0.164, +0.104, +0.422, +0.228, +0.264],
-        "Ultrafeedback": [+0.392, +0.183, +0.200, +0.064, +0.405, +0.288, +0.256],
-        "MaxMin": [+0.373, +0.392, +0.156, +0.164, +0.367, +0.366, +0.303],
-        "DeltaQwen": [+0.183, -0.050, +0.030, +0.077, +0.209, +0.109, +0.093],
-        "DeltaQwenBig": [+0.137, +0.008, +0.071, +0.095, +0.077, -0.183, +0.034],
-    },
-}
+BASELINE_METHODS_ORDER = ["Random", "UltraFeedback", "MaxMin", "DeltaQwen"]
 
 KEY_MAPPING = {
     "DPO": {
         "GSM8K": "DPO/GSM8K",
         "IF Eval": "DPO/IF Eval",
-        "Minerva Math": "DPO/Minerva Math",
         "Truthful QA": "DPO/Truthful QA",
         "Mean": "DPO/Mean",
     },
@@ -68,6 +123,66 @@ KEY_MAPPING = {
         "Mean": "Rewardbench/Mean",
     },
 }
+
+ACQ_MAP = {
+    "dts": "DTS",
+    "infomax": "InfoMax",
+    "maxminlcb": "MaxMin",
+    "drts": "DRTS",
+    "deltaucb": "DeltaUCB",
+}
+
+# ==============================================================================
+#                           DATA PROCESSING LOGIC
+# ==============================================================================
+
+
+def process_baselines():
+    sft_base = {"DPO": {}, "RM": {}}
+    other_deltas = {"DPO": {}, "RM": {}}
+
+    for method in BASELINE_METHODS_ORDER:
+        other_deltas["DPO"][method] = []
+        other_deltas["RM"][method] = []
+
+    # --- PROCESS DPO ---
+    for col in DPO_COLS:
+        if col == "Mean":
+            source = DPO_MEAN_BASELINES
+        else:
+            source = DPO_TASK_BASELINES.get(col, {})
+
+        sft_val = source.get("SFT", np.nan)
+        sft_base["DPO"][col] = sft_val
+
+        for method in BASELINE_METHODS_ORDER:
+            val = source.get(method, np.nan)
+            delta = (
+                val - sft_val if not np.isnan(val) and not np.isnan(sft_val) else np.nan
+            )
+            other_deltas["DPO"][method].append(delta)
+
+    # --- PROCESS RM ---
+    for col in RM_COLS:
+        if col == "Mean":
+            source = RM_MEAN_BASELINES
+        else:
+            source = RM_TASK_BASELINES.get(col, {})
+
+        sft_val = source.get("SFT", np.nan)
+        sft_base["RM"][col] = sft_val
+
+        for method in BASELINE_METHODS_ORDER:
+            val = source.get(method, np.nan)
+            delta = (
+                val - sft_val if not np.isnan(val) and not np.isnan(sft_val) else np.nan
+            )
+            other_deltas["RM"][method].append(delta)
+
+    return sft_base, other_deltas
+
+
+SFT_BASE, OTHER_BASELINES_DELTAS = process_baselines()
 
 
 def format_delta(val, is_best=False):
@@ -105,14 +220,18 @@ def process_section_dataframe(df_numeric, cols):
 
 
 def get_static_data():
+    # 1. SFT
     dpo_sft = pd.DataFrame([SFT_BASE["DPO"]], index=["SFT Base Model"])
+    dpo_sft = dpo_sft[DPO_COLS]
     for c in dpo_sft.columns:
         dpo_sft[c] = dpo_sft[c].apply(format_sft)
 
     rm_sft = pd.DataFrame([SFT_BASE["RM"]], index=["SFT Base Model"])
+    rm_sft = rm_sft[RM_COLS]
     for c in rm_sft.columns:
         rm_sft[c] = rm_sft[c].apply(format_sft)
 
+    # 2. Baselines
     dpo_base_dict = {}
     for name, deltas in OTHER_BASELINES_DELTAS["DPO"].items():
         dpo_base_dict[name] = dict(zip(DPO_COLS, deltas))
@@ -126,62 +245,60 @@ def get_static_data():
     return (dpo_sft, df_dpo_base_num), (rm_sft, df_rm_base_num)
 
 
-def fetch_wandb_runs(entity, project, sweep_id):
+def generate_run_name(config):
+    acq = ACQ_MAP.get(config.get("acquisition_function_type"), "Unknown")
+    beta = config.get("acquisition_function.beta")
+    decay = config.get("enn.regularization.exponential_decay_base")
+    rb = config.get("replay_buffer_factor")
+    name = f"{acq} ($\\beta={beta}$, $d={decay}$, $rb={rb}$)"
+    return name
+
+
+def filter_top_n_runs(runs_data, sort_key_fn, top_n):
+    """
+    Groups runs by acquisition function, sorts them using sort_key_fn,
+    and keeps the top N per group.
+    """
+    if top_n is None:
+        return runs_data
+
+    grouped = defaultdict(list)
+    for r in runs_data:
+        grouped[r["acq_group"]].append(r)
+
+    filtered = []
+    for acq, group_list in grouped.items():
+        # Sort descending by the provided key function
+        # We handle NaNs/None by using a very small number
+        group_list.sort(
+            key=lambda x: (
+                sort_key_fn(x)
+                if sort_key_fn(x) is not None and not np.isnan(sort_key_fn(x))
+                else -float("inf")
+            ),
+            reverse=True,
+        )
+        filtered.extend(group_list[:top_n])
+    return filtered
+
+
+def fetch_wandb_runs(entity, project, sweep_id, acq_filter_list=None, top_n=None):
     api = wandb.Api()
     print(f"Fetching runs for Sweep: {sweep_id}...")
     runs = api.runs(f"{entity}/{project}", filters={"sweep": sweep_id})
 
-    dpo_data = {}
-    rm_data = {}
+    # Collect all parsed runs first
+    parsed_runs = []
 
-    for i, run in enumerate(runs):
-        # ---------------------------------------------------------
-        # DEBUG: PRINT CONFIG
-        # ---------------------------------------------------------
-        print(f"\n[{i}] Processing Run: {run.name}")
-        # pprint.pprint(run.config) # Uncomment to see full config again if needed
-        # ---------------------------------------------------------
+    for run in runs:
+        run_acq_type = run.config.get("acquisition_function_type")
+        if acq_filter_list and run_acq_type not in acq_filter_list:
+            continue
 
-        config = run.config
+        name = generate_run_name(run.config)
+        acq_group_name = ACQ_MAP.get(run_acq_type, "Unknown")
 
-        # 1. Outer Loop Batch Size (Top level)
-        obs = config.get("outer_loop_batch_size", "?")
-
-        # 2. Effective Batch Size (Inside 'enn' dict or flat key)
-        # Try finding it in config['enn']['effective_batch_size']
-        if "enn" in config and isinstance(config["enn"], dict):
-            ebs = config["enn"].get("effective_batch_size", "?")
-        else:
-            # Fallback to dot notation or flat key if W&B flattened it
-            ebs = config.get(
-                "enn.effective_batch_size", config.get("effective_batch_size", "?")
-            )
-
-        # 3. Regularization Params (Inside 'enn' -> 'regularization')
-        iv = "?"
-        edb = "?"
-
-        # Access path: enn -> regularization
-        if "enn" in config and isinstance(config["enn"], dict):
-            enn_cfg = config["enn"]
-            if "regularization" in enn_cfg and isinstance(
-                enn_cfg["regularization"], dict
-            ):
-                reg_cfg = enn_cfg["regularization"]
-                iv = reg_cfg.get("initial_value", "?")
-                edb = reg_cfg.get("exponential_decay_base", "?")
-
-        # Fallback for flattened keys (often happens in sweeps)
-        if iv == "?":
-            iv = config.get("enn.regularization.initial_value", "?")
-        if edb == "?":
-            edb = config.get("enn.regularization.exponential_decay_base", "?")
-
-        # Construct readable name
-        name = f"OBS:{obs}, EBS:{ebs}, IV:{iv}, EDB:{edb}"
-        name = name.replace("_", "\\_")  # Escape for LaTeX
-
-        # --- DPO Data Collection ---
+        # --- EXTRACT DPO ---
         dpo_row = {}
         has_dpo = False
         for col in DPO_COLS:
@@ -196,10 +313,8 @@ def fetch_wandb_runs(entity, project, sweep_id):
                 dpo_row[col] = score - SFT_BASE["DPO"][col]
             else:
                 dpo_row[col] = np.nan
-        if has_dpo:
-            dpo_data[name] = dpo_row
 
-        # --- RM Data Collection ---
+        # --- EXTRACT RM ---
         rm_row = {}
         has_rm = False
         for col in RM_COLS:
@@ -214,18 +329,53 @@ def fetch_wandb_runs(entity, project, sweep_id):
                 rm_row[col] = score - SFT_BASE["RM"][col]
             else:
                 rm_row[col] = np.nan
-        if has_rm:
-            rm_data[name] = rm_row
 
-    df_dpo_wandb = pd.DataFrame.from_dict(dpo_data, orient="index")
+        parsed_runs.append(
+            {
+                "name": name,
+                "acq_group": acq_group_name,
+                "dpo_row": dpo_row if has_dpo else None,
+                "rm_row": rm_row if has_rm else None,
+            }
+        )
+
+    # =========================================================
+    # INDEPENDENT FILTERING
+    # =========================================================
+
+    # 1. DPO LIST: Filter runs that actually have DPO data
+    dpo_candidates = [r for r in parsed_runs if r["dpo_row"] is not None]
+
+    # Sort candidates by DPO Mean and take Top N per Acq Function
+    dpo_final = filter_top_n_runs(
+        dpo_candidates, lambda x: x["dpo_row"].get("Mean"), top_n
+    )
+
+    # 2. RM LIST: Filter runs that actually have RM data
+    rm_candidates = [r for r in parsed_runs if r["rm_row"] is not None]
+
+    # Sort candidates by RM Mean and take Top N per Acq Function
+    rm_final = filter_top_n_runs(
+        rm_candidates, lambda x: x["rm_row"].get("Mean"), top_n
+    )
+
+    # =========================================================
+    # BUILD DATAFRAMES
+    # =========================================================
+
+    # Build DPO DataFrame
+    dpo_dict = {r["name"]: r["dpo_row"] for r in dpo_final}
+    df_dpo_wandb = pd.DataFrame.from_dict(dpo_dict, orient="index")
     if not df_dpo_wandb.empty:
         df_dpo_wandb = df_dpo_wandb[DPO_COLS]
-        df_dpo_wandb.sort_index(inplace=True)
+        df_dpo_wandb = df_dpo_wandb.sort_index()
 
-    df_rm_wandb = pd.DataFrame.from_dict(rm_data, orient="index")
+    # Build RM DataFrame
+    rm_dict = {r["name"]: r["rm_row"] for r in rm_final}
+    df_rm_wandb = pd.DataFrame.from_dict(rm_dict, orient="index")
     if not df_rm_wandb.empty:
         df_rm_wandb = df_rm_wandb[RM_COLS]
-        df_rm_wandb.sort_index(inplace=True)
+        df_rm_wandb = df_rm_wandb.sort_index()
 
     return df_dpo_wandb, df_rm_wandb
 
@@ -240,14 +390,14 @@ def write_latex_table(f, title, df_sft, df_base_fmt, df_wandb_fmt):
     f.write(f"\\begin{{tabular}}{{{col_fmt}}}\n")
     f.write("\\toprule\n")
 
-    # SFT
+    # 1. SFT Row
     header_tex = df_sft.to_latex(header=True, index=True)
     lines = header_tex.splitlines()
     f.write(lines[2] + "\n")
     f.write("\\midrule\n")
     f.write(lines[4] + "\n")
 
-    # Baselines
+    # 2. Baselines
     f.write("\\midrule\n")
     if not df_base_fmt.empty:
         body = df_base_fmt.to_latex(header=False, index=True, escape=False)
@@ -256,7 +406,7 @@ def write_latex_table(f, title, df_sft, df_base_fmt, df_wandb_fmt):
             if line.strip().startswith("MaxMin"):
                 f.write("\\midrule\n")
 
-    # WandB
+    # 3. WandB Runs
     f.write("\\midrule\n")
     if not df_wandb_fmt.empty:
         body = df_wandb_fmt.to_latex(header=False, index=True, escape=False)
@@ -268,7 +418,9 @@ def write_latex_table(f, title, df_sft, df_base_fmt, df_wandb_fmt):
     f.write("\\bottomrule\n")
     f.write("\\end{tabular}\n")
     f.write("}\n")
-    f.write(f"\\caption{{{title} (SFT: Absolute, Others: Deltas. Best in bold.)}}\n")
+    f.write(
+        f"\\caption{{{title} (SFT: Absolute, Others: Deltas. Top {args.top_n if args.top_n else 'All'} runs per Acq sorted by Mean. Best in bold.)}}\n"
+    )
     f.write("\\end{table}\n\n")
 
 
@@ -297,12 +449,26 @@ if __name__ == "__main__":
     parser.add_argument("--entity", type=str, default="ActiveUF")
     parser.add_argument("--project", type=str, default="loop")
     parser.add_argument("--output", type=str, default="tables.tex")
+    parser.add_argument(
+        "--acq_type",
+        type=str,
+        nargs="+",
+        default=None,
+        help="Filter results by one or more acquisition function types (e.g. dts infomax)",
+    )
+    parser.add_argument(
+        "--top_n",
+        type=int,
+        default=None,
+        help="If provided, output only the top N runs (independently sorted by DPO Mean and RM Mean) per acquisition function.",
+    )
+
     args = parser.parse_args()
 
     (dpo_sft, dpo_base_num), (rm_sft, rm_base_num) = get_static_data()
 
     dpo_wandb_num, rm_wandb_num = fetch_wandb_runs(
-        args.entity, args.project, args.sweep_id
+        args.entity, args.project, args.sweep_id, args.acq_type, args.top_n
     )
 
     dpo_base_fmt = process_section_dataframe(dpo_base_num, DPO_COLS)

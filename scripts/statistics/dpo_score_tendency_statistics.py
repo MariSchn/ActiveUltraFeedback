@@ -13,64 +13,58 @@ sns.set_theme(style="whitegrid")
 plt.rcParams.update({"figure.max_open_warning": 0})
 
 # ==============================================================================
-#                                CONFIGURATION
+#                             CONFIGURATION
 # ==============================================================================
 
-# 1. MAPPING RAW NAMES TO NICE NAMES
-# Adjust the keys (left) to match exactly what is in your metrics.json files
 TASK_NAME_MAP = {
     "gsm8k::tulu": "GSM8K",
     "ifeval::tulu": "IF Eval",
     "minerva_math::tulu": "Minerva Math",
     "truthfulqa::tulu": "Truthful QA",
-    # Fallbacks if names are simple
     "gsm8k": "GSM8K",
     "ifeval": "IF Eval",
     "minerva_math": "Minerva Math",
     "truthfulqa": "Truthful QA",
 }
 
-# 2. BASELINES PER TASK
-# Calculated from your provided SFT + Deltas
+# UPDATED BASELINES (Includes SFT for x=0 anchor)
 TASK_BASELINES = {
     "GSM8K": {
         "SFT": 0.758,
-        "Random": 0.806,
-        "UltraFeedback": 0.803,
-        "MaxMin": 0.783,
-        "DeltaQwen": 0.822,
+        "DeltaQwen": 0.813,
+        "MaxMin": 0.780,
+        "Random": 0.782,
+        "UltraFeedback": 0.795,
     },
     "IF Eval": {
         "SFT": 0.713,
-        "Random": 0.702,
-        "UltraFeedback": 0.630,
-        "MaxMin": 0.695,
-        "DeltaQwen": 0.754,
+        "DeltaQwen": 0.760,
+        "MaxMin": 0.697,
+        "Random": 0.741,
+        "UltraFeedback": 0.712,
     },
     "Minerva Math": {
         "SFT": 0.309,
-        "Random": 0.342,
-        "UltraFeedback": 0.348,
-        "MaxMin": 0.398,
-        "DeltaQwen": 0.377,
+        "DeltaQwen": 0.380,
+        "MaxMin": 0.388,
+        "Random": 0.335,
+        "UltraFeedback": 0.346,
     },
     "Truthful QA": {
         "SFT": 0.468,
-        "Random": 0.521,
-        "UltraFeedback": 0.514,
-        "MaxMin": 0.620,
-        "DeltaQwen": 0.594,
+        "DeltaQwen": 0.598,
+        "MaxMin": 0.618,
+        "Random": 0.524,
+        "UltraFeedback": 0.507,
     },
 }
 
-# 3. BASELINES FOR MEAN PLOT
-# (SFT=0.562, Random=+0.032, UF=+0.012, MaxMin=+0.062, DeltaQwen=+0.074)
 MEAN_BASELINES = {
     "SFT": 0.562,
-    "Random": 0.594,
-    "UltraFeedback": 0.574,
-    "MaxMin": 0.624,
-    "DeltaQwen": 0.636,
+    "DeltaQwen": 0.638,
+    "MaxMin": 0.621,
+    "Random": 0.596,
+    "UltraFeedback": 0.590,
 }
 
 # ==============================================================================
@@ -78,13 +72,25 @@ MEAN_BASELINES = {
 # ==============================================================================
 
 
-def extract_size_from_path(file_path):
+def extract_info_from_path(file_path):
+    """
+    Walks up the path to find 'ID-Method_Size' pattern.
+    """
     path_parts = os.path.normpath(file_path).split(os.sep)
     for part in reversed(path_parts):
-        match = re.search(r"_(\d+)$", part)
+        # Matches: digits + hyphen + method + underscore + digits
+        # Example: 01-MyMethod_1000
+        match = re.match(r"^\d+-(.+)_(\d+)$", part)
         if match:
-            return int(match.group(1))
-    return None
+            return match.group(1), int(match.group(2))
+
+        # Fallback for simple "method_size" without ID
+        # Example: MyMethod_1000
+        match_simple = re.match(r"^(.+)_(\d+)$", part)
+        if match_simple and not match_simple.group(1).isdigit():
+            return match_simple.group(1), int(match_simple.group(2))
+
+    return None, None
 
 
 def parse_metrics_file(file_path):
@@ -97,150 +103,132 @@ def parse_metrics_file(file_path):
             raw_entry = data["all_primary_scores"][0]
             if ":" in raw_entry:
                 parts = raw_entry.rsplit(":", 1)
-                raw_name = parts[0].strip()
-                score = float(parts[1].strip())
-
-                # Clean up name using map
-                clean_name = TASK_NAME_MAP.get(raw_name, raw_name)
-                return clean_name, score
-    except Exception as e:
-        print(f"[Warn] Error parsing {file_path}: {e}")
+                clean_name = TASK_NAME_MAP.get(parts[0].strip(), parts[0].strip())
+                return clean_name, float(parts[1].strip())
+    except Exception:
         return None, None
     return None, None
 
 
-def collect_data(root_dir):
+def collect_data_from_single_dir(root_dir):
+    """
+    Collects data recursively from a single root directory.
+    """
     records = []
-    search_pattern = os.path.join(root_dir, "**", "metrics.json")
-    files = glob.glob(search_pattern, recursive=True)
+    # Check if dir exists
+    if not os.path.exists(root_dir):
+        print(f"Warning: Directory not found: {root_dir}")
+        return pd.DataFrame()
 
-    print(f"Found {len(files)} metrics files. Parsing...")
+    files = glob.glob(os.path.join(root_dir, "**", "metrics.json"), recursive=True)
+    print(f"Scanning {root_dir}... Found {len(files)} metrics files.")
 
     for file_path in files:
-        size = extract_size_from_path(file_path)
+        method, size = extract_info_from_path(file_path)
+        # Skip if folder naming convention isn't met
         if size is None:
             continue
 
         task, score = parse_metrics_file(file_path)
-        if task is not None and score is not None:
-            records.append({"Size": size, "Task": task, "Score": score})
+        if task and score is not None:
+            records.append(
+                {
+                    "Method": method,
+                    "Size": size,
+                    "Task": task,
+                    "Score": score,
+                    "Source": root_dir,
+                }
+            )
 
     return pd.DataFrame(records)
 
 
-def set_linear_xaxis(df):
+def set_linear_xaxis(df, plt_obj):
     max_val = df["Size"].max()
     upper_bound = int(max_val) + 5000
     ticks = np.arange(0, upper_bound, 5000)
-    plt.xticks(ticks)
-    plt.xlim(0, upper_bound)
-    return upper_bound
+    plt_obj.xticks(ticks)
+    plt_obj.xlim(0, upper_bound)
 
 
 def draw_baselines(plt_obj, baselines, x_pos_text):
-    """Helper to draw horizontal lines and labels."""
     colors = sns.color_palette("tab10", len(baselines))
     for i, (name, val) in enumerate(baselines.items()):
-        # Draw line
-        plt_obj.axhline(y=val, color=colors[i], linestyle="--", alpha=0.7)
-        # Add label on top of line at the far right
+        plt_obj.axhline(y=val, color=colors[i], linestyle="--", alpha=0.6, linewidth=1)
         plt_obj.text(
             x=x_pos_text,
             y=val,
-            s=f"{name}",
+            s=name,
             color=colors[i],
             fontweight="bold",
-            fontsize=9,
+            fontsize=8,
             ha="right",
             va="bottom",
         )
 
 
 # ==============================================================================
-#                                PLOTTING
+#                                 PLOTTING
 # ==============================================================================
 
 
-def plot_single_task(df, task_name, output_dir):
-    """Plots a single task with its specific baselines."""
+def plot_single_task(df, task_name, output_dir, color_map, show_baselines=True):
     subset = df[df["Task"] == task_name].copy().sort_values(by="Size")
-
     if subset.empty:
-        print(f"Skipping plot for {task_name} (No data)")
         return
 
-    # Check for specific baselines
     baselines = TASK_BASELINES.get(task_name, {})
 
-    # Connect to 0 (SFT)
+    # Add SFT (Size 0) points so all lines start at the same origin
     if "SFT" in baselines:
         sft_score = baselines["SFT"]
-        start_point = pd.DataFrame([{"Size": 0, "Task": task_name, "Score": sft_score}])
-        subset = pd.concat([start_point, subset], ignore_index=True)
+        start_points = [
+            {"Size": 0, "Task": task_name, "Score": sft_score, "Method": m}
+            for m in subset["Method"].unique()
+        ]
+        subset = pd.concat([pd.DataFrame(start_points), subset], ignore_index=True)
 
     plt.figure(figsize=(10, 6))
 
     sns.lineplot(
-        data=subset, x="Size", y="Score", marker="o", linewidth=2.5, label=task_name
+        data=subset,
+        x="Size",
+        y="Score",
+        hue="Method",
+        marker="o",
+        linewidth=2.5,
+        palette=color_map,
     )
 
-    set_linear_xaxis(subset)
+    set_linear_xaxis(subset, plt)
+    if show_baselines:
+        draw_baselines(plt, baselines, subset["Size"].max())
 
-    # Draw Baselines
-    draw_baselines(plt, baselines, subset["Size"].max())
-
-    plt.title(f"{task_name} Score vs. Dataset Size", fontsize=16)
-    plt.xlabel("Number of Training Samples", fontsize=14)
+    plt.title(f"{task_name}: Method Comparison", fontsize=16)
+    plt.xlabel("Training Samples", fontsize=14)
     plt.ylabel("Score", fontsize=14)
-    plt.legend()
+    plt.legend(title="Strategy")
     plt.grid(True, which="both", ls="-", alpha=0.5)
     plt.tight_layout()
 
-    # Safe filename
     safe_name = task_name.replace(" ", "_").lower()
-    save_path = os.path.join(output_dir, f"dpo_score_{safe_name}.png")
-    plt.savefig(save_path, dpi=300)
-    print(f"Saved {task_name} plot to: {save_path}")
+    plt.savefig(os.path.join(output_dir, f"dpo_compare_{safe_name}.png"), dpi=300)
     plt.close()
 
 
-def plot_combined_tasks(df, output_dir):
-    """Plots all tasks on one chart (no baselines to avoid clutter)."""
+def plot_mean_score(df, output_dir, color_map, show_baselines=True):
     if df.empty:
         return
+    mean_df = df.groupby(["Method", "Size"])["Score"].mean().reset_index()
 
-    plt.figure(figsize=(14, 8))
-
-    sns.lineplot(data=df, x="Size", y="Score", hue="Task", marker="o", linewidth=2.5)
-
-    set_linear_xaxis(df)
-
-    plt.title("All Tasks: Scores vs. Dataset Size", fontsize=16)
-    plt.xlabel("Number of Training Samples", fontsize=14)
-    plt.ylabel("Score", fontsize=14)
-    plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
-    plt.grid(True, which="both", ls="-", alpha=0.5)
-    plt.tight_layout()
-
-    save_path = os.path.join(output_dir, "dpo_all_tasks_combined.png")
-    plt.savefig(save_path, dpi=300)
-    print(f"Saved combined plot to: {save_path}")
-    plt.close()
-
-
-def plot_mean_score(df, output_dir):
-    """Plots the Mean Score across all tasks."""
-    if df.empty:
-        return
-
-    # Calculate Mean per Size
-    mean_df = df.groupby("Size")["Score"].mean().reset_index()
-
-    # Connect to 0 (SFT Mean)
     if "SFT" in MEAN_BASELINES:
         sft_score = MEAN_BASELINES["SFT"]
-        start_point = pd.DataFrame([{"Size": 0, "Score": sft_score}])
-        mean_df = pd.concat([start_point, mean_df], ignore_index=True)
+        start_points = [
+            {"Size": 0, "Score": sft_score, "Method": m}
+            for m in mean_df["Method"].unique()
+        ]
+        mean_df = pd.concat([pd.DataFrame(start_points), mean_df], ignore_index=True)
 
     plt.figure(figsize=(12, 7))
 
@@ -248,27 +236,23 @@ def plot_mean_score(df, output_dir):
         data=mean_df,
         x="Size",
         y="Score",
+        hue="Method",
         marker="s",
-        color="b",
         linewidth=3,
-        label="Mean Task Score",
+        palette=color_map,
     )
 
-    set_linear_xaxis(mean_df)
+    set_linear_xaxis(mean_df, plt)
+    if show_baselines:
+        draw_baselines(plt, MEAN_BASELINES, mean_df["Size"].max())
 
-    # Draw Baselines
-    draw_baselines(plt, MEAN_BASELINES, mean_df["Size"].max())
-
-    plt.title("Mean Score vs. Dataset Size", fontsize=16)
-    plt.xlabel("Number of Training Samples", fontsize=14)
+    plt.title("Mean Score (Avg across all tasks)", fontsize=16)
+    plt.xlabel("Training Samples", fontsize=14)
     plt.ylabel("Mean Score", fontsize=14)
-    plt.legend()
+    plt.legend(title="Strategy")
     plt.grid(True, which="both", ls="-", alpha=0.5)
     plt.tight_layout()
-
-    save_path = os.path.join(output_dir, "dpo_mean_score.png")
-    plt.savefig(save_path, dpi=300)
-    print(f"Saved mean score plot to: {save_path}")
+    plt.savefig(os.path.join(output_dir, "dpo_mean_comparison.png"), dpi=300)
     plt.close()
 
 
@@ -278,36 +262,58 @@ def plot_mean_score(df, output_dir):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--results_dir", type=str, required=True)
+    # Changed from single string to nargs='+' to accept multiple folders
+    parser.add_argument(
+        "--results_dirs",
+        nargs="+",
+        required=True,
+        help="List of result folders to aggregate",
+    )
     parser.add_argument("--output_dir", type=str, default=".")
+    parser.add_argument("--hide_baselines", action="store_true")
     args = parser.parse_args()
 
-    if not os.path.exists(args.results_dir):
-        print(f"Error: Directory {args.results_dir} not found.")
-        exit(1)
+    all_data_frames = []
 
-    # 1. Collect Data
-    df = collect_data(args.results_dir)
+    print(f"Aggregating data from {len(args.results_dirs)} directories...")
 
-    if df.empty:
-        print("No valid metrics found.")
+    # Iterate through each directory provided in arguments
+    for result_dir in args.results_dirs:
+        df_part = collect_data_from_single_dir(result_dir)
+        if not df_part.empty:
+            all_data_frames.append(df_part)
+
+    if not all_data_frames:
+        print("No valid data found in any of the provided directories.")
         exit(0)
 
+    # Combine all individual dataframes
+    df = pd.concat(all_data_frames, ignore_index=True)
     df = df.sort_values(by="Size")
 
-    print("\n--- Data Summary (Mean per Size) ---")
-    print(df.groupby("Size")["Score"].mean())
-    print("------------------------------------\n")
+    # --- CREATE CONSISTENT COLOR MAP ---
+    # Get all unique methods from the aggregated dataframe
+    unique_methods = sorted(df["Method"].unique())
+
+    # Create a palette with enough distinct colors
+    palette = sns.color_palette("bright", n_colors=len(unique_methods))
+
+    # Map each method name to a specific color
+    method_color_map = dict(zip(unique_methods, palette))
+
+    print("\n--- Summary ---")
+    print(f"Sources: {[d for d in args.results_dirs]}")
+    print(f"Methods: {unique_methods}")
+    print(f"Tasks:   {df['Task'].unique()}")
+    print("---------------\n")
 
     os.makedirs(args.output_dir, exist_ok=True)
+    show_baselines = not args.hide_baselines
 
-    # 2. Plot Combined
-    plot_combined_tasks(df, args.output_dir)
+    # Pass method_color_map to functions
+    plot_mean_score(df, args.output_dir, method_color_map, show_baselines)
 
-    # 3. Plot Mean
-    plot_mean_score(df, args.output_dir)
+    for task in df["Task"].unique():
+        plot_single_task(df, task, args.output_dir, method_color_map, show_baselines)
 
-    # 4. Plot Individual Tasks
-    unique_tasks = df["Task"].unique()
-    for task in unique_tasks:
-        plot_single_task(df, task, args.output_dir)
+    print(f"Plots saved to: {os.path.abspath(args.output_dir)}")

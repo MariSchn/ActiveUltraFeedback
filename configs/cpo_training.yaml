@@ -1,0 +1,41 @@
+seed: 42
+torch_dtype: bfloat16
+
+model_path: allenai/Llama-3.1-Tulu-3-8B-SFT
+
+lora:
+  r: 64
+  lora_alpha: 16
+  lora_dropout: 0.1
+  bias: none
+  task_type: CAUSAL_LM
+  target_modules: all-linear
+
+training:
+  loss_type: simpo
+  cpo_alpha: 0.0
+  beta: 1.5
+  simpo_gamma: 1.4
+
+  max_length: 4096
+  max_prompt_length: 2048
+
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 4
+  
+  learning_rate: 1.5e-6
+  lr_scheduler_type: cosine
+  warmup_ratio: 0.03
+  num_train_epochs: 1
+
+  report_to: "wandb"
+  logging_steps: 1
+  save_steps: 1000
+  save_strategy: "no"
+
+  bf16: true
+  bf16_full_eval: true
+
+  gradient_checkpointing: true
+  gradient_checkpointing_kwargs:
+    use_reentrant: false

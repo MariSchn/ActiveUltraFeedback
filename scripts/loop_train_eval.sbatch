@@ -311,7 +311,7 @@ echo "Evaluating RM at: $RM_OUTPUT_DIR"
 echo "Running command: bash ./activeuf/reward_model/reward_bench_2.sh --model $RM_OUTPUT_DIR"
 srun --output=${RM_OUTPUT_DIR}/eval_%j.out \
      --environment=activeuf_dev \
-     --nodes=1 --ntasks=1 --nodelist="${NODELIST[3]}" \
+     --nodes=1 --ntasks=1 --nodelist="${NODELIST[1]}" \
      bash ./activeuf/reward_model/reward_bench_2.sh --model $RM_OUTPUT_DIR &
 
 # Wait for ALL background jobs (4 DPO evals + 1 RM eval) to finish
