@@ -6,10 +6,9 @@
 PROJECT_DIR="${SCRATCH}/ActiveUltraFeedback"
 
 # Initialize variables (allow environment variables to pass through)
-MODELS_DIR="${MODELS_DIR:-models/dpo}"
-MODEL_NAME="${MODEL_NAME:-4nqieq7t/gkzji65z}"
-RESULTS_DIR="${RESULTS_DIR:-models/dpo/${MODEL_NAME}/results/alpaca_eval}"
-HF_CACHE="${HF_CACHE:-${SCRATCH}/huggingface}"
+MODEL_PATH="${MODEL_PATH:-models/dpo/4nqieq7t/gkzji65z}"
+RESULTS_DIR="${RESULTS_DIR:-${MODEL_PATH}/results/alpaca_eval}"
+HF_HOME="${HF_HOME:-${SCRATCH}/cache/hf_cache}"
 
 # vLLM server configuration for annotator
 ANNOTATOR_PORT="${ANNOTATOR_PORT:-25125}"
@@ -17,7 +16,6 @@ ANNOTATOR_API_KEY="${ANNOTATOR_API_KEY:-token-abc123}"
 ANNOTATOR_MODEL_NAME="${ANNOTATOR_MODEL_NAME:-meta-llama/Llama-3.3-70B-Instruct}"
 ANNOTATOR_GPU_MEM_UTILIZATION="${ANNOTATOR_GPU_MEM_UTILIZATION:-0.7}"
 ANNOTATOR_TENSOR_PARALLEL_SIZE="${ANNOTATOR_TENSOR_PARALLEL_SIZE:-4}"
-ANNOTATOR_CONFIG_NAME="${ANNOTATOR_CONFIG_NAME:-activeuf}"
 
 # ==============================================================================
 # ARGUMENT PARSING
@@ -25,11 +23,10 @@ ANNOTATOR_CONFIG_NAME="${ANNOTATOR_CONFIG_NAME:-activeuf}"
 help_function() {
     echo "Usage: $0 [options]"
     echo "Required Options:"
-    echo "  --model_name <path>           Model name/path to evaluate (e.g., '1sgwtpjp/v9no9em2')"
+    echo "  --model_path <path>           Model path to evaluate (e.g., 'models/dpo/4nqieq7t/gkzji65z')"
     echo "  --results_dir <path>          Base directory for evaluation results"
     echo ""
     echo "Optional Options:"
-    echo "  --annotator_config_name <name>     Annotator config name (default: activeuf)"
     echo "  --annotator_model_name <name>      Annotator model name (default: meta-llama/Llama-3.3-70B-Instruct)"
     echo "  --annotator_gpu_mem_utilization <float>   GPU memory utilization for annotator (default: 0.7)"
     echo "  --annotator_tensor_parallel_size <int>          Tensor parallel size for annotator (default: 4)"
@@ -39,16 +36,12 @@ help_function() {
 
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --model_name)
-            MODEL_NAME="$2"
+        --model_path)
+            MODEL_PATH="$2"
             shift 2
             ;;
         --results_dir)
             RESULTS_DIR="$2"
-            shift 2
-            ;;
-        --annotator_config_name)
-            ANNOTATOR_CONFIG_NAME="$2"
             shift 2
             ;;
         --annotator_model_name)
@@ -78,8 +71,8 @@ done
 # ==============================================================================
 missing_args=false
 
-if [ -z "$MODEL_NAME" ]; then
-    echo "Error: --model_name is required."
+if [ -z "$MODEL_PATH" ]; then
+    echo "Error: --model_path is required."
     missing_args=true
 fi
 if [ -z "$RESULTS_DIR" ]; then
@@ -109,14 +102,12 @@ mkdir -p "${PROJECT_DIR}/logs/alpaca_eval"
 echo "========================================"
 echo "CONFIGURATION"
 echo "========================================"
-echo "MODEL_NAME:               ${MODEL_NAME}"
-echo "MODELS_DIR:               ${MODELS_DIR}"
-echo "RESULTS_DIR:         ${RESULTS_DIR}"
-echo "ANNOTATOR_CONFIG_NAME:         ${ANNOTATOR_CONFIG_NAME}"
-echo "ANNOTATOR_MODEL_NAME:          ${ANNOTATOR_MODEL_NAME}"
-echo "ANNOTATOR_GPU_MEM_UTILIZATION: ${ANNOTATOR_GPU_MEM_UTILIZATION}"
+echo "MODEL_PATH:                     ${MODEL_PATH}"
+echo "RESULTS_DIR:                    ${RESULTS_DIR}"
+echo "ANNOTATOR_MODEL_NAME:           ${ANNOTATOR_MODEL_NAME}"
+echo "ANNOTATOR_GPU_MEM_UTILIZATION:  ${ANNOTATOR_GPU_MEM_UTILIZATION}"
 echo "ANNOTATOR_TENSOR_PARALLEL_SIZE: ${ANNOTATOR_TENSOR_PARALLEL_SIZE}"
-echo "HF_CACHE:                 ${HF_CACHE}"
+echo "HF_HOME:                        ${HF_HOME}"
 echo "----------------------------------------"
 
 # Change to project directory
@@ -135,11 +126,10 @@ vllm serve "${ANNOTATOR_MODEL_NAME}" \
     --tensor-parallel-size "${ANNOTATOR_TENSOR_PARALLEL_SIZE}" \
     --pipeline-parallel-size 1 \
     --data-parallel-size 1 \
-    --trust-remote-code \
     --dtype bfloat16 \
     --port "${ANNOTATOR_PORT}" \
     --api-key "${ANNOTATOR_API_KEY}" \
-    --download-dir "${HF_CACHE}" \
+    --download-dir "${HF_HOME}" \
     > "${ANNOTATOR_LOG}" 2>&1 &
 
 ANNOTATOR_PID=$!
@@ -162,12 +152,12 @@ fi
 # STEP 2.5: Create annotator config
 # ==============================================================================
 echo "Creating annotator config..."
-ANNOTATOR_CONFIG_DIR="${ALPACA_EVAL_DIR}/src/alpaca_eval/evaluators_configs/${ANNOTATOR_CONFIG_NAME}"
+ANNOTATOR_CONFIG_DIR="${ALPACA_EVAL_DIR}/src/alpaca_eval/evaluators_configs/activeuf"
 ANNOTATOR_CONFIG="${ANNOTATOR_CONFIG_DIR}/configs.yaml"
 mkdir -p "${ANNOTATOR_CONFIG_DIR}"
 
 cat > "${ANNOTATOR_CONFIG}" <<EOF
-${ANNOTATOR_CONFIG_NAME}:
+activeuf:
   prompt_template: "alpaca_eval_clf_gpt4_turbo/alpaca_eval_clf.txt"
   fn_completions: "openai_completions"
   completions_kwargs:
@@ -209,7 +199,7 @@ export OPENAI_API_KEY="${ANNOTATOR_API_KEY}"
 # ==============================================================================
 echo "Creating custom model config yaml..."
 
-CUSTOM_CONFIG_DIR="${ALPACA_EVAL_DIR}/src/alpaca_eval/models_configs/${MODEL_NAME}"
+CUSTOM_CONFIG_DIR="${ALPACA_EVAL_DIR}/src/alpaca_eval/models_configs/${MODEL_PATH}"
 CUSTOM_CONFIG="${CUSTOM_CONFIG_DIR}/configs.yaml"
 
 # Create the config directory if it doesn't exist
@@ -217,21 +207,21 @@ mkdir -p "${CUSTOM_CONFIG_DIR}"
 
 # Create the config file with proper content
 cat > "${CUSTOM_CONFIG}" <<EOF
-${MODEL_NAME}:
+${MODEL_PATH}:
   prompt_template: "Mixtral-8x7B-Instruct-v0.1/togetherai_prompt.txt"
   fn_completions: "vllm_local_completions"
   completions_kwargs:
-    model_name: "${MODELS_DIR}/${MODEL_NAME}"
+    model_name: "${MODEL_PATH}"
     model_kwargs:
       tensor_parallel_size: 2
       gpu_memory_utilization: 0.15
       max_model_len: 4096
     max_new_tokens: 2048
-  pretty_name: "${MODEL_NAME}"
+  pretty_name: "activeuf"
 EOF
 
 echo "Created custom config at: ${CUSTOM_CONFIG}"
-echo "Model path set to: ${MODELS_DIR}/${MODEL_NAME}"
+echo "Model path set to: ${MODEL_PATH}"
 
 # ==============================================================================
 # STEP 6: Wait for vLLM server to be ready
@@ -275,8 +265,8 @@ echo "Running evaluation..."
 
 # Run the evaluation using the custom config (use the directory name, not full path)
 alpaca_eval evaluate_from_model \
-    --model_configs "${MODEL_NAME}" \
-    --annotators_config "${ANNOTATOR_CONFIG_NAME}" \
+    --model_configs "${MODEL_PATH}" \
+    --annotators_config "activeuf" \
     --output_path "${RESULTS_DIR}"
 
 EVAL_EXIT_CODE=$?
