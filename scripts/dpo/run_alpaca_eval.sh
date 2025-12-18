@@ -1,15 +1,4 @@
 #!/bin/bash
-#SBATCH --job-name=alpaca_eval
-#SBATCH --cpus-per-task=32
-#SBATCH --nodes=1
-#SBATCH --gres=gpu:4
-#SBATCH --tasks-per-node=1
-#SBATCH --environment=activeuf
-#SBATCH --account=a-infra01-1
-#SBATCH --partition=normal
-#SBATCH --time=00:15:00
-#SBATCH --output=./logs/alpaca_eval/alpaca_eval_%j.out
-#SBATCH --error=./logs/alpaca_eval/alpaca_eval_%j.err
 
 # ==============================================================================
 # CONFIGURATION
@@ -316,3 +305,4 @@ else
 fi
 
 exit ${EVAL_EXIT_CODE}
+
