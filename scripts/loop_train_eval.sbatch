@@ -215,7 +215,8 @@ echo -e "===========================\n\n\n"
 
 echo "Starting DPO Evaluation"
 echo "Evaluating DPO model at: $DPO_OUTPUT_DIR"
-mkdir -p "${DPO_OUTPUT_DIR}/results/gsm8k_tulu" \
+mkdir -p "${DPO_OUTPUT_DIR}/results/alpaca_eval" \
+         "${DPO_OUTPUT_DIR}/results/gsm8k_tulu" \
          "${DPO_OUTPUT_DIR}/results/minerva_math_tulu" \
          "${DPO_OUTPUT_DIR}/results/ifeval_tulu" \
          "${DPO_OUTPUT_DIR}/results/truthfulqa_tulu"
@@ -286,7 +287,13 @@ echo "Starting truthfulqa (on ${NODELIST[3]})"
 srun --output=${DPO_OUTPUT_DIR}/results/truthfulqa_tulu/log.out \
      --nodes=1 --ntasks=1 --gpus-per-task=4 -w "${NODELIST[3]}" \
      ${CONTAINER_ARGS} \
-     bash -c "exec python3 -m oe_eval.launch --task=truthfulqa::tulu --output-dir=${DPO_OUTPUT_DIR}/results/truthfulqa_tulu ${DPO_EVAL_ARGS}"
+     bash -c "exec python3 -m oe_eval.launch --task=truthfulqa::tulu --output-dir=${DPO_OUTPUT_DIR}/results/truthfulqa_tulu ${DPO_EVAL_ARGS}" &
+
+echo -e "\nStarting alpaca_eval (on ${NODELIST[0]})"
+srun --nodes=1 --ntasks=1 --gpus-per-task=4 -w "${NODELIST[0]}" \
+     --output=${DPO_OUTPUT_DIR}/results/alpaca_eval/log.out \
+     --environment=activeuf_dev \
+     bash -c "cd ${SCRATCH}/ActiveUltraFeedback && export MODEL_NAME=\"${LOOP_WANDB_RUN_ID}\" && export RESULTS_DIR=\"${DPO_OUTPUT_DIR}/results/alpaca_eval\" && bash scripts/dpo/run_alpaca_eval.sh"
 
 echo "All DPO evals launched."
 
