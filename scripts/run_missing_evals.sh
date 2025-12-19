@@ -332,11 +332,12 @@ ${SCRATCH},\
                    --cpus-per-task=32 \
                    --time=00:15:00 \
                    --partition=normal \
-                   --environment=activeuf_dev \
+                   --environment=activeuf \
                    --wrap="
                        cd ${SCRATCH}/ActiveUltraFeedback
-                       export MODEL_NAME=\"${run_id}\"
+                       export MODEL_PATH=\"${model_path}\"
                        export RESULTS_DIR=\"${results_dir}\"
+                       export HF_HOME=\"${HF_HOME}\"
                        bash scripts/dpo/run_alpaca_eval.sh
                        
                        # Update WandB run with results (will include whatever results are available)
