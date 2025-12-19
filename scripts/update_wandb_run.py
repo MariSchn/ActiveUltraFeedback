@@ -2,6 +2,7 @@ import wandb
 import json
 import os
 import argparse
+import csv
 from typing import Dict
 
 
@@ -19,8 +20,15 @@ def read_rm_scores(rm_output_dir: str) -> Dict[str, float]:
 
 def _read_dpo_score(results_path: str) -> float:
     try:
-        with open(results_path, "r") as f:
-            score = json.load(f)["metrics"][0]["primary_score"]
+        if results_path.endswith(".json"):
+            with open(results_path, "r") as f:
+                score = json.load(f)["metrics"][0]["primary_score"]
+
+        elif results_path.endswith(".csv"):
+            with open(results_path, "r") as f:
+                reader = csv.DictReader(f)
+                first_row = next(reader)
+                score = float(first_row["length_controlled_winrate"])
     except Exception:
         score = None
 
@@ -36,6 +44,7 @@ def read_dpo_scores(dpo_output_dir: str) -> Dict[str, float]:
         "IF Eval": os.path.join(dpo_output_dir, "results", "ifeval_tulu", "metrics.json"),
         "Minerva Math": os.path.join(dpo_output_dir, "results", "minerva_math_tulu", "metrics.json"),
         "Truthful QA": os.path.join(dpo_output_dir, "results", "truthfulqa_tulu", "metrics.json"),
+        "Alpaca Eval": os.path.join(dpo_output_dir, "results", "alpaca_eval", "activeuf", "leaderboard.csv"),
     }
 
     # Read scores

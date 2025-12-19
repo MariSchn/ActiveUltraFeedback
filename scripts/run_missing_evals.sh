@@ -132,7 +132,7 @@ dpo_benchmark_files=(
     "results/ifeval_tulu/metrics.json"
     "results/minerva_math_tulu/metrics.json"
     "results/truthfulqa_tulu/metrics.json"
-    "results/alpaca_eval/leaderboard.csv"
+    "results/alpaca_eval/activeuf/leaderboard.csv"
 )
 
 # Declare arrays to store missing dirs per benchmark
@@ -147,6 +147,7 @@ echo "--- Looking for missing DPO evaluations... ---"
 for dir_name in "${dpo_dirs[@]}"; do
     for benchmark_file in "${dpo_benchmark_files[@]}"; do
         full_path="$DPO_MODEL_BASE_DIR/$dir_name/$benchmark_file"
+        echo "Checking: $full_path"
         if [[ ! -f "$full_path" ]]; then
             # Store which dirs are missing each benchmark
             if [[ "$benchmark_file" == *"gsm8k"* ]]; then
@@ -305,7 +306,7 @@ ${SCRATCH},\
         echo ""
     fi
 
-    # Launch jobs for missing Alpaca Eval evaluations
+    # # Launch jobs for missing Alpaca Eval evaluations
     if [[ ${#missing_alpaca_eval_dirs[@]} -gt 0 ]]; then
         echo "--- Launching Alpaca Eval evaluations (${#missing_alpaca_eval_dirs[@]} jobs) ---"
         for dir_name in "${!missing_alpaca_eval_dirs[@]}"; do
