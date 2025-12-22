@@ -144,8 +144,8 @@ echo "Log file: ${ANNOTATOR_LOG}"
 # ==============================================================================
 if [ ! -d "${ALPACA_EVAL_DIR}" ]; then
     echo "Cloning alpaca_eval repo"
-    git clone https://github.com/tatsu-lab/alpaca_eval.git "${ALPACA_EVAL_DIR}
-fi"
+    git clone https://github.com/tatsu-lab/alpaca_eval.git "${ALPACA_EVAL_DIR}"
+fi
 
 # ==============================================================================
 # STEP 3: Create annotator and model configs
