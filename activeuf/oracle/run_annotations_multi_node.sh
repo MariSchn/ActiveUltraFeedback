@@ -41,6 +41,7 @@ meta-llama/Llama-3.2-3B-Instruct
 )
 
 for MODEL in "${MODELS[@]}"; do
+    MODEL_SHORT=$(echo "$MODEL" | sed 's|.*/||')
     for DATASET in "${DATASETS[@]}"; do
         sbatch <<EOF
 #!/bin/bash
@@ -54,8 +55,8 @@ for MODEL in "${MODELS[@]}"; do
 #SBATCH --partition=normal
 #SBATCH --time=12:00:00
 #SBATCH --container-writable
-#SBATCH --job-name=annotation
-#SBATCH --output=./logs/annotation/${ANNOTATION_MODEL_SHORT}/%j.out
+#SBATCH --job-name=annotation_${MODEL_SHORT}
+#SBATCH --output=./logs/annotation/${MODEL_SHORT}/%j.out
 #SBATCH --environment=activeuf_dev
 # DISABLED SBATCH --exclude=nid006438,nid006439,nid006440,nid006441,nid006442,nid006443,nid006444,nid006445,nid006446,nid006447,nid006448,nid006449,nid006450,nid006451,nid006461,nid006462,nid006868,nid006476,nid005557,nid006455,nid007122,nid007119,nid006513,nid005813,nid006454,nid006452,nid006457,nid005230,nid005248
 
@@ -136,7 +137,7 @@ python -u -m activeuf.oracle.get_raw_annotations \
     --dataset_path ${BASE_DATASETS_DIR}/3_merged_completions/${DATASET} \
     --model_name="${ANNOTATION_MODEL}" \
     --max_tokens 24000 \
-    --output_path ${BASE_DATASETS_DIR}/4_annotated_completions/${DATASET}/${ANNOTATION_MODEL_SHORT} \
+    --output_path ${BASE_DATASETS_DIR}/4_annotated_completions/${DATASET}/${MODEL_SHORT} \
     --model_class vllm_server \
     --temperature 0.0 \
     --top_p 0.1 \
