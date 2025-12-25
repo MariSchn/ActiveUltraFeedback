@@ -7,7 +7,7 @@ PROJECT_DIR="${SCRATCH}/ActiveUltraFeedback"
 MODELS_DIR=${MODELS_DIR:-${PROJECT_DIR}/models}
 
 # Initialize variables (allow environment variables to pass through)
-MODEL_PATH="${MODEL_PATH:-${MODELS_DIR}/dpo/vgw9073q/pf0a9uk8}"
+MODEL_PATH="${MODEL_PATH:-${MODELS_DIR}/dpo/b27bst06/0mbq0vu7}"
 RESULTS_DIR="${RESULTS_DIR:-${MODEL_PATH}/results/alpaca_eval}"
 HF_HOME="${HF_HOME:-${SCRATCH}/cache/hf_cache}"
 
@@ -119,25 +119,36 @@ mkdir -p "${RESULTS_DIR}"
 # ==============================================================================
 # STEP 1: Start vLLM server in background
 # ==============================================================================
-echo "Starting vLLM server..."
-ANNOTATOR_LOG="${RESULTS_DIR}/annotator_server.log"
 
-# Start vLLM server
-vllm serve meta-llama/Llama-3.3-70B-Instruct \
-    --gpu-memory-utilization "${ANNOTATOR_GPU_MEM_UTILIZATION}" \
-    --swap-space 1 \
-    --tensor-parallel-size "${ANNOTATOR_TENSOR_PARALLEL_SIZE}" \
-    --pipeline-parallel-size 1 \
-    --data-parallel-size 1 \
-    --dtype bfloat16 \
-    --port "${ANNOTATOR_PORT}" \
-    --api-key "${ANNOTATOR_API_KEY}" \
-    --download-dir "${HF_HOME}" \
-    > "${ANNOTATOR_LOG}" 2>&1 &
-
-ANNOTATOR_PID=$!
-echo "vLLM server started with PID: ${ANNOTATOR_PID}"
-echo "Log file: ${ANNOTATOR_LOG}"
+echo "Checking if vLLM server is already running on port ${ANNOTATOR_PORT}..."
+if curl -s "http://localhost:${ANNOTATOR_PORT}/health" >/dev/null 2>&1; then
+    # Try to find the vLLM process running on the specified port
+    VLLM_PID=$(ps aux | grep "vllm serve" | grep -- "--port ${ANNOTATOR_PORT}" | grep -v grep | awk '{print $2}')
+    if [ -n "$VLLM_PID" ]; then
+        echo "vLLM server is already running on port ${ANNOTATOR_PORT}. PID: $VLLM_PID"
+        ANNOTATOR_PID="$VLLM_PID"
+    else
+        echo "vLLM server is responding on port ${ANNOTATOR_PORT}, but PID could not be determined."
+        ANNOTATOR_PID=""
+    fi
+else
+    echo "Starting vLLM server..."
+    ANNOTATOR_LOG="${RESULTS_DIR}/annotator_server.log"
+    vllm serve meta-llama/Llama-3.3-70B-Instruct \
+        --gpu-memory-utilization "${ANNOTATOR_GPU_MEM_UTILIZATION}" \
+        --swap-space 1 \
+        --tensor-parallel-size "${ANNOTATOR_TENSOR_PARALLEL_SIZE}" \
+        --pipeline-parallel-size 1 \
+        --data-parallel-size 1 \
+        --dtype bfloat16 \
+        --port "${ANNOTATOR_PORT}" \
+        --api-key "${ANNOTATOR_API_KEY}" \
+        --download-dir "${HF_HOME}" \
+        > "${ANNOTATOR_LOG}" 2>&1 &
+    ANNOTATOR_PID=$!
+    echo "vLLM server started with PID: ${ANNOTATOR_PID}"
+    echo "Log file: ${ANNOTATOR_LOG}"
+fi
 
 # ==============================================================================
 # STEP 2: Prepare clean version of alpaca_eval repo
@@ -154,26 +165,31 @@ echo "Creating annotator config..."
 
 ANNOTATOR_CONFIG_DIR="${ALPACA_EVAL_DIR}/src/alpaca_eval/evaluators_configs/${ANNOTATOR_NAME}"
 mkdir -p "${ANNOTATOR_CONFIG_DIR}"
-cat > "${ANNOTATOR_CONFIG_DIR}/configs.yaml" <<EOF
+ANNOTATOR_CONFIG_FILE="${ANNOTATOR_CONFIG_DIR}/configs.yaml"
+if [ -f "${ANNOTATOR_CONFIG_FILE}" ]; then
+        echo "Annotator config already exists at: ${ANNOTATOR_CONFIG_FILE}"
+else
+        cat > "${ANNOTATOR_CONFIG_FILE}" <<EOF
 ${ANNOTATOR_NAME}:
-  prompt_template: "alpaca_eval_clf_gpt4_turbo/alpaca_eval_clf.txt"
-  fn_completions: "openai_completions"
-  completions_kwargs:
-    model_name: "meta-llama/Llama-3.3-70B-Instruct"
-    max_tokens: 1
-    temperature: 1 # temperature should be applied for sampling, so that should make no effect.
-    logprobs: true
-    top_logprobs: 5
-    requires_chatml: true
-  fn_completion_parser: "logprob_parser"
-  completion_parser_kwargs:
-    numerator_token: "m"
-    denominator_tokens: ["m", "M"]
-    is_binarize: false
-  completion_key: "completions_all"
-  batch_size: 1
+    prompt_template: "alpaca_eval_clf_gpt4_turbo/alpaca_eval_clf.txt"
+    fn_completions: "openai_completions"
+    completions_kwargs:
+        model_name: "meta-llama/Llama-3.3-70B-Instruct"
+        max_tokens: 1
+        temperature: 1 # temperature should be applied for sampling, so that should make no effect.
+        logprobs: true
+        top_logprobs: 5
+        requires_chatml: true
+    fn_completion_parser: "logprob_parser"
+    completion_parser_kwargs:
+        numerator_token: "m"
+        denominator_tokens: ["m", "M"]
+        is_binarize: false
+    completion_key: "completions_all"
+    batch_size: 1
 EOF
-echo "Annotator config created at: ${ANNOTATOR_CONFIG_DIR}"
+        echo "Annotator config created at: ${ANNOTATOR_CONFIG_DIR}"
+fi
 
 
 echo "Creating config for ${MODEL_PATH}..."
@@ -198,7 +214,7 @@ ${MODEL_NAME}:
   completions_kwargs:
     model_name: "${MODEL_PATH}"
     model_kwargs:
-      tensor_parallel_size: 2
+      tensor_parallel_size: 4
       gpu_memory_utilization: 0.15
       max_model_len: 4096
     max_new_tokens: 2048
@@ -212,7 +228,7 @@ echo "Created custom config at: ${MODEL_CONFIG_DIR}"
 # ==============================================================================
 echo "Installing alpaca_eval..."
 cd "${ALPACA_EVAL_DIR}"
-python -m pip install . --quiet
+python -m pip install -e . --quiet
 cd "${PROJECT_DIR}"
 
 # ==============================================================================
@@ -266,7 +282,8 @@ echo "Running evaluation..."
 alpaca_eval evaluate_from_model \
     --model_configs "${MODEL_NAME}" \
     --annotators_config "${ANNOTATOR_NAME}" \
-    --output_path "${RESULTS_DIR}"
+    --output_path "${RESULTS_DIR}" \
+    --caching_path "${RESULTS_DIR}/annotations_cache.json"
 
 EVAL_EXIT_CODE=$?
 

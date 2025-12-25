@@ -28,7 +28,7 @@ def _read_dpo_score(results_path: str) -> float:
             with open(results_path, "r") as f:
                 reader = csv.DictReader(f)
                 first_row = next(reader)
-                score = float(first_row["length_controlled_winrate"])
+                score = float(first_row["length_controlled_winrate"]) / 100.0
     except Exception:
         score = None
 
@@ -42,7 +42,7 @@ def read_dpo_scores(dpo_output_dir: str) -> Dict[str, float]:
     benchmarks = {
         "GSM8K": os.path.join(dpo_output_dir, "results", "gsm8k_tulu", "metrics.json"),
         "IF Eval": os.path.join(dpo_output_dir, "results", "ifeval_tulu", "metrics.json"),
-        "Minerva Math": os.path.join(dpo_output_dir, "results", "minerva_math_tulu", "metrics.json"),
+        # "Minerva Math": os.path.join(dpo_output_dir, "results", "minerva_math_tulu", "metrics.json"),
         "Truthful QA": os.path.join(dpo_output_dir, "results", "truthfulqa_tulu", "metrics.json"),
         "Alpaca Eval": os.path.join(dpo_output_dir, "results", "alpaca_eval", "activeuf", "leaderboard.csv"),
     }
@@ -130,6 +130,7 @@ if __name__ == "__main__":
         log_dict[f"Rewardbench/{key}"] = value
     for key, value in dpo_scores.items():
         log_dict[f"DPO/{key}"] = value
+        print(f"DPO Score - {key}: {value}")
 
     if "DPO/Mean" in log_dict and "Rewardbench/Mean" in log_dict:
         log_dict["Final Score/Mean"] = (
@@ -140,7 +141,8 @@ if __name__ == "__main__":
 
     # Filter out scores that already exist. This can happen when re-running benchmarks because of a node failure.
     filtered_log_dict = {
-        k: v for k, v in log_dict.items() if k not in existing_score_names
+        k: v
+        for k, v in log_dict.items()  # if k not in existing_score_names
     }
 
     if filtered_log_dict:

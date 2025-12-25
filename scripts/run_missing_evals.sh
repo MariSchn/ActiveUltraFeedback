@@ -130,7 +130,7 @@ echo "Found ${#dpo_dirs[@]} directories (DPO models) in $DPO_MODEL_BASE_DIR"
 dpo_benchmark_files=(
     "results/gsm8k_tulu/metrics.json"
     "results/ifeval_tulu/metrics.json"
-    "results/minerva_math_tulu/metrics.json"
+    # "results/minerva_math_tulu/metrics.json"
     "results/truthfulqa_tulu/metrics.json"
     "results/alpaca_eval/activeuf/leaderboard.csv"
 )
@@ -138,7 +138,7 @@ dpo_benchmark_files=(
 # Declare arrays to store missing dirs per benchmark
 declare -A missing_gsm8k_dirs
 declare -A missing_ifeval_dirs
-declare -A missing_minerva_math_dirs
+# declare -A missing_minerva_math_dirs
 declare -A missing_truthfulqa_dirs
 declare -A missing_alpaca_eval_dirs
 
@@ -154,8 +154,8 @@ for dir_name in "${dpo_dirs[@]}"; do
                 missing_gsm8k_dirs["$dir_name"]=1
             elif [[ "$benchmark_file" == *"ifeval"* ]]; then
                 missing_ifeval_dirs["$dir_name"]=1
-            elif [[ "$benchmark_file" == *"minerva_math"* ]]; then
-                missing_minerva_math_dirs["$dir_name"]=1
+            # elif [[ "$benchmark_file" == *"minerva_math"* ]]; then
+            #     missing_minerva_math_dirs["$dir_name"]=1
             elif [[ "$benchmark_file" == *"truthfulqa"* ]]; then
                 missing_truthfulqa_dirs["$dir_name"]=1
             elif [[ "$benchmark_file" == *"alpaca_eval"* ]]; then
@@ -169,7 +169,7 @@ done
 declare -A all_missing_dirs
 for dir in "${!missing_gsm8k_dirs[@]}"; do all_missing_dirs["$dir"]=1; done
 for dir in "${!missing_ifeval_dirs[@]}"; do all_missing_dirs["$dir"]=1; done
-for dir in "${!missing_minerva_math_dirs[@]}"; do all_missing_dirs["$dir"]=1; done
+# for dir in "${!missing_minerva_math_dirs[@]}"; do all_missing_dirs["$dir"]=1; done
 for dir in "${!missing_truthfulqa_dirs[@]}"; do all_missing_dirs["$dir"]=1; done
 for dir in "${!missing_alpaca_eval_dirs[@]}"; do all_missing_dirs["$dir"]=1; done
 
@@ -286,15 +286,15 @@ ${SCRATCH},\
         echo ""
     fi
 
-    # Launch jobs for missing Minerva Math evaluations
-    if [[ ${#missing_minerva_math_dirs[@]} -gt 0 ]]; then
-        echo "--- Launching Minerva Math evaluations (${#missing_minerva_math_dirs[@]} jobs) ---"
-        for dir_name in "${!missing_minerva_math_dirs[@]}"; do
-            model_path="$DPO_MODEL_BASE_DIR/$dir_name"
-            launch_dpo_eval "$model_path" "minerva_math_tulu" "minerva_math::tulu"
-        done
-        echo ""
-    fi
+    # # Launch jobs for missing Minerva Math evaluations
+    # if [[ ${#missing_minerva_math_dirs[@]} -gt 0 ]]; then
+    #     echo "--- Launching Minerva Math evaluations (${#missing_minerva_math_dirs[@]} jobs) ---"
+    #     for dir_name in "${!missing_minerva_math_dirs[@]}"; do
+    #         model_path="$DPO_MODEL_BASE_DIR/$dir_name"
+    #         launch_dpo_eval "$model_path" "minerva_math_tulu" "minerva_math::tulu"
+    #     done
+    #     echo ""
+    # fi
 
     # Launch jobs for missing TruthfulQA evaluations
     if [[ ${#missing_truthfulqa_dirs[@]} -gt 0 ]]; then
@@ -325,17 +325,18 @@ ${SCRATCH},\
             echo "    Submitting Alpaca Eval job..."
             sbatch --job-name="${run_id}_alpaca_eval" \
                    --account="a-infra01-1" \
-                   --output="${results_dir}/log_%j.out" \
-                   --error="${results_dir}/log_%j.err" \
+                   --output="${results_dir}_log/log_%j.out" \
+                   --error="${results_dir}_log/log_%j.err" \
                    --nodes=1 \
                    --ntasks=1 \
                    --gpus-per-task=4 \
                    --cpus-per-task=32 \
-                   --time=00:15:00 \
+                   --time=01:15:00 \
                    --partition=normal \
                    --environment=activeuf \
                    --wrap="
                        cd ${SCRATCH}/ActiveUltraFeedback
+                       pip install \"datasets<3.0.0\" --quiet
                        export MODEL_PATH=\"${model_path}\"
                        export RESULTS_DIR=\"${results_dir}\"
                        export HF_HOME=\"${HF_HOME}\"
@@ -357,7 +358,7 @@ ${SCRATCH},\
     fi
 
     # Calculate total jobs submitted
-    total_dpo_jobs=$((${#missing_gsm8k_dirs[@]} + ${#missing_ifeval_dirs[@]} + ${#missing_minerva_math_dirs[@]} + ${#missing_truthfulqa_dirs[@]} + ${#missing_alpaca_eval_dirs[@]}))
+    total_dpo_jobs=$((${#missing_gsm8k_dirs[@]} + ${#missing_ifeval_dirs[@]} + ${#missing_truthfulqa_dirs[@]} + ${#missing_alpaca_eval_dirs[@]}))
 else
     total_dpo_jobs=0
     echo "No DPO evaluations to launch."
@@ -369,6 +370,6 @@ echo -e "==========================\n"
 echo "RM eval jobs submitted: ${#missing_rm_evals[@]}"
 echo "GSM8K eval jobs submitted: ${#missing_gsm8k_dirs[@]}"
 echo "IFEval eval jobs submitted: ${#missing_ifeval_dirs[@]}"
-echo "Minerva Math eval jobs submitted: ${#missing_minerva_math_dirs[@]}"
+# echo "Minerva Math eval jobs submitted: ${#missing_minerva_math_dirs[@]}"
 echo "TruthfulQA eval jobs submitted: ${#missing_truthfulqa_dirs[@]}"
 echo "Alpaca Eval jobs submitted: ${#missing_alpaca_eval_dirs[@]}"

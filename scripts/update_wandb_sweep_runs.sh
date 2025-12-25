@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # =============================================================================
-# USAGE: ./batch_update.sh <SWEEP_ID>
-# Example: ./batch_update.sh b27bst06
+# USAGE: ./update_wandb_sweep_runs.sh <SWEEP_ID>
+# Example: ./update_wandb_sweep_runs.sh b27bst06
 # =============================================================================
 
 # 1. Input Validation
