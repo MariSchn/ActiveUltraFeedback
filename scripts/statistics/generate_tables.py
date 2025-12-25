@@ -32,15 +32,22 @@ DPO_TASK_BASELINES = {
         "Random": 0.524,
         "UltraFeedback": 0.507,
     },
+    "Alpaca Eval": {
+        "SFT": 0.083,
+        "DeltaQwen": 0.399,
+        "MaxMin": 0.372,
+        "Random": 0.160,
+        "UltraFeedback": 0.155,
+    },
 }
 
 # Recalculated Means
 DPO_MEAN_BASELINES = {
-    "SFT": 0.646,
-    "DeltaQwen": 0.724,
-    "MaxMin": 0.698,
-    "Random": 0.682,
-    "UltraFeedback": 0.671,
+    "SFT": 0.506,
+    "DeltaQwen": 0.643,
+    "MaxMin": 0.617,
+    "Random": 0.552,
+    "UltraFeedback": 0.542,
 }
 
 # RM RAW SCORES
@@ -101,8 +108,9 @@ RM_TASK_BASELINES = {
 #                               CONFIGURATION
 # ==============================================================================
 
-DPO_COLS = ["GSM8K", "IF Eval", "Truthful QA", "Mean"]
+DPO_COLS = ["GSM8K", "IF Eval", "Truthful QA", "Alpaca Eval", "Mean"]
 RM_COLS = ["Factuality", "Focus", "Math", "Precise IF", "Safety", "Ties", "Mean"]
+COMBINED_COLS = ["DPO Mean", "RM Mean", "Average"]
 
 BASELINE_METHODS_ORDER = ["Random", "UltraFeedback", "MaxMin", "DeltaQwen"]
 
@@ -112,6 +120,7 @@ KEY_MAPPING = {
         "IF Eval": "DPO/IF Eval",
         "Truthful QA": "DPO/Truthful QA",
         "Mean": "DPO/Mean",
+        "Alpaca Eval": "DPO/Alpaca Eval",
     },
     "RM": {
         "Factuality": "Rewardbench/Factuality",
@@ -127,7 +136,7 @@ KEY_MAPPING = {
 ACQ_MAP = {
     "dts": "DTS",
     "infomax": "InfoMax",
-    "maxminlcb": "MaxMin",
+    "maxminlcb": "MaxMinLCB",
     "drts": "DRTS",
     "deltaucb": "DeltaUCB",
 }
@@ -196,6 +205,8 @@ def format_delta(val, is_best=False):
 
 
 def format_sft(val):
+    if val is None or np.isnan(val):
+        return "-"
     return f"{val:.3f}"
 
 
@@ -213,13 +224,14 @@ def process_section_dataframe(df_numeric, cols):
 
         for idx in df_numeric.index:
             val = df_numeric.at[idx, col]
+            # Highlight best if it's the max and not NaN
             is_best = (val == max_val) and (not np.isnan(val))
             df_formatted.at[idx, col] = format_delta(val, is_best)
 
     return df_formatted
 
 
-def get_static_data():
+def get_static_data(include_combined=False):
     # 1. SFT
     dpo_sft = pd.DataFrame([SFT_BASE["DPO"]], index=["SFT Base Model"])
     dpo_sft = dpo_sft[DPO_COLS]
@@ -242,7 +254,53 @@ def get_static_data():
         rm_base_dict[name] = dict(zip(RM_COLS, deltas))
     df_rm_base_num = pd.DataFrame.from_dict(rm_base_dict, orient="index")[RM_COLS]
 
-    return (dpo_sft, df_dpo_base_num), (rm_sft, df_rm_base_num)
+    # 3. Combined (Optional)
+    combined_pack = None
+    if include_combined:
+        # SFT Combined Absolute
+        sft_dpo_mean = SFT_BASE["DPO"]["Mean"]
+        sft_rm_mean = SFT_BASE["RM"]["Mean"]
+        sft_combined_mean = (sft_dpo_mean + sft_rm_mean) / 2
+
+        combined_sft = pd.DataFrame(
+            [
+                {
+                    "DPO Mean": sft_dpo_mean,
+                    "RM Mean": sft_rm_mean,
+                    "Average": sft_combined_mean,
+                }
+            ],
+            index=["SFT Base Model"],
+        )
+        for c in combined_sft.columns:
+            combined_sft[c] = combined_sft[c].apply(format_sft)
+
+        # Baselines Combined Deltas
+        combined_base_dict = {}
+        for method in BASELINE_METHODS_ORDER:
+            # We need the "Mean" column index from the list
+            dpo_mean_idx = DPO_COLS.index("Mean")
+            rm_mean_idx = RM_COLS.index("Mean")
+
+            dpo_delta = OTHER_BASELINES_DELTAS["DPO"][method][dpo_mean_idx]
+            rm_delta = OTHER_BASELINES_DELTAS["RM"][method][rm_mean_idx]
+
+            avg_delta = np.nan
+            if not np.isnan(dpo_delta) and not np.isnan(rm_delta):
+                avg_delta = (dpo_delta + rm_delta) / 2
+
+            combined_base_dict[method] = {
+                "DPO Mean": dpo_delta,
+                "RM Mean": rm_delta,
+                "Average": avg_delta,
+            }
+
+        df_combined_base_num = pd.DataFrame.from_dict(
+            combined_base_dict, orient="index"
+        )[COMBINED_COLS]
+        combined_pack = (combined_sft, df_combined_base_num)
+
+    return (dpo_sft, df_dpo_base_num), (rm_sft, df_rm_base_num), combined_pack
 
 
 def generate_run_name(config):
@@ -282,7 +340,9 @@ def filter_top_n_runs(runs_data, sort_key_fn, top_n):
     return filtered
 
 
-def fetch_wandb_runs(entity, project, sweep_id, acq_filter_list=None, top_n=None):
+def fetch_wandb_runs(
+    entity, project, sweep_id, acq_filter_list=None, top_n=None, combined=False
+):
     api = wandb.Api()
     print(f"Fetching runs for Sweep: {sweep_id}...")
     runs = api.runs(f"{entity}/{project}", filters={"sweep": sweep_id})
@@ -343,21 +403,44 @@ def fetch_wandb_runs(entity, project, sweep_id, acq_filter_list=None, top_n=None
     # INDEPENDENT FILTERING
     # =========================================================
 
-    # 1. DPO LIST: Filter runs that actually have DPO data
+    # 1. DPO LIST
     dpo_candidates = [r for r in parsed_runs if r["dpo_row"] is not None]
-
-    # Sort candidates by DPO Mean and take Top N per Acq Function
     dpo_final = filter_top_n_runs(
         dpo_candidates, lambda x: x["dpo_row"].get("Mean"), top_n
     )
 
-    # 2. RM LIST: Filter runs that actually have RM data
+    # 2. RM LIST
     rm_candidates = [r for r in parsed_runs if r["rm_row"] is not None]
-
-    # Sort candidates by RM Mean and take Top N per Acq Function
     rm_final = filter_top_n_runs(
         rm_candidates, lambda x: x["rm_row"].get("Mean"), top_n
     )
+
+    # 3. COMBINED LIST (Optional)
+    combined_final = []
+    if combined:
+        # Candidate must have both DPO and RM data
+        combined_candidates = [
+            r
+            for r in parsed_runs
+            if r["dpo_row"] is not None and r["rm_row"] is not None
+        ]
+
+        # Helper to compute combined mean
+        def get_combined_mean(r):
+            dpo_m = r["dpo_row"].get("Mean")
+            rm_m = r["rm_row"].get("Mean")
+            if (
+                dpo_m is not None
+                and rm_m is not None
+                and not np.isnan(dpo_m)
+                and not np.isnan(rm_m)
+            ):
+                return (dpo_m + rm_m) / 2
+            return np.nan
+
+        combined_final = filter_top_n_runs(
+            combined_candidates, get_combined_mean, top_n
+        )
 
     # =========================================================
     # BUILD DATAFRAMES
@@ -377,11 +460,29 @@ def fetch_wandb_runs(entity, project, sweep_id, acq_filter_list=None, top_n=None
         df_rm_wandb = df_rm_wandb[RM_COLS]
         df_rm_wandb = df_rm_wandb.sort_index()
 
-    return df_dpo_wandb, df_rm_wandb
+    # Build Combined DataFrame
+    df_combined_wandb = pd.DataFrame()
+    if combined:
+        combined_data = {}
+        for r in combined_final:
+            dpo_m = r["dpo_row"]["Mean"]
+            rm_m = r["rm_row"]["Mean"]
+            avg = (dpo_m + rm_m) / 2
+            combined_data[r["name"]] = {
+                "DPO Mean": dpo_m,
+                "RM Mean": rm_m,
+                "Average": avg,
+            }
+        df_combined_wandb = pd.DataFrame.from_dict(combined_data, orient="index")
+        if not df_combined_wandb.empty:
+            df_combined_wandb = df_combined_wandb[COMBINED_COLS]
+            df_combined_wandb = df_combined_wandb.sort_index()
+
+    return df_dpo_wandb, df_rm_wandb, df_combined_wandb
 
 
-def write_latex_table(f, title, df_sft, df_base_fmt, df_wandb_fmt):
-    num_cols = len(DPO_COLS) if "DPO" in title else len(RM_COLS)
+def write_latex_table(f, title, df_sft, df_base_fmt, df_wandb_fmt, cols):
+    num_cols = len(cols)
     col_fmt = "l" + "c" * num_cols
 
     f.write(f"\\section*{{{title}}}\n")
@@ -424,7 +525,7 @@ def write_latex_table(f, title, df_sft, df_base_fmt, df_wandb_fmt):
     f.write("\\end{table}\n\n")
 
 
-def save_latex(filename, dpo_pack, rm_pack):
+def save_latex(filename, dpo_pack, rm_pack, combined_pack=None):
     dpo_sft, dpo_base_fmt, dpo_wandb_fmt = dpo_pack
     rm_sft, rm_base_fmt, rm_wandb_fmt = rm_pack
 
@@ -434,11 +535,27 @@ def save_latex(filename, dpo_pack, rm_pack):
         f.write("% ========================================================\n\n")
 
         write_latex_table(
-            f, "DPO Evaluation Results", dpo_sft, dpo_base_fmt, dpo_wandb_fmt
+            f, "DPO Evaluation Results", dpo_sft, dpo_base_fmt, dpo_wandb_fmt, DPO_COLS
         )
         write_latex_table(
-            f, "Reward Model Evaluation Results", rm_sft, rm_base_fmt, rm_wandb_fmt
+            f,
+            "Reward Model Evaluation Results",
+            rm_sft,
+            rm_base_fmt,
+            rm_wandb_fmt,
+            RM_COLS,
         )
+
+        if combined_pack:
+            comb_sft, comb_base_fmt, comb_wandb_fmt = combined_pack
+            write_latex_table(
+                f,
+                "Combined Average Scores",
+                comb_sft,
+                comb_base_fmt,
+                comb_wandb_fmt,
+                COMBINED_COLS,
+            )
 
     print(f"Successfully generated {filename}")
 
@@ -460,15 +577,27 @@ if __name__ == "__main__":
         "--top_n",
         type=int,
         default=None,
-        help="If provided, output only the top N runs (independently sorted by DPO Mean and RM Mean) per acquisition function.",
+        help="If provided, output only the top N runs (independently sorted by DPO Mean, RM Mean, and Combined Mean) per acquisition function.",
+    )
+    parser.add_argument(
+        "--combined",
+        action="store_true",
+        help="If set, generate a third table averaging the DPO Mean and RM Mean scores.",
     )
 
     args = parser.parse_args()
 
-    (dpo_sft, dpo_base_num), (rm_sft, rm_base_num) = get_static_data()
+    (dpo_sft, dpo_base_num), (rm_sft, rm_base_num), combined_data = get_static_data(
+        args.combined
+    )
 
-    dpo_wandb_num, rm_wandb_num = fetch_wandb_runs(
-        args.entity, args.project, args.sweep_id, args.acq_type, args.top_n
+    dpo_wandb_num, rm_wandb_num, combined_wandb_num = fetch_wandb_runs(
+        args.entity,
+        args.project,
+        args.sweep_id,
+        args.acq_type,
+        args.top_n,
+        args.combined,
     )
 
     dpo_base_fmt = process_section_dataframe(dpo_base_num, DPO_COLS)
@@ -476,8 +605,16 @@ if __name__ == "__main__":
     dpo_wandb_fmt = process_section_dataframe(dpo_wandb_num, DPO_COLS)
     rm_wandb_fmt = process_section_dataframe(rm_wandb_num, RM_COLS)
 
+    combined_pack_fmt = None
+    if args.combined:
+        comb_sft_num, comb_base_num = combined_data
+        comb_base_fmt = process_section_dataframe(comb_base_num, COMBINED_COLS)
+        comb_wandb_fmt = process_section_dataframe(combined_wandb_num, COMBINED_COLS)
+        combined_pack_fmt = (comb_sft_num, comb_base_fmt, comb_wandb_fmt)
+
     save_latex(
         args.output,
         (dpo_sft, dpo_base_fmt, dpo_wandb_fmt),
         (rm_sft, rm_base_fmt, rm_wandb_fmt),
+        combined_pack_fmt,
     )
