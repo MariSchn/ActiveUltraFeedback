@@ -20,6 +20,7 @@ def combine_annotations(annotations_folder, completions_folder, output_folder):
     foldernames = []
     for foldername in tqdm(sorted(os.listdir(annotations_folder))):
         dataset = load_from_disk(os.path.join(annotations_folder, foldername))
+        dataset = dataset.sort("prompt_id")
         print(
             f"Loaded annotation dataset from {foldername} with {len(dataset)} entries"
         )
@@ -31,6 +32,7 @@ def combine_annotations(annotations_folder, completions_folder, output_folder):
             f"Folder ordering does not match got {foldername} expected {foldernames[i]}"
         )
         dataset = load_from_disk(os.path.join(completions_folder, foldername))
+        dataset = dataset.sort("prompt_id")
         datasets_completion.append(dataset)
 
     completions_len = len(datasets_completion[0])

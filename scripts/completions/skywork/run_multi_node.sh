@@ -133,15 +133,15 @@ for ((i = 1; i <= worker_num; i++)); do
     echo "Starting WORKER \$i at \$node with IP \$node_ip"
 
     srun --nodes=1 \\
-       --ntasks=1 \\
-       --overlap \\
-       -w "\$node" \\
-       env VLLM_HOST_IP="\$node_ip" CUDA_VISIBLE_DEVICES="0,1,2,3" \\
-       ray start --address \$head_address \\
-                 --node-ip-address="\$node_ip" \\
-                 --num-cpus \${SLURM_CPUS_PER_TASK} \\
-                 --num-gpus 4 \\
-                 --block &
+      --ntasks=1 \\
+      --overlap \\
+      -w "\$node" \\
+      bash -c "export VLLM_HOST_IP=\$node_ip CUDA_VISIBLE_DEVICES=0,1,2,3; \\
+              ray start --address \$head_address \\
+                        --node-ip-address=\$node_ip \\
+                        --num-cpus \${SLURM_CPUS_PER_TASK} \\
+                        --num-gpus 4 \\
+                        --block" &
     sleep 5
 done
 sleep 10

@@ -58,6 +58,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output_path", type=str, help="Where to save the generated completions")
 
     parser.add_argument("--debug", action="store_true", help="If set, will only generate completions for the first 10 samples")
+    parser.add_argument("--skip_too_long_prompts", action="store_true", help="If set, will skip prompts that exceed the model's max context length instead of failing")
     args = parser.parse_args()
 
     if args.output_path is None:
@@ -143,15 +144,49 @@ if __name__ == "__main__":
         for system_prompt, i in zip(sampled_system_prompts, idxs_needing_completion)
     ]
 
-    # Generate responses
+    # Identify prompts that are too long for the model's context length
+    valid_indices = set(range(len(all_messages)))
+    if args.skip_too_long_prompts:
+        max_model_len = model.llm_engine.model_config.max_model_len
+        logger.info(f"Checking for prompts longer than {max_model_len} tokens")
+
+        valid_indices = set()
+        for i, messages in enumerate(all_messages):
+            prompt_text = tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True
+            )
+            num_tokens = len(tokenizer.encode(prompt_text))
+            if num_tokens < max_model_len:
+                valid_indices.add(i)
+            else:
+                logger.warning(
+                    f"Prompt {idxs_needing_completion[i]} has {num_tokens} tokens (max: {max_model_len}) - will use empty response"
+                )
+
+        logger.info(
+            f"Found {len(all_messages) - len(valid_indices)} prompts that are too long (will use empty response)"
+        )
+
+    # Generate responses only for valid prompts
     logger.info("Generating responses (this may take a while)")
+    valid_messages = [all_messages[i] for i in sorted(valid_indices)]
+
     with torch.inference_mode():
-        all_response_texts, _ = get_response_texts(
-            all_messages=all_messages,
+        valid_response_texts, _ = get_response_texts(
+            all_messages=valid_messages,
             model=model,
             tokenizer=tokenizer,
             sampling_params=sampling_params,
         )
+
+    # Map responses back to all prompts, using empty string for skipped ones
+    all_response_texts = []
+    valid_idx_iter = iter(valid_response_texts)
+    for i in range(len(all_messages)):
+        if i in valid_indices:
+            all_response_texts.append(next(valid_idx_iter))
+        else:
+            all_response_texts.append("")
 
     logger.info("Formatting responses to follow Completion schema")
     all_completions = []

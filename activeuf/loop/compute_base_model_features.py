@@ -2,7 +2,9 @@ from argparse import ArgumentParser
 from accelerate import Accelerator
 from datasets import Dataset, load_from_disk
 from functools import partial
+import glob
 import os
+import re
 import yaml
 
 import torch
@@ -18,6 +20,23 @@ from rewarduq.models.reward_head_ensemble import (
 from activeuf.utils import set_seed
 
 # accelerate launch --config_file=configs/accelerate/single_node.yaml -m activeuf.loop.compute_base_model_features --config_path configs/compute_base_model_features.yaml
+
+
+def find_completed_checkpoints(out_dir: str, process_index: int) -> set[int]:
+    """
+    Scan the output directory for existing checkpoint files and return
+    the set of batch indices that have been completed for this process.
+
+    File naming: {process_index}-{batch_idx}.pt
+    """
+    pattern = os.path.join(out_dir, f"{process_index}-*.pt")
+    completed = set()
+    for filepath in glob.glob(pattern):
+        basename = os.path.basename(filepath)
+        match = re.match(rf"{process_index}-(\d+)\.pt", basename)
+        if match:
+            completed.add(int(match.group(1)))
+    return completed
 
 
 def collate_fn(batch: list[dict], tokenizer):
@@ -56,7 +75,10 @@ if __name__ == "__main__":
         with open(args_path, "w") as f_out:
             print(yaml.dump(args), file=f_out)
 
-        os.mkdir(out_dir)
+        os.makedirs(out_dir, exist_ok=True)
+
+    # Wait for main process to create directory before others check for existing files
+    accelerator.wait_for_everyone()
 
     torch.cuda.empty_cache()
     torch.cuda.reset_peak_memory_stats()
@@ -83,9 +105,9 @@ if __name__ == "__main__":
     dataset = dataset.add_column("prompt_idx", list(range(n)))
 
     per_proc = (n + accelerator.num_processes - 1) // accelerator.num_processes
-    start = accelerator.process_index * per_proc
-    end = min(start + per_proc, n)
-    _dataset = dataset.select(range(start, end))
+    start_idx = accelerator.process_index * per_proc
+    end_idx = min(start_idx + per_proc, n)
+    _dataset = dataset.select(range(start_idx, end_idx))
 
     print("Pretokenizing everything")
     _flattened_inputs = []
@@ -128,6 +150,27 @@ if __name__ == "__main__":
     )
     n_batches = len(dataloader)
 
+    # Resume support: find already-completed checkpoints and skip those batches
+    completed_checkpoints = find_completed_checkpoints(
+        out_dir, accelerator.process_index
+    )
+    if completed_checkpoints:
+        # Find the highest completed checkpoint batch index
+        resume_from_batch = max(completed_checkpoints)
+        print(
+            f"[Rank {accelerator.process_index}] "
+            f"Found {len(completed_checkpoints)} existing checkpoints, "
+            f"resuming from batch {resume_from_batch + 1}",
+            flush=True,
+        )
+    else:
+        resume_from_batch = 0
+        print(
+            f"[Rank {accelerator.process_index}] "
+            f"No existing checkpoints found, starting from scratch",
+            flush=True,
+        )
+
     temp_ids_local = []
     features_buffer_local = torch.empty(
         (args["n_batches_per_checkpoint"] * args["batch_size"], feature_dim),
@@ -136,7 +179,13 @@ if __name__ == "__main__":
     offset = 0
 
     start = time.time()
+    n_batches_processed = 0
     for batch_idx, (temp_ids, inputs) in enumerate(dataloader, 1):
+        # Skip already-completed batches
+        if batch_idx <= resume_from_batch:
+            continue
+
+        n_batches_processed += 1
         inputs = {k: v.to(accelerator.device) for k, v in inputs.items()}
         with torch.no_grad():
             features = model(output_only_features=True, **inputs)
@@ -147,7 +196,9 @@ if __name__ == "__main__":
 
         if batch_idx % args["n_batches_per_checkpoint"] == 0 or batch_idx == n_batches:
             elapsed = time.time() - start
-            avg_time_per_batch = elapsed / batch_idx
+            avg_time_per_batch = (
+                elapsed / n_batches_processed if n_batches_processed > 0 else 0
+            )
             remaining_batches = n_batches - batch_idx
             eta = remaining_batches * avg_time_per_batch
             print(

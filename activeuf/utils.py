@@ -172,7 +172,7 @@ def load_model(
     num_nodes: int = 1,
     data_parallel_size: int = 1,
     ping_delay: int = 30,
-    max_ping_retries: int = 100,
+    max_ping_retries: int = 20,
     gpu_memory_utilization: float = 0.9,
     max_model_len: int = 0,
     model_kwargs: dict = {},
