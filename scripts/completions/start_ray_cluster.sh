@@ -10,7 +10,7 @@
 #SBATCH --exclusive
 #SBATCH --partition=normal
 #SBATCH --time=00:45:00
-#SBATCH --output=./logs/ray/ray_test_%j.out
+#SBATCH --output=./logs/ray/%j.out
 
 echo -e "========================ray_test.sh============================="
 cat ./scripts/completions/start_ray_cluster.sh
@@ -74,12 +74,12 @@ for ((i = 1; i <= worker_num; i++)); do
        --ntasks=1 \
        --overlap \
        -w "$node" \
-       env VLLM_HOST_IP="$node_ip" CUDA_VISIBLE_DEVICES="0,1,2,3" \
-       ray start --address $head_address \
-                 --node-ip-address="$node_ip" \
-                 --num-cpus ${SLURM_CPUS_PER_TASK} \
-                 --num-gpus 4 \
-                 --block &
+       bash -c "export VLLM_HOST_IP=$node_ip CUDA_VISIBLE_DEVICES=0,1,2,3; \
+                ray start --address $head_address \
+                          --node-ip-address=$node_ip \
+                          --num-cpus ${SLURM_CPUS_PER_TASK} \
+                          --num-gpus 4 \
+                          --block" &
     sleep 5
 done
 sleep 10
