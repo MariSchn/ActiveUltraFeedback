@@ -30,11 +30,12 @@ dependencies = [
     "immutabledict",
     "omegaconf",
     "blobfile",
-
     # Linux-only dependencies (excluded on Windows)
     "vllm; platform_system != 'Windows'",
     "deepspeed; platform_system != 'Windows'",
     "nvitop; platform_system != 'Windows'",
+    "seaborn>=0.13.2",
+    "ipykernel>=7.1.0",
 ]
 
 [dependency-groups]
