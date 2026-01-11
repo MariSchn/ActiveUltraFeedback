@@ -9,7 +9,7 @@
 #SBATCH --ntasks-per-node=1         # number of MP tasks
 #SBATCH --gres=gpu:4                # number of GPUs per node
 #SBATCH --cpus-per-task=288         # number of cores per tasks
-#SBATCH --time=02:30:00             # maximum execution time (HH:MM:SS)
+#SBATCH --time=12:00:00             # maximum execution time (HH:MM:SS)
 #SBATCH --environment=activeuf_dev      # using compressed docker image as an environment
 
 export GPUS_PER_NODE=4
@@ -38,9 +38,9 @@ export LAUNCHER="accelerate launch \
 export ACCELERATE_DIR="${ACCELERATE_DIR:-/accelerate}"
 export PYTHON_FILE="${SCRATCH}/ActiveUltraFeedback/activeuf/reward_model/training.py"
 export SCRIPT_ARGS=" \
-    --output_dir ${SCRATCH}/models/reward_models/skywork_78000 \
+    --output_dir ${SCRATCH}/ActiveUltraFeedback/datasets/actual_datasets/models/combined_rm \
     --reward_config ${SCRATCH}/ActiveUltraFeedback/configs/rm_training.yaml \
-    --dataset_path Skywork/Skywork-Reward-Preference-80K-v0.2 \
+    --dataset_path /iopsstor/scratch/cscs/dmelikidze/ActiveUltraFeedback/datasets/remote_combined_reordered \
     --seed 42 \
     "
 

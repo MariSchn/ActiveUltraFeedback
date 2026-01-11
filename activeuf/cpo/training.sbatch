@@ -2,8 +2,8 @@
 
 #SBATCH -A a-infra01-1
 #SBATCH --job-name=cpo
-#SBATCH --output=logs/cpo_new_new_new_new/O-%x.%j
-#SBATCH --error=logs/cpo_new_new_new_new/E-%x.%j
+#SBATCH --output=logs/ipo/O-%x.%j
+#SBATCH --error=logs/ipo/E-%x.%j
 #SBATCH --nodes=2
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=4
@@ -34,9 +34,14 @@ else
     echo "Using Default Output Dir: $OUTPUT_DIR"
 fi
 
-export HF_HOME=$SCRATCH/hf_home
+export HF_HOME=$SCRATCH/huggingface
 export HF_TOKEN=$HF_TOKEN
 export WANDB_PROJECT=CPO
+export WANDB_DIR="${SCRATCH}/cache/wandb"
+export WANDB_CACHE_DIR="${SCRATCH}/cache/wandb"
+export TRITON_CACHE_DIR="${SCRATCH}/cache/triton"
+export WANDB_DATA_DIR="${SCRATCH}/cache/wandb"
+export XDG_DATA_HOME="${SCRATCH}/cache/local_share"
 
 export GPUS_PER_NODE=4
 export MAIN_PROCESS_IP=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
@@ -64,7 +69,7 @@ fi
 
 echo "Injecting Extra Args: $EXTRA_ARGS"
 
-export CONFIG_FILE="$SCRATCH/ActiveUltraFeedback/configs/accelerate/deepspeed2.yaml"
+export CONFIG_FILE="$SCRATCH/ActiveUltraFeedback/configs/accelerate/deepspeed0.yaml"
 
 srun bash -c '
 pip install --upgrade trl "transformers==4.52.4" "tokenizers==0.21.4" && \

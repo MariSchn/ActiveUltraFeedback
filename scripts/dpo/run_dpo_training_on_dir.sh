@@ -2,10 +2,10 @@
 
 # ================= INPUT & VALIDATION =================
 # Usage: 
-#   Standard: ./run_dpo_jobs.sh <DATASETS_ROOT_DIR> <BASE_OUTPUT_DIR> [SEED]
-#   Single:   ./run_dpo_jobs.sh --single_dataset <TARGET_DATASET_PATH> <BASE_OUTPUT_DIR> [SEED]
+#   Standard: ./run_dpo_training_on_dir.sh <DATASETS_ROOT_DIR> <BASE_OUTPUT_DIR> [SEED]
+#   Single:   ./run_dpo_training_on_dir.sh --single_dataset <TARGET_DATASET_PATH> <BASE_OUTPUT_DIR> [SEED]
 
-TEMPLATE_FILE="activeuf/cpo/training.sbatch"
+TEMPLATE_FILE="activeuf/dpo/training.sbatch"
 
 SINGLE_DATASET_MODE=false
 POSITIONAL_ARGS=()

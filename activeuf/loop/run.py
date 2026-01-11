@@ -6,10 +6,14 @@ from datasets import Dataset, load_from_disk
 from dotenv import load_dotenv
 import os
 import random
+import numpy as np
 import time
 import torch
+import gc
 from torch.utils.data import DataLoader
 import wandb
+
+from activeuf.loop.utils import save_loop_checkpoint, load_loop_checkpoint
 
 from activeuf.acquisition_function import init_acquisition_function
 from activeuf.loop.arguments import get_loop_args
@@ -28,6 +32,7 @@ from activeuf.utils import (
 if __name__ == "__main__":
     accelerator = Accelerator()
     n_processes = accelerator.num_processes
+    print("number of processes:", n_processes)
 
     # prepare (and export) args
     if accelerator.is_main_process:
@@ -67,13 +72,50 @@ if __name__ == "__main__":
         logger.info("Logging configuration: ")
         logger.info(convert_dataclass_instance_to_yaml_str(args))
 
+    # --- STATE INITIALIZATION (Start Fresh or Resume) ---
+    start_outer_batch_idx = 0
+    output = []
+    replay_buffer = deque(maxlen=args.outer_loop_batch_size * args.replay_buffer_factor)
+    resumed_wandb_id = None
+
+    if args.resume_from_checkpoint is not None:
+        logger.info(f"Attempting to resume execution from {args.resume_from_checkpoint}")
+        
+        if accelerator.is_main_process:
+            loaded_state, loaded_buffer, loaded_output, loaded_rng_states = load_loop_checkpoint(args.resume_from_checkpoint)
+            
+            start_outer_batch_idx = loaded_state["next_outer_batch_idx"]
+            resumed_wandb_id = loaded_state.get("wandb_run_id")
+            output = loaded_output
+            replay_buffer = loaded_buffer
+            
+            logger.info(f"Resumed state: Starting at Batch {start_outer_batch_idx}")
+        else:
+            loaded_rng_states = None
+
+        sync_list = [start_outer_batch_idx, replay_buffer, loaded_rng_states]
+        sync_list = broadcast_object_list(sync_list)
+        
+        start_outer_batch_idx = sync_list[0]
+        replay_buffer = sync_list[1]
+        rng_states = sync_list[2]
+
+        if reward_args:
+            reward_args.previous_checkpoint_path = args.resume_from_checkpoint
+
     if accelerator.is_main_process:
         os.environ.setdefault("WANDB_DIR", args.wandb_dir)
+        
+        # Use resumed ID if we have one, otherwise use the fresh run_id from args
+        current_run_id = resumed_wandb_id if resumed_wandb_id else args.run_id
+        resume_mode = "allow" if resumed_wandb_id else None
+
         wandb_run = wandb.init(
             project=args.wandb_project,
             entity="ActiveUF",
-            id=args.run_id,
+            id=current_run_id,
             config=vars(args),
+            resume=resume_mode,
         )
 
         # Store environment variables for use in later scripts
@@ -81,7 +123,7 @@ if __name__ == "__main__":
             path = f"./.tmp/loop_vars_{os.getenv('SLURM_JOB_ID', '')}.sh"
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "w") as f:
-                f.write(f"export LOOP_WANDB_RUN_ID='{args.run_id}'\n")
+                f.write(f"export LOOP_WANDB_RUN_ID='{current_run_id}'\n")
                 f.write(f"export LOOP_DATASET_PATH='{args.output_path}'\n")
             logger.info(f"Successfully wrote env vars to {path}")
         except Exception as e:
@@ -112,21 +154,73 @@ if __name__ == "__main__":
     if accelerator.is_main_process and trainer is not None:
         trainer.add_callback(loop_utils.WandbStepLoggerCallback(accelerator))
     tokenizer = model.tokenizer
+    
+    if args.resume_from_checkpoint and trainer is not None:
+        opt_path = os.path.join(args.resume_from_checkpoint, "optimizer.pt")
+        sch_path = os.path.join(args.resume_from_checkpoint, "scheduler.pt")
+        
+        if os.path.exists(opt_path):
+            logger.info(f"Restoring optimizer state from {opt_path}")
+            if trainer.optimizer is None:
+                trainer.create_optimizer()
+            
+            trainer.optimizer.load_state_dict(torch.load(opt_path, map_location=accelerator.device))
+        
+        if os.path.exists(sch_path):
+            logger.info(f"Restoring scheduler state from {sch_path}")
+            if trainer.lr_scheduler is None:
+                num_outer_batches = (len(dataset) + args.outer_loop_batch_size - 1) // args.outer_loop_batch_size
+                total_steps = num_outer_batches * reward_args.max_steps
+                
+                trainer.create_scheduler(num_training_steps=total_steps)
+            
+            trainer.lr_scheduler.load_state_dict(torch.load(sch_path, map_location=accelerator.device))
+        
+        if rng_states is not None:
+            
+            random.setstate(rng_states["python"])
+            np.random.set_state(rng_states["numpy"])
+            torch.set_rng_state(rng_states["torch"])
+            
+            if rng_states["torch_cuda"] is not None and torch.cuda.is_available():
+                try:
+                    torch.cuda.set_rng_state_all(rng_states["torch_cuda"])
+                except Exception as e:
+                    logger.warning(f"Could not restore all CUDA RNG states: {e}. Restoring current device only.")
+                    if isinstance(rng_states["torch_cuda"], list) and len(rng_states["torch_cuda"]) > 0:
+                        torch.cuda.set_rng_state(rng_states["torch_cuda"][0])
 
-    # prepare output container and trainer replay buffer
-    output = []
     expected_output_size = len(dataset)
-    replay_buffer = deque(maxlen=args.outer_loop_batch_size * args.replay_buffer_factor)
 
     logger.info("Starting dataset generation loop")
+    
+    samples_to_skip = start_outer_batch_idx * args.outer_loop_batch_size
+    if samples_to_skip > 0:
+        logger.info(f"Resuming: Slicing dataset to skip first {samples_to_skip} samples (Batch {start_outer_batch_idx})")
+        # Ensure we don't go out of bounds
+        if samples_to_skip < len(dataset):
+            dataset = dataset.select(range(samples_to_skip, len(dataset)))
+        else:
+            dataset = dataset.select([]) # Empty dataset if we are done
+            logger.warning("Resume point is past the end of the dataset!")
+            
     outer_dataloader = DataLoader(
         dataset,
         batch_size=args.outer_loop_batch_size,
         collate_fn=lambda x: x,
-        shuffle=False,
+        shuffle=False, # Already shuffled before slicing
         drop_last=False,
-    )
-    for outer_batch_idx, outer_batch in enumerate(outer_dataloader):
+    )                
+    
+    for i, outer_batch in enumerate(outer_dataloader):
+        outer_batch_idx = start_outer_batch_idx + i
+        # --- FAST FORWARD LOGIC ---
+        # if outer_batch_idx < start_outer_batch_idx:
+        #     if outer_batch_idx % 10 == 0 and accelerator.is_main_process:
+        #         logger.info(f"Fast-forwarding: skipping batch {outer_batch_idx} (already processed)")
+        #     continue
+        # --------------------------
+
         if model is not None:
             model.eval()
 
@@ -219,10 +313,6 @@ if __name__ == "__main__":
             ]
             logger.info(f"Current output dataset size: {len(output)}")
 
-            if outer_batch_idx % args.save_every_n_outer_batches == 0:
-                logger.info(f"Writing output dataset to {args.output_path}")
-                Dataset.from_list(output).save_to_disk(args.output_path)
-
         if trainer is None:
             if accelerator.is_main_process:
                 logger.info("Reporting KPIs to WandB")
@@ -245,10 +335,10 @@ if __name__ == "__main__":
                 {
                     "input_ids_chosen": torch.tensor([0]),
                     "attention_mask_chosen": torch.tensor([0]),
-                    "features_chosen": x["features_chosen"],
+                    "features_chosen": x["features_chosen"].cpu() if isinstance(x["features_chosen"], torch.Tensor) else x["features_chosen"],
                     "input_ids_rejected": torch.tensor([0]),
                     "attention_mask_rejected": torch.tensor([0]),
-                    "features_rejected": x["features_rejected"],
+                    "features_rejected": x["features_rejected"].cpu() if isinstance(x["features_rejected"], torch.Tensor) else x["features_rejected"],
                 }
             )
 
@@ -279,10 +369,41 @@ if __name__ == "__main__":
 
         # cleanup
         start = time.time()
+        gc.collect()
         accelerator.wait_for_everyone()
         accelerator.free_memory()
         torch.cuda.empty_cache()
         logger.info(f"Cleanup took {time.time() - start:.2f}s")
+        
+        if accelerator.is_main_process:
+            if outer_batch_idx % args.save_every_n_outer_batches == 0:
+                logger.info(f"Writing output dataset to {args.output_path}")
+                Dataset.from_list(output).save_to_disk(args.output_path)
+                
+                if args.run_tag:
+                    ckpt_name = f"checkpoint-{args.run_tag}-{outer_batch_idx}"
+                else:
+                    ckpt_name = f"checkpoint-{outer_batch_idx}"
+                
+                checkpoint_dir = os.path.join(args.output_path, ckpt_name)
+                logger.info(f"Saving checkpoint to {checkpoint_dir}")
+                
+                loop_state = {
+                    "next_outer_batch_idx": outer_batch_idx + 1,
+                    "wandb_run_id": wandb.run.id,
+                    "timestamp": timestamp
+                }
+                
+                save_loop_checkpoint(
+                    save_dir=checkpoint_dir,
+                    args=args,
+                    loop_state=loop_state,
+                    replay_buffer=replay_buffer,
+                    output_data=output,
+                    trainer=trainer,
+                    model=model if trainer is None else None
+                )
+                # ---------------------
 
     if accelerator.is_main_process:
         wandb.finish()

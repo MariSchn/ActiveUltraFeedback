@@ -210,11 +210,24 @@ class LoopConfig:
     enn: ENNConfig | None = field(
         metadata={"help": "All configs related to ENN reward model and training."}
     )
+    
+    # checkpointing
+    resume_from_checkpoint: str | None = field(
+        default=None,
+        metadata={"help": "Path to a directory containing a checkpoint to resume from (e.g., outputs/run_id/checkpoint-50)."}
+    )
+    run_tag: str | None = field(
+        default=None,
+        metadata={"help": "Custom tag to append to run ID (e.g. 'q_0.05')."}
+    )
+    run_id: str = field(
+        default="",
+        metadata={"help": "Custom run ID (overrides automatic generation)."},
+    )
 
     # derived fields
     env_local_path: str = ""
     timestamp: str = ""
-    run_id: str = ""
     output_path: str = ""
     args_path: str = ""
     logs_path: str = ""

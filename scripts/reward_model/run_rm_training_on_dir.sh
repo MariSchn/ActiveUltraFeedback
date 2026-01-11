@@ -149,14 +149,15 @@ for dataset_full_path in "${DATASET_LIST[@]}"; do
 #SBATCH --job-name=${slurm_job_name}
 #SBATCH -D .
 #SBATCH -A a-infra01-1
-#SBATCH --output=logs/rm/O-%x.%j
-#SBATCH --error=logs/rm/E-%x.%j
+#SBATCH --output=logs/rmsample/O-%x.%j
+#SBATCH --error=logs/rmsample/E-%x.%j
 #SBATCH --nodes=2
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:4
 #SBATCH --cpus-per-task=288
-#SBATCH --time=02:30:00
+#SBATCH --time=12:00:00
 #SBATCH --environment=activeuf_dev
+#SBATCH --exclude=nid[006845,006851,006854-006855,006752,006755,006787-006788,007095-007096,007098-007099,006708,006789-006791,007096,007098-007099,007104,006869,006875,007171,007173-007174,007182,007184,007201,007203,007189-007190,007234-007235,007087]
 
 # --- Env Setup ---
 export GPUS_PER_NODE=4

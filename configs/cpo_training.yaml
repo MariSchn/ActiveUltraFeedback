@@ -25,7 +25,7 @@ training:
   learning_rate: 5.0e-6
   lr_scheduler_type: linear
   warmup_ratio: 0.1
-  num_train_epochs: 3
+  num_train_epochs: 1
 
   report_to: "wandb"
   logging_steps: 1

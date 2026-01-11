@@ -19,10 +19,10 @@ training:
   max_length: 2048
   per_device_train_batch_size: 4
   gradient_accumulation_steps: 1
-  learning_rate: 5.0e-6
+  learning_rate: 2.0e-5
   lr_scheduler_type: linear
   warmup_ratio: 0.1
-  num_train_epochs: 1
+  num_train_epochs: 3
   report_to: "wandb"
   logging_steps: 1
   beta: 0.1

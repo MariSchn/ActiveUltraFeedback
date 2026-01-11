@@ -9,7 +9,7 @@ MODELS_DIR=${MODELS_DIR:-${PROJECT_DIR}/models}
 # Initialize variables (allow environment variables to pass through)
 MODEL_PATH="${MODEL_PATH:-${MODELS_DIR}/dpo/b27bst06/0mbq0vu7}"
 RESULTS_DIR="${RESULTS_DIR:-${MODEL_PATH}/results/alpaca_eval}"
-HF_HOME="${HF_HOME:-${SCRATCH}/cache/hf_cache}"
+HF_HOME="${HF_HOME:-${SCRATCH}/huggingface}"
 
 ALPACA_EVAL_DIR="${ALPACA_EVAL_DIR:-${PROJECT_DIR}/resources/alpaca_eval}"
 LOGS_DIR="${LOGS_DIR:-${PROJECT_DIR}/logs/alpaca_eval}"

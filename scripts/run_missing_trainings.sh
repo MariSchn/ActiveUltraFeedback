@@ -85,7 +85,7 @@ for dir_name in "${datasets[@]}"; do
         missing_rm_dirs+=("$dir_name")
     fi
 done
-
+missing_rm_dirs=()
 if [[ ${#missing_rm_dirs[@]} -eq 0 ]]; then
     echo "All RM models are present!"
 else
@@ -160,7 +160,7 @@ for dir_name in "${datasets[@]}"; do
         missing_dpo_dirs+=("$dir_name")
     fi
 done
-
+# missing_dpo_dirs=()
 if [[ ${#missing_dpo_dirs[@]} -eq 0 ]]; then
     echo "All DPO models are present!"
 else

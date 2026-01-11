@@ -1,0 +1,20 @@
+command:
+  - scripts/loop_train.sbatch
+  - ${args}
+method: grid
+project: loop
+metric:
+  goal: maximize
+  name: DPO/Mean
+name: sweep_combined_RM2
+parameters:
+  combo_id:
+    values: [0, 1]
+  inputs_path:
+    value: "datasets/combined/qwen_3_235b"
+  outer_loop_batch_size:
+    value: 64
+  enn.effective_batch_size:
+    value: 64
+
+program: scripts/loop_train.sbatch

@@ -1,5 +1,5 @@
 env_local_path: .env.local
-base_output_dir: datasets/loop
+base_output_dir: datasets/tulu_3/actives/dpo
 base_trainer_dir: trainer_output/loop
 base_logs_dir: logs/loop
 base_wandb_dir: wandb/loop
@@ -19,7 +19,7 @@ replay_buffer_factor: 100
 
 acquisition_function:
   beta: 1.0
-  
+
   random:
     seed: *a
   ultrafeedback:
