@@ -210,6 +210,7 @@ if __name__ == "__main__":
 
     # set seed for reproducibility
     if isinstance(config.get("seed"), int):
+        print("Setting seed to ", config.get("seed"))
         set_seed(config.get("seed"))
 
     # send config file to wandb
@@ -334,6 +335,7 @@ if __name__ == "__main__":
         run_name=run_name,
         output_dir=output_dir,
         dataset_num_proc=accelerator.num_processes,
+        seed=config.get("seed"),
         **training_config,
     )
     # DPO config, dataset loading. it doesnt know if tis evals or training.
