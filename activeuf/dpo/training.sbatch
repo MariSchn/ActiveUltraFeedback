@@ -4,16 +4,47 @@
 #SBATCH --job-name=dpo
 #SBATCH --output=logs/dpo/O-%x.%j
 #SBATCH --error=logs/dpo/E-%x.%j
-#SBATCH --nodes=8
+#SBATCH --nodes=2
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=4
 #SBATCH --cpus-per-task=288
-#SBATCH --time=03:30:00             # maximum execution time (HH:MM:SS)
+#SBATCH --time=12:00:00
+#SBATCH --exclude=nid[006845,006851,006854-006855,006752,006755,006787-006788,007095-007096,007098-007099,006824,006826,006845,006851,006854-006855,006752,006755,006787-006788,007095-007096,007098-007099,006708,006789-006791,007096,007098-007099,007104,006869,006875,007171,007173-007174,007182,007184,007201,007203,007189-007190,007234-007235,007087,007522,007539-007540,007562]
+
+# --- ARGUMENT PARSING ---
+# 1. Dataset Path
+if [[ -n "$MyDatasetPath" ]]; then
+    export DATASET_PATH="$MyDatasetPath"
+    echo "Using Custom Dataset Path: $DATASET_PATH"
+else
+    echo "Error: 'MyDatasetPath' environment variable is required."
+    exit 1
+fi
+
+# 2. Output Directory
+if [[ -n "$MyOutputDir" ]]; then
+    export BASE_OUTPUT_DIR="$MyOutputDir"
+    echo "Using Custom Base Output Dir: $BASE_OUTPUT_DIR"
+else
+    export BASE_OUTPUT_DIR="$SCRATCH/models/dpo"
+    echo "Using Default Base Output Dir: $BASE_OUTPUT_DIR"
+fi
+
+# 3. Seed
+if [[ -n "$MySeed" ]]; then
+    export SEED="$MySeed"
+    echo "Using Custom Seed: $SEED"
+else
+    export SEED="42"
+    echo "Using Default Seed: $SEED"
+fi
+
+echo "Dataset Path: $DATASET_PATH"
+echo "Seed:         $SEED"
+echo "Base Output Dir: $BASE_OUTPUT_DIR"
+# ------------------------
 
 BASE_CACHE_DIR="$SCRATCH"
-DATASET_PATH="<DATASET_PATH>"
-SEED="<SEED>"
-
 export HF_HOME=$BASE_CACHE_DIR/hf_home
 export VLLM_CACHE_DIR=$BASE_CACHE_DIR/vllm_cache
 export WANDB_PROJECT=DPO
@@ -25,7 +56,7 @@ MAIN_PROCESS_PORT=29500
 NUM_PROCESSES=$(expr $SLURM_NNODES \* $SLURM_GPUS_ON_NODE)
 
 CMD="accelerate launch \
-    --config_file=$SCRATCH/ActiveUltraFeedback/configs/accelerate/multi_node.yaml \
+    --config_file=$SCRATCH/ActiveUltraFeedback/configs/accelerate/deepspeed2.yaml \
     --num_processes $NUM_PROCESSES \
     --num_machines $SLURM_NNODES \
     --machine_rank \$SLURM_NODEID \
@@ -35,10 +66,8 @@ CMD="accelerate launch \
     --config_path $SCRATCH/ActiveUltraFeedback/configs/dpo_training.yaml \
     --slurm_job_id $SLURM_JOB_ID \
     --dataset_path $DATASET_PATH \
-    --beta 0.1 \
-    --learning_rate 2e-5 \
-    --seed $SEED \
-    --num_epochs 3"
+    --base_output_dir $BASE_OUTPUT_DIR \
+    --seed $SEED"
 
 echo $CMD
 

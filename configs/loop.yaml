@@ -1,13 +1,13 @@
 env_local_path: .env.local
-base_output_dir: datasets/loop
+base_output_dir: datasets/tulu_3/actives/dpo
 base_trainer_dir: trainer_output/loop
 base_logs_dir: logs/loop
 base_wandb_dir: wandb/loop
 base_wandb_project: loop
 
-inputs_path: datasets/combined_with_small_qwen_3_235b-features
+inputs_path: datasets/ultrafeedback/qwen_3_235b
 oracle_name: ultrafeedback
-acquisition_function_type: infogain
+acquisition_function_type: deltaquantile
 reward_model_type: enn
 debug: false
 
@@ -15,33 +15,41 @@ seed: &a 4
 max_length: &b 4096
 outer_loop_batch_size: 64
 save_every_n_outer_batches: 100
-replay_buffer_factor: 10
+replay_buffer_factor: 100
 
 acquisition_function:
+  beta: 1.0
+
   random:
     seed: *a
   ultrafeedback:
     seed: *a
   dts:
-    beta: 1
     max_iterations: 30
-  infogain:
-    beta: 1.0
+  drts:
+    max_iterations: 30
   ids:
-    argmax_tol: 1e-4
+    argmax_tol: 0.0001
     decision_buffer: 0.0
     use_candidate_set: false
   rucb:
-    beta: 1
-    argmax_tol: 1e-4
+    argmax_tol: 0.0001
     decision_buffer: 0.0
     use_candidate_set: false
+  maxminlcb:
+    argmax_tol: 0.0001
+    decision_buffer: 0.0
+    use_candidate_set: false
+    seed: *a
+  deltaquantile:
+    quantile: 0.05
+    epsilon: 0.0
 
 enn:
   previous_checkpoint_path: null
-  effective_batch_size: 32
+  effective_batch_size: 64
   inference_batch_size: 8
-  max_steps: &d 10
+  max_steps: &d 100
 
   model:
     base_model_name_or_path: Skywork/Skywork-Reward-V2-Qwen3-4B
@@ -60,8 +68,8 @@ enn:
 
   trainer:
     lr_scheduler_type: cosine
-    learning_rate: 1.0e-4
-    warmup_ratio: 0.05
+    learning_rate: 0.00005
+    warmup_ratio: 0.0
     num_train_epochs: 1
     max_length: *b
     center_rewards_coefficient: 0.01

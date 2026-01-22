@@ -9,16 +9,16 @@ lora:
   lora_dropout: 0.05
   bias: none
   task_type: SEQ_CLS
-  target_module_patterns: ["query", "key", "value"]
+  target_module_patterns: all-linear
 
 training:
-  train_batch_size: 16
-  eval_batch_size: 16
+  train_batch_size: 8
+  eval_batch_size: 8
   epochs: 2
-  grad_acc_steps: 1
+  grad_acc_steps: 2
   logging_steps: 10
   save_strategy: "steps"
-  save_steps: 250
+  save_steps: 1000
   remove_unused_columns: false
   max_length: 4096
   report_to: wandb

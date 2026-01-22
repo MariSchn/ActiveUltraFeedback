@@ -1,0 +1,17 @@
+# Shards, gradients, optimizer states, but keeps the full model in memory on each GPU
+compute_environment: LOCAL_MACHINE
+deepspeed_config:
+  deepspeed_multinode_launcher: standard
+  offload_optimizer_device: None
+  offload_param_device: None
+  zero3_init_flag: false
+  zero_stage: 2
+distributed_type: DEEPSPEED
+main_training_function: main
+mixed_precision: 'bf16'
+# rdzv_backend: static
+same_network: true
+use_cpu: false
+tpu_env: []
+tpu_use_cluster: false
+tpu_use_sudo: false

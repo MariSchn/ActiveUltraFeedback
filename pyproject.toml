@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "UltraFeedback pipeline with Active Learning"
 authors = [{ name = "Your Name", email = "you@example.com" }]
 readme = "README.md"
-requires-python = "==3.12"
+requires-python = "==3.12.*"
 dependencies = [
     "numpy",
     "transformers",
@@ -45,8 +45,8 @@ dev = [
 ]
 
 [tool.ruff]
-# Add "archive" to the list of default exclusions
-extend-exclude = ["archive"]
+# Add "archive" and "resources" to the list of default exclusions
+extend-exclude = ["archive", "resources"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["activeuf"]

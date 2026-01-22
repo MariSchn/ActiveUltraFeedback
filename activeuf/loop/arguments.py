@@ -1,5 +1,6 @@
 import argparse
 from dataclasses import dataclass, field
+import os
 import os.path as path
 from transformers import HfArgumentParser
 import yaml
@@ -11,30 +12,35 @@ from activeuf.acquisition_function.arguments import (
     IDSConfig,
     RUCBConfig,
     InfoGainConfig,
+    MaxMinLCBConfig,
+    DRTSConfig,
+    DeltaUCBConfig,
+    DeltaQuantileConfig,
 )
 from activeuf.utils import ensure_dataclass
 
 
 @dataclass
 class AcquisitionFunctionConfig:
-    random: RandomConfig = field(
-        metadata={"help": "Config for the random acquisition function."},
+    beta: float = field(
+        default=1.0,
+        metadata={
+            "help": "Global Beta parameter applied to all relevant acquisition functions."
+        },
     )
-    ultrafeedback: UltraFeedbackConfig = field(
-        metadata={"help": "Config for the ultrafeedback acquisition function."},
-    )
-    dts: DTSConfig = field(
-        metadata={"help": "Config for the dts acquisition function."},
-    )
-    infogain: InfoGainConfig = field(
-        metadata={"help": "Config for the infogain acquisition function."},
-    )
-    ids: IDSConfig = field(
-        metadata={"help": "Config for the ids acquisition function."},
-    )
-    rucb: RUCBConfig = field(
-        metadata={"help": "Config for the rucb acquisition function."},
-    )
+
+    # Specific Configs with default_factory
+    random: RandomConfig = field(default_factory=RandomConfig)
+    ultrafeedback: UltraFeedbackConfig = field(default_factory=UltraFeedbackConfig)
+
+    dts: DTSConfig = field(default_factory=DTSConfig)
+    infogain: InfoGainConfig = field(default_factory=InfoGainConfig)
+    ids: IDSConfig = field(default_factory=IDSConfig)
+    rucb: RUCBConfig = field(default_factory=RUCBConfig)
+    maxminlcb: MaxMinLCBConfig = field(default_factory=MaxMinLCBConfig)
+    drts: DRTSConfig = field(default_factory=DRTSConfig)
+    deltaucb: DeltaUCBConfig = field(default_factory=DeltaUCBConfig)
+    deltaquantile: DeltaQuantileConfig = field(default_factory=DeltaQuantileConfig)
 
 
 @dataclass
@@ -204,11 +210,24 @@ class LoopConfig:
     enn: ENNConfig | None = field(
         metadata={"help": "All configs related to ENN reward model and training."}
     )
+    
+    # checkpointing
+    resume_from_checkpoint: str | None = field(
+        default=None,
+        metadata={"help": "Path to a directory containing a checkpoint to resume from (e.g., outputs/run_id/checkpoint-50)."}
+    )
+    run_tag: str | None = field(
+        default=None,
+        metadata={"help": "Custom tag to append to run ID (e.g. 'q_0.05')."}
+    )
+    run_id: str = field(
+        default="",
+        metadata={"help": "Custom run ID (overrides automatic generation)."},
+    )
 
     # derived fields
     env_local_path: str = ""
     timestamp: str = ""
-    run_id: str = ""
     output_path: str = ""
     args_path: str = ""
     logs_path: str = ""
@@ -291,7 +310,32 @@ def get_loop_args(timestamp) -> argparse.Namespace:
         sweep_dict = parse_overwrites(remaining_args)
         config_dict = recursive_update(config_dict, sweep_dict)
 
-    # define timestamp, then use it to create a run id
+    acq_config = config_dict.get("acquisition_function", {})
+    global_beta = acq_config.get("beta", 1.0)
+
+    beta_dependent_keys = [
+        "dts",
+        "drts",
+        "infogain",
+        "rucb",
+        "maxminlcb",
+        "deltaucb",
+        "deltaquantile",
+    ]
+
+    # Inject beta into sub-dictionaries
+    for key in beta_dependent_keys:
+        # Ensure the sub-dict exists
+        if key not in acq_config or acq_config[key] is None:
+            acq_config[key] = {}
+
+        # Overwrite/Set beta
+        acq_config[key]["beta"] = global_beta
+
+    # Update the main config dict
+    config_dict["acquisition_function"] = acq_config
+
+    # define timestamp, then use it to create a run id (env var takes precedence over config)
     config_dict["timestamp"] = timestamp
     config_dict["run_id"] = "_".join(
         [
@@ -302,17 +346,38 @@ def get_loop_args(timestamp) -> argparse.Namespace:
             config_dict["timestamp"],
         ]
     )
+    if not os.getenv("WANDB_RUN_ID"):
+        config_dict["run_id"] = "_".join(
+            [
+                config_dict["acquisition_function_type"],
+                config_dict["reward_model_type"],
+                extract_annotator_name(config_dict["inputs_path"]),
+                config_dict["oracle_name"],
+                config_dict["timestamp"],
+            ]
+        )
+    else:
+        config_dict["run_id"] = os.getenv("WANDB_RUN_ID")
 
     # setup paths
+    if os.getenv("WANDB_SWEEP_ID"):
+        config_dict["base_output_dir"] = path.join(
+            config_dict["base_output_dir"], os.getenv("WANDB_SWEEP_ID")
+        )
     config_dict["output_path"] = path.join(
         config_dict["base_output_dir"], config_dict["run_id"]
     )
+
+    # If base_logs_dir is empty, use base_output_dir instead
+    if not config_dict.get("base_logs_dir", "").strip():
+        config_dict["base_logs_dir"] = config_dict["output_path"]
     config_dict["args_path"] = path.join(
         config_dict["base_logs_dir"], f"{config_dict['run_id']}.args"
     )
     config_dict["logs_path"] = path.join(
         config_dict["base_logs_dir"], f"{config_dict['run_id']}.log"
     )
+
     if config_dict["reward_model_type"] != "none":
         config_dict["wandb_project"] = config_dict["base_wandb_project"]
         config_dict["wandb_dir"] = path.join(

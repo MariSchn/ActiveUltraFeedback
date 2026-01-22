@@ -1,8 +1,10 @@
 import argparse
 import os
+import random
 import re
 import yaml
 import torch
+import numpy as np
 
 # from trl import DPOConfig
 from trl.data_utils import apply_chat_template, extract_prompt
@@ -20,12 +22,12 @@ import wandb
 
 """
 run command example:
-accelerate launch \
+accelerate launch --num_processes=4 \
     --config_file=$SCRATCH/ActiveUltraFeedback/configs/accelerate/multi_node.yaml -m activeuf.dpo.training \
     --config_path $SCRATCH/ActiveUltraFeedback/configs/dpo_training.yaml \
     --slurm_job_id $SLURM_JOB_ID \
     --dataset_path allenai/ultrafeedback_binarized_cleaned \
-    --beta 0.1
+    --beta 0.1 
     
 accelerate launch \
     --config_file=$SCRATCH/ActiveUltraFeedback/configs/accelerate/multi_node.yaml -m activeuf.dpo.training \
@@ -65,6 +67,17 @@ def parse_args() -> argparse.Namespace:
         type=str,
         help="Base output directory for model checkpoints and logs",
         default=None,
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        help="Output directory for saving models",
+        required=False,
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Whether to run in debug mode with a smaller dataset",
     )
     return parser.parse_args()
 
@@ -182,7 +195,10 @@ if __name__ == "__main__":
 
     # print(run_name)
     # exit()
-    output_dir = os.path.join(config["base_output_dir"], run_name)
+    if args.output_dir:
+        output_dir = args.output_dir
+    else:
+        output_dir = os.path.join(config["base_output_dir"], run_name)
     if accelerator.is_main_process:
         print(f"Output dir: {output_dir}")
         print(f"Run name: {run_name}")
@@ -194,11 +210,12 @@ if __name__ == "__main__":
 
     # set seed for reproducibility
     if isinstance(config.get("seed"), int):
+        print("Setting seed to ", config.get("seed"))
         set_seed(config.get("seed"))
 
     # send config file to wandb
-    if accelerator.is_main_process:
-        wandb.init(name=run_name)
+    if accelerator.is_main_process and training_config.get("report_to") == "wandb":
+        wandb.init(name=run_name, entity="ActiveUF")
         wandb.config.update(config)
         artifact = wandb.Artifact(run_name, type="config")
         artifact.add_file(args.config_path)
@@ -237,7 +254,7 @@ if __name__ == "__main__":
             print(f"Unable to remove {column=} from dataset")
 
     # limit dataset if in debug mode
-    if config.get("debug"):
+    if args.debug:
         dataset = dataset.select(range(100))
 
     # load tokenizer, then use it to remove overly long samples
@@ -246,39 +263,48 @@ if __name__ == "__main__":
 
     # remove samples where prompt+chosen or prompt+rejected exceeds max length
     if training_config["max_length"]:
-        temp = dataset.map(extract_prompt)
-        temp = temp.map(
-            apply_chat_template,
-            fn_kwargs={"tokenizer": tokenizer},
-            keep_in_memory=True,
-        )
-        temp = temp.map(
-            lambda _: NormedDPOTrainer.tokenize_row(
-                _,
-                processing_class=tokenizer,
-                max_prompt_length=None,
-                max_completion_length=None,
-                add_special_tokens=True,
+        # Do not load from cache here to avoid race conditions when running on multiple GPUs/nodes
+        with accelerator.main_process_first():
+            temp = dataset.map(
+                extract_prompt,
+                num_proc=os.cpu_count(),
             )
-        )
+            temp = temp.map(
+                apply_chat_template,
+                fn_kwargs={"tokenizer": tokenizer},
+                num_proc=os.cpu_count(),
+            )
+            temp = temp.map(
+                lambda _: NormedDPOTrainer.tokenize_row(
+                    _,
+                    processing_class=tokenizer,
+                    max_prompt_length=None,
+                    max_completion_length=None,
+                    add_special_tokens=True,
+                ),
+                num_proc=os.cpu_count(),
+            )
 
-        old_n = len(dataset)
-        print(f"Original number of samples: {old_n}")
+            old_n = len(dataset)
+            print(f"Original number of samples: {old_n}")
 
-        def check_if_short(x: dict) -> dict[str, bool]:
-            return {
-                "is_short": len(x["prompt_input_ids"]) + len(x["chosen_input_ids"])
-                <= training_config["max_length"]
-                or len(x["prompt_input_ids"]) + len(x["rejected_input_ids"])
-                <= training_config["max_length"]
-            }
+            def check_if_short(x: dict) -> dict[str, bool]:
+                return {
+                    "is_short": len(x["prompt_input_ids"]) + len(x["chosen_input_ids"])
+                    <= training_config["max_length"]
+                    or len(x["prompt_input_ids"]) + len(x["rejected_input_ids"])
+                    <= training_config["max_length"]
+                }
 
-        temp = temp.map(check_if_short)
-        idxs = [i for i, _ in enumerate(temp["is_short"]) if _]
-        dataset = dataset.select(idxs)
-        print(
-            f"Number of samples removed due to length constraints: {old_n - len(dataset)}"
-        )
+            temp = temp.map(
+                check_if_short,
+                num_proc=os.cpu_count(),
+            )
+            idxs = [i for i, _ in enumerate(temp["is_short"]) if _]
+            dataset = dataset.select(idxs)
+            print(
+                f"Number of samples removed due to length constraints: {old_n - len(dataset)}"
+            )
 
     dataset = dataset.select_columns(["chosen", "rejected"])
 
@@ -287,11 +313,13 @@ if __name__ == "__main__":
 
     if accelerator.is_main_process:
         print(dataset[0]["chosen"][0])
-        print(dataset[6464]["chosen"][0])
 
     # create lora version of model
     model = AutoModelForCausalLM.from_pretrained(
-        model_path, trust_remote_code=True, torch_dtype=torch_dtype
+        model_path,
+        trust_remote_code=True,
+        torch_dtype=torch_dtype,
+        attn_implementation="flash_attention_2",
     )
     peft_config = LoraConfig(**lora_config)
     try:
@@ -307,6 +335,7 @@ if __name__ == "__main__":
         run_name=run_name,
         output_dir=output_dir,
         dataset_num_proc=accelerator.num_processes,
+        seed=config.get("seed"),
         **training_config,
     )
     # DPO config, dataset loading. it doesnt know if tis evals or training.
@@ -330,6 +359,9 @@ if __name__ == "__main__":
         with open(out_path, "w") as f_out:
             yaml.dump(config, f_out, default_flow_style=False)
 
-
-if accelerator.is_main_process and wandb.run is not None:
-    wandb.finish()
+    if (
+        accelerator.is_main_process
+        and training_config.get("report_to") == "wandb"
+        and wandb.run is not None
+    ):
+        wandb.finish()

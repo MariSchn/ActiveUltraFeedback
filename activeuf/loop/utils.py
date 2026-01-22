@@ -3,6 +3,11 @@ from datasets import Dataset
 import torch
 from transformers import TrainerCallback
 import wandb
+import os
+import json
+import pickle
+import random
+import numpy as np
 
 from rewarduq.models.reward_head_ensemble import (
     RewardHeadEnsembleModel as ENNRewardModel,
@@ -296,3 +301,73 @@ def get_new_regularization(
         return initial_value * (exponential_decay_base**exponent)
     else:
         raise ValueError(f"{decay_type=} not supported")
+
+
+def save_loop_checkpoint(
+    save_dir: str, 
+    args, 
+    loop_state: dict, 
+    replay_buffer, 
+    output_data: list, 
+    trainer=None,
+    model=None
+):
+    """Saves loop state, buffer, data, AND RNG states."""
+    os.makedirs(save_dir, exist_ok=True)
+
+    # 1. Standard Data
+    with open(os.path.join(save_dir, "config.json"), "w") as f:
+        json.dump(asdict(args), f, indent=2)
+
+    with open(os.path.join(save_dir, "loop_state.json"), "w") as f:
+        json.dump(loop_state, f, indent=2)
+
+    with open(os.path.join(save_dir, "replay_buffer.pkl"), "wb") as f:
+        pickle.dump(replay_buffer, f)
+    
+    with open(os.path.join(save_dir, "output_list.pkl"), "wb") as f:
+        pickle.dump(output_data, f)
+
+    # 2. Save Model/Trainer
+    if trainer is not None:
+        trainer.save_model(save_dir) 
+        trainer.save_state() 
+        if trainer.optimizer is not None:
+            torch.save(trainer.optimizer.state_dict(), os.path.join(save_dir, "optimizer.pt"))
+        if trainer.lr_scheduler is not None:
+            torch.save(trainer.lr_scheduler.state_dict(), os.path.join(save_dir, "scheduler.pt"))
+    elif model is not None:
+        model.save_pretrained(save_dir)
+
+    # --- NEW: SAVE RNG STATES ---
+    rng_states = {
+        "python": random.getstate(),
+        "numpy": np.random.get_state(),
+        "torch": torch.get_rng_state(),
+        "torch_cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
+    }
+    with open(os.path.join(save_dir, "rng_states.pkl"), "wb") as f:
+        pickle.dump(rng_states, f)
+
+
+def load_loop_checkpoint(checkpoint_dir: str):
+    """Loads loop state and returns data + RNG states dict."""
+    
+    # 1. Load Data
+    with open(os.path.join(checkpoint_dir, "loop_state.json"), "r") as f:
+        loop_state = json.load(f)
+
+    with open(os.path.join(checkpoint_dir, "replay_buffer.pkl"), "rb") as f:
+        replay_buffer = pickle.load(f)
+
+    with open(os.path.join(checkpoint_dir, "output_list.pkl"), "rb") as f:
+        output_data = pickle.load(f)
+
+    # 2. Load RNG States (but do NOT apply them yet)
+    rng_states = None
+    rng_path = os.path.join(checkpoint_dir, "rng_states.pkl")
+    if os.path.exists(rng_path):
+        with open(rng_path, "rb") as f:
+            rng_states = pickle.load(f)
+            
+    return loop_state, replay_buffer, output_data, rng_states

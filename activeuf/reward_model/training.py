@@ -11,7 +11,15 @@ import math
 from accelerate import Accelerator
 from datetime import datetime
 
-os.environ["WANDB_PROJECT"] = "RM-Training"
+os.environ["WANDB_ENTITY"] = "ActiveUF"
+
+""" Example command to run training with accelerate:
+accelerate launch --num_processes=4 --config_file configs/accelerate/single_node.yaml \
+    activeuf/reward_model/training.py \
+    --dataset_path /iopsstor/scratch/cscs/dmelikidze/datasets/active/centered/dts_qwen_rgl10.0_wdcb0.95_obs32_rbs3200_1012462 \
+    --reward_config configs/rm_training.yaml \
+    --output_dir /iopsstor/scratch/cscs/dmelikidze/models/reward_models/rm
+"""
 
 
 def load_dataset_all(dataset_path):
@@ -52,7 +60,8 @@ def process_dataset(dataset):
                     {"content": x["prompt"], "role": "user"},
                     {"content": x["rejected"], "role": "assistant"},
                 ],
-            }
+            },
+            num_proc=os.cpu_count(),
         )
 
     # remove all columns except 'chosen' and 'rejected'
@@ -67,8 +76,10 @@ def train_reward_model(config, args):
     accelerator = Accelerator()
     torch.cuda.empty_cache()
     torch.cuda.reset_peak_memory_stats()
+    num_processes = accelerator.num_processes
+    is_main_process = accelerator.is_main_process
 
-    if accelerator.is_main_process:
+    if is_main_process:
         print("==== Training Arguments ====")
         print(args)
         print("==== YAML Configuration ====")
@@ -81,10 +92,7 @@ def train_reward_model(config, args):
     lr_scheduling_config = config.get("lr_scheduling", {})
     lora_config = config.get("lora", {})
 
-    if (
-        accelerator.is_main_process
-        and training_config.get("report_to", "none") == "wandb"
-    ):
+    if is_main_process and training_config.get("report_to", "none") == "wandb":
         print("wandb_dir changed")
         now = datetime.now()
         os.environ.setdefault(
@@ -128,6 +136,7 @@ def train_reward_model(config, args):
         num_labels=1,
         torch_dtype=torch_dtype,
         pad_token_id=tokenizer.pad_token_id,
+        attn_implementation="flash_attention_2",
     )
 
     peft_config = LoraConfig(
@@ -159,10 +168,10 @@ def train_reward_model(config, args):
     trainer_config = RewardConfig(
         output_dir=output_dir,
         per_device_train_batch_size=math.ceil(
-            training_config.get("train_batch_size", 32) / accelerator.num_processes
+            training_config.get("train_batch_size", 32) / num_processes
         ),
         per_device_eval_batch_size=math.ceil(
-            training_config.get("eval_batch_size", 32) / accelerator.num_processes
+            training_config.get("eval_batch_size", 32) / num_processes
         ),
         gradient_accumulation_steps=training_config.get("grad_acc_steps", 2),
         num_train_epochs=training_config.get("epochs", 1),
@@ -178,10 +187,10 @@ def train_reward_model(config, args):
         max_steps=training_config.get("max_steps", -1),
         lr_scheduler_type=training_config.get("lr_scheduler_type", "linear"),
         run_name=os.path.basename(os.path.normpath(output_dir)),
-        dataset_num_proc=accelerator.num_processes,
+        dataset_num_proc=os.cpu_count(),
     )
 
-    if accelerator.is_main_process:
+    if is_main_process:
         print("==== Trainer Configuration ====")
         pprint.pprint(trainer_config)
 
@@ -193,7 +202,7 @@ def train_reward_model(config, args):
     if args.shuffle:
         train_dataset = train_dataset.shuffle(seed=seed)
 
-    if accelerator.is_main_process:
+    if is_main_process:
         print("==== Dataset Columns ====")
         print(train_dataset.column_names)
         print("==== Dataset ====")

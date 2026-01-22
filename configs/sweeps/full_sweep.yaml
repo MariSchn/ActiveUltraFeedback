@@ -1,0 +1,22 @@
+program: scripts/loop_train_eval.sbatch  # Placeholder overwritten by `command`
+method: grid
+metric:
+  name: "Rewardbench/Mean"
+  goal: maximize
+
+command:
+  - scripts/loop_train_eval.sbatch 
+  - ${args}
+
+parameters:
+  outer_loop_batch_size:
+    values: [64, 256, 1024]
+  replay_buffer_factor:
+      values: [10, 100, 1000]
+  enn.regularization.initial_value:
+    values: [1.0, 10.0, 100.0]
+  enn.regularization.exponential_decay_base:
+    values: [0.9, 0.99, 0.999]
+  # ! SET IF YOU ARE USING AN ACQUISITION FUNCTION THAT USES A BETA PARAMETER
+  # acquisition_function.<ACQUISITION_FUNCTION_NAME>.beta:
+  #   values: [1.0, 2.0]
