@@ -30,6 +30,7 @@ dependencies = [
     "immutabledict",
     "omegaconf",
     "blobfile",
+    "rewarduq",
     # Linux-only dependencies (excluded on Windows)
     "vllm; platform_system != 'Windows'",
     "deepspeed; platform_system != 'Windows'",
