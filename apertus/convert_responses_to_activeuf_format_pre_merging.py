@@ -55,6 +55,7 @@ class BinaryPreferenceConversation(Prompt):
     completion_chosen: Completion
     completion_rejected: Completion
 
+
 def convert_responses_to_activeuf_format(x: dict) -> dict:
     y = {}
 
@@ -62,7 +63,7 @@ def convert_responses_to_activeuf_format(x: dict) -> dict:
     y["source"] = ""
 
     y["prompt_id"] = x["prompt_id"]
-    y["prompt"] = x["chosen"][0]["content"]
+    y["prompt"] = x["chosen"][:-1]["content"]
     y["completions"] = [
         {
             # setting these to dummy values instead of throwing them away, to be safe
@@ -70,11 +71,12 @@ def convert_responses_to_activeuf_format(x: dict) -> dict:
             "critique": "",
             "overall_score": "",
             "system_prompt": "",
-            "principle": "", 
-
+            "principle": "",
             "model": x["chosen_model"],
-            "messages": [x["chosen"][0]],
-            "response_text": x["chosen"][1]["content"] if x["chosen"][1]["content"] else "",  # str, not list
+            "messages": [x["chosen"][:-1]],
+            "response_text": x["chosen"][-1]["content"]
+            if x["chosen"][-1]["content"]
+            else "",  # str, not list
         },
         {
             # setting these to dummy values instead of throwing them away, to be safe
@@ -82,14 +84,15 @@ def convert_responses_to_activeuf_format(x: dict) -> dict:
             "critique": "",
             "overall_score": "",
             "system_prompt": "",
-            "principle": "", 
-
+            "principle": "",
             "model": x["rejected_model"],
-            "messages": [x["rejected"][0]],
-            "response_text": x["rejected"][1]["content"] if x["rejected"][1]["content"] else "",  # str, not list
-        }
+            "messages": [x["rejected"][:-1]],
+            "response_text": x["rejected"][-1]["content"]
+            if x["rejected"][-1]["content"]
+            else "",  # str, not list
+        },
     ]
-    
+
     assert PromptWithCompletions.model_validate(y), "Validation failed"
     return y
 
@@ -119,6 +122,13 @@ def main() -> None:
     ds: Dataset = load_from_disk(args.input_path)
     converted: Dataset = ds.map(convert_responses_to_activeuf_format)
     converted.save_to_disk(args.output_path)
+
+    import json
+
+    # Save the first sample as a JSON file for inspection
+    first_sample = converted[0]
+    with open(f"{args.output_path}/first_sample.json", "w", encoding="utf-8") as f:
+        json.dump(first_sample, f, ensure_ascii=False, indent=2)
 
 
 if __name__ == "__main__":
