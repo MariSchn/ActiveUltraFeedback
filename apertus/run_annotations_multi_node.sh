@@ -5,8 +5,8 @@ BASE_DATASETS_DIR="/iopsstor/scratch/cscs/jessica/datasets/apertus/Dolci-Instruc
 
 # Models to annotate
 MODELS=(
-  "EuroLLM-1.7B-Instruct"
-  # "EuroLLM-22B-Instruct-2512"
+  # "EuroLLM-1.7B-Instruct"
+  "EuroLLM-22B-Instruct-2512"
   # "EuroLLM-9B-Instruct-2512"
   # "Ministral-3-14B-Instruct-2512"
   # "Ministral-3-3B-Instruct-2512"
@@ -28,7 +28,7 @@ for MODEL in "${MODELS[@]}"; do
 #SBATCH --gres=gpu:4
 #SBATCH --tasks-per-node=1
 #SBATCH --partition=normal
-#SBATCH --time=4:00:00
+#SBATCH --time=2:00:00
 #SBATCH --container-writable
 #SBATCH --job-name=annotation_${MODEL_SHORT}
 #SBATCH --output=./logs/annotation/${MODEL_SHORT}/%j.out
@@ -111,7 +111,7 @@ ray status
 python -u -m activeuf.oracle.get_raw_annotations \
     --dataset_path ${BASE_DATASETS_DIR}/${MODEL} \
     --model_name="${ANNOTATION_MODEL}" \
-    --max_tokens 24000 \
+    --max_tokens 1 \
     --output_path /iopsstor/scratch/cscs/jessica/datasets/apertus/Dolci-Instruct-DPO/3a_annotated_completions \
     --model_class vllm_server \
     --temperature 0.0 \
