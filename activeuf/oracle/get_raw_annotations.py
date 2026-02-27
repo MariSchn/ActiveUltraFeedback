@@ -291,7 +291,7 @@ if __name__ == "__main__":
 
     if args.debug:
         logger.info("Debug mode: only annotating completions for the first few prompts")
-        dataset = dataset.select(range(10))
+        dataset = dataset.select(range(10000))
     logger.info(f"{len(dataset)}")
 
     print("HF_HOME:", os.environ.get("HF_HOME"))
@@ -307,7 +307,7 @@ if __name__ == "__main__":
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
 
     sampling_params = SamplingParams(
-        max_tokens=64,  # args.max_tokens,
+        max_tokens=args.max_tokens,
         temperature=float(args.temperature),
         top_p=float(args.top_p),
         logprobs=20,
