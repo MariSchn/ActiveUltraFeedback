@@ -15,6 +15,7 @@ from activeuf.oracle.prompts import (
     HONESTY_ANNOTATION_SYSTEM_PROMPT,
     TRUTHFULNESS_ANNOTATION_SYSTEM_PROMPT,
     INSTRUCTION_FOLLOWING_ANNOTATION_SYSTEM_PROMPT,
+    CHARTER_ANNOTATION_SYSTEM_PROMPT,
 )
 import os
 
@@ -24,6 +25,7 @@ ASPECT2ANNOTATION_PROMPT = {
     "honesty": HONESTY_ANNOTATION_SYSTEM_PROMPT,
     "truthfulness": TRUTHFULNESS_ANNOTATION_SYSTEM_PROMPT,
     "helpfulness": HELPFULNESS_ANNOTATION_SYSTEM_PROMPT,
+    "charter": CHARTER_ANNOTATION_SYSTEM_PROMPT,
 }
 
 logger = get_logger(__name__)
@@ -232,12 +234,13 @@ def load_dataset_my_way(dataset_path, output_path):
 
     Assumption: the ordering of the rows in the saved dataset is the same as in the original dataset.
     """
-    try:
-        dataset = load_dataset(dataset_path)
-        # assuming we load ultrafeedback_binarized_cleaned datasets
-        dataset = dataset["train_prefs"]
-    except ValueError:
+    if os.path.exists(dataset_path):
         dataset = load_from_disk(dataset_path)
+    else:
+        dataset = load_dataset(dataset_path)
+        if "train_prefs" in dataset:
+            # assuming we load ultrafeedback_binarized_cleaned datasets
+            dataset = dataset["train_prefs"]
 
     already_processed_dataset = Dataset.from_dict({k: [] for k in dataset.features})
     if os.path.exists(output_path):
@@ -288,7 +291,7 @@ if __name__ == "__main__":
 
     if args.debug:
         logger.info("Debug mode: only annotating completions for the first few prompts")
-        dataset = dataset.select(range(100))
+        dataset = dataset.select(range(10000))
     logger.info(f"{len(dataset)}")
 
     print("HF_HOME:", os.environ.get("HF_HOME"))
