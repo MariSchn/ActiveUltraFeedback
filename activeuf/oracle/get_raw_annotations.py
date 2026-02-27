@@ -291,7 +291,7 @@ if __name__ == "__main__":
 
     if args.debug:
         logger.info("Debug mode: only annotating completions for the first few prompts")
-        dataset = dataset.select(range(10000))
+        dataset = dataset.select(range(10))
     logger.info(f"{len(dataset)}")
 
     print("HF_HOME:", os.environ.get("HF_HOME"))
